@@ -11,6 +11,7 @@ async function compressImage(file: File, maxDim: number, maxBytes: number): Prom
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
+      URL.revokeObjectURL(img.src); // Prevent memory leak
       // Calculate scaled dimensions preserving aspect ratio
       let w = img.width, h = img.height;
       if (w > maxDim || h > maxDim) {

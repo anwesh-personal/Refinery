@@ -1,11 +1,18 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { env } from '../config/env.js';
-import { query } from '../db/clickhouse.js';
 import * as adminService from '../services/admin.js';
+import { createClient } from '@supabase/supabase-js';
 
 const router = Router();
 
-// Middleware: Verify Superadmin Role via JWT and Profiles table
+// Supabase admin client for role verification (uses service key, bypasses RLS)
+const supabaseAdmin = createClient(
+  env.supabase.url,
+  env.supabase.secretKey || '',
+  { auth: { autoRefreshToken: false, persistSession: false } }
+);
+
+// Middleware: Verify Superadmin Role via JWT → Supabase user lookup → profiles check
 // ═══════════════════════════════════════════════════════════════
 const requireSuperadmin = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -16,30 +23,26 @@ const requireSuperadmin = async (req: Request, res: Response, next: NextFunction
 
     const token = authHeader.split(' ')[1];
 
-    // Decode token securely via REST endpoint (avoids custom JWT secret parsing)
-    const resp = await fetch(`${env.supabase.url}/auth/v1/user`, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${token}`, apikey: env.supabase.publishableKey },
-      signal: AbortSignal.timeout(5000),
-    });
+    // Verify the JWT and get the user via Supabase Auth API
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
 
-    if (!resp.ok) {
+    if (authError || !user) {
       return res.status(401).json({ error: 'Invalid authentication token' });
     }
 
-    const { id: userId } = await resp.json() as { id: string };
-    
-    // Check role in profiles
-    const [profile] = await query<{ role: string }>(`
-      SELECT role FROM public.profiles WHERE id = '${userId}' LIMIT 1
-    `);
+    // Check role in profiles using the admin client (queries PostgreSQL, not ClickHouse)
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
 
-    if (!profile || profile.role !== 'superadmin') {
+    if (profileError || !profile || profile.role !== 'superadmin') {
       return res.status(403).json({ error: 'Superadmin privileges required' });
     }
 
-    // Attach verified user ID
-    (req as any).adminId = userId;
+    // Attach verified user ID for downstream handlers
+    (req as any).adminId = user.id;
     next();
   } catch (err: any) {
     res.status(500).json({ error: `Auth validation failed: ${err.message}` });

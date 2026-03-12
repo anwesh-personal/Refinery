@@ -19,7 +19,29 @@ const app = express();
 
 // ── Middleware ──
 app.use(helmet());
-app.use(cors({ origin: env.frontendUrl, credentials: true }));
+
+// Dynamic CORS — supports multiple origins (comma-separated in FRONTEND_URL)
+const allowedOrigins = env.frontendUrl
+  .split(',')
+  .map((o: string) => o.trim())
+  .filter(Boolean);
+// Always allow localhost in development
+if (env.nodeEnv === 'development') {
+  allowedOrigins.push('http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173');
+}
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, server-to-server, health checks)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS] Blocked request from origin: ${origin}`);
+      callback(new Error(`Origin ${origin} not allowed by CORS`));
+    }
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('short'));
 

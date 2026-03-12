@@ -254,7 +254,6 @@ async function fetchProfileFromDB(userId: string, accessToken: string, fallbackU
     }
 
     const data = rows[0];
-    console.log('[AuthContext] Profile loaded from DB:', { role: data.role, is_active: data.is_active });
     return profileRowToAuthUser(data);
   } catch (err: any) {
     console.error('[AuthContext] Unexpected error fetching profile:', err);
