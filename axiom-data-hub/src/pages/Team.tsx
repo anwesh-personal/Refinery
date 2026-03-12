@@ -2,15 +2,38 @@ import { useState, useEffect } from 'react';
 import { useAuth, ROLE_LABELS, ROLE_COLORS, ALL_PERMISSIONS, resolvePermissions } from '../auth/AuthContext';
 import type { UserRole, PermissionKey, ProfileRow } from '../auth/AuthContext';
 import { PageHeader, SectionHeader, Button, Input, Badge } from '../components/UI';
-import { Check, X as CloseIcon, Key, LogIn, Mail } from 'lucide-react';
+import { Check, X as CloseIcon, Key, LogIn, Mail, Plus, Trash2, Edit2, ShieldAlert } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { apiCall } from '../lib/api';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+
+interface CustomRole {
+  id: string;
+  name: string;
+  description: string | null;
+  permissions: Record<string, boolean>;
+}
 
 export default function TeamPage() {
   const { user, refreshProfile, session } = useAuth();
   const [team, setTeam] = useState<ProfileRow[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Tabs
+  const [activeTab, setActiveTab] = useState<'members' | 'roles'>('members');
+
+  // Custom Roles state
+  const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
+  
+  // Custom Role Modal state
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+  const [editingRole, setEditingRole] = useState<CustomRole | null>(null);
+  const [roleFormName, setRoleFormName] = useState('');
+  const [roleFormDesc, setRoleFormDesc] = useState('');
+  const [roleFormPerms, setRoleFormPerms] = useState<Record<string, boolean>>({});
+  const [savingRole, setSavingRole] = useState(false);
 
   // Invite state
   const [inviteEmail, setInviteEmail] = useState('');
@@ -30,7 +53,19 @@ export default function TeamPage() {
 
   useEffect(() => {
     fetchTeam();
+    fetchCustomRoles();
   }, []);
+
+  const fetchCustomRoles = async () => {
+    setRolesLoading(true);
+    try {
+      const data = await apiCall<{ roles: CustomRole[] }>('/api/custom-roles');
+      setCustomRoles(data.roles);
+    } catch (err: any) {
+      console.error('Failed to fetch roles:', err);
+    }
+    setRolesLoading(false);
+  };
 
   const fetchTeam = async () => {
     if (!user) return;
@@ -134,6 +169,30 @@ export default function TeamPage() {
     }
   };
 
+  const changeCustomRole = async (roleId: string | null) => {
+    if (!selectedUser) return;
+
+    const { error } = await supabase.from('profiles')
+      .update({ custom_role_id: roleId } as any)
+      .eq('id', selectedUser.id);
+
+    if (error) {
+      alert(`Error updating custom role: ${error.message}`);
+    } else {
+      await supabase.from('audit_log').insert({
+        actor_id: user!.id,
+        action: 'custom_role_assigned',
+        target_id: selectedUser.id,
+        details: { custom_role_id: roleId },
+      });
+      // A full refresh is better here to resolve the joined permissions
+      fetchTeam();
+      if (selectedUser.id === user?.id) await refreshProfile();
+      // Keep panel open but wait for next props, or just close it to be safe
+      closeUserPanel(); 
+    }
+  };
+
   const changeStatus = async (isActive: boolean) => {
     if (!selectedUser) return;
     if (selectedUser.id === user?.id) {
@@ -220,15 +279,104 @@ export default function TeamPage() {
     return acc;
   }, {} as Record<string, Array<{ key: PermissionKey; label: string; group: string }>>);
 
+  // ── Role Management Functions ──
+  const openNewRoleModal = () => {
+    setEditingRole(null);
+    setRoleFormName('');
+    setRoleFormDesc('');
+    setRoleFormPerms({});
+    setIsRoleModalOpen(true);
+  };
+
+  const openEditRoleModal = (role: CustomRole) => {
+    setEditingRole(role);
+    setRoleFormName(role.name);
+    setRoleFormDesc(role.description || '');
+    setRoleFormPerms({ ...role.permissions });
+    setIsRoleModalOpen(true);
+  };
+
+  const saveRoleMutation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingRole(true);
+    try {
+      const payload = {
+        name: roleFormName,
+        description: roleFormDesc,
+        permissions: roleFormPerms,
+      };
+      
+      if (editingRole) {
+        await apiCall(`/api/custom-roles/${editingRole.id}`, { method: 'PUT', body: payload });
+      } else {
+        await apiCall('/api/custom-roles', { method: 'POST', body: payload });
+      }
+      setIsRoleModalOpen(false);
+      fetchCustomRoles();
+    } catch (err: any) {
+      alert(`Role save failed: ${err.message}`);
+    } finally {
+      setSavingRole(false);
+    }
+  };
+
+  const deleteCustomRole = async (id: string) => {
+    if (!window.confirm('Delete this role forever?')) return;
+    try {
+      await apiCall(`/api/custom-roles/${id}`, { method: 'DELETE' });
+      fetchCustomRoles();
+    } catch (err: any) {
+      alert(`Delete failed: ${err.message}`);
+    }
+  };
+
+  // Group permissions for the modal
+  const groupedPerms = Object.entries(ALL_PERMISSIONS).reduce((acc, [k, v]) => {
+    if (!acc[v.group]) acc[v.group] = [];
+    acc[v.group].push({ key: k as PermissionKey, ...v });
+    return acc;
+  }, {} as Record<string, Array<{ key: PermissionKey; label: string; group: string }>>);
+
   return (
     <div style={{ display: 'flex', gap: 24, height: 'calc(100vh - 120px)' }}>
       {/* LEFT COLUMN: Main Team List & Invites */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <PageHeader title="Team Management" sub="Invite team members and control their granular access levels." />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+          <PageHeader title="Team Management" sub="Invite team members and control their granular access levels." />
+          
+          {/* Tab Matcher */}
+          <div style={{ display: 'flex', background: 'var(--bg-card)', padding: 4, borderRadius: 8, border: '1px solid var(--border)' }}>
+            <button
+              onClick={() => setActiveTab('members')}
+              style={{
+                padding: '6px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+                background: activeTab === 'members' ? 'var(--bg-app)' : 'transparent',
+                color: activeTab === 'members' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                boxShadow: activeTab === 'members' ? 'var(--shadow-sm)' : 'none',
+              }}
+            >
+              Members
+            </button>
+            <button
+              onClick={() => setActiveTab('roles')}
+              style={{
+                padding: '6px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+                background: activeTab === 'roles' ? 'var(--bg-app)' : 'transparent',
+                color: activeTab === 'roles' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                boxShadow: activeTab === 'roles' ? 'var(--shadow-sm)' : 'none',
+              }}
+            >
+              Custom Roles
+            </button>
+          </div>
+        </div>
 
         <div style={{ overflowY: 'auto', paddingRight: 8 }} className="main-scroll-desktop">
-          {/* Invite form */}
-          <SectionHeader title="Invite Team Member" />
+          
+          {activeTab === 'members' && (
+            <>
+              {/* Invite form */}
+              <SectionHeader title="Invite Team Member" />
           <div
             className="animate-fadeIn"
             style={{
@@ -346,7 +494,60 @@ export default function TeamPage() {
                 );
               })
             )}
-          </div>
+            </>
+          )}
+
+          {activeTab === 'roles' && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <SectionHeader title="Custom Roles" />
+                <Button onClick={openNewRoleModal} icon={<Plus size={16} />}>Create Role</Button>
+              </div>
+
+              {rolesLoading ? (
+                <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>Loading...</div>
+              ) : customRoles.length === 0 ? (
+                <div style={{ padding: 48, textAlign: 'center', background: 'var(--bg-card)', borderRadius: 12, border: '1px dashed var(--border)' }}>
+                  <ShieldAlert size={32} style={{ color: 'var(--text-tertiary)', marginBottom: 16, margin: '0 auto' }} />
+                  <p style={{ color: 'var(--text-secondary)', marginBottom: 16 }}>No custom roles created yes.</p>
+                  <Button onClick={openNewRoleModal}>Create First Role</Button>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+                  {customRoles.map(role => {
+                    const assignedCount = team.filter(m => m.custom_role_id === role.id).length;
+                    
+                    return (
+                      <div key={role.id} style={{
+                        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20,
+                        display: 'flex', flexDirection: 'column'
+                      }}>
+                        <h3 style={{ margin: '0 0 8px 0', fontSize: 16, color: 'var(--text-primary)' }}>{role.name}</h3>
+                        <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, flex: 1 }}>
+                          {role.description || 'No description provided.'}
+                        </p>
+                        
+                        <div style={{ display: 'flex', gap: 16, marginTop: 16, marginBottom: 16, fontSize: 12, color: 'var(--text-tertiary)' }}>
+                          <span style={{ background: 'var(--bg-input)', padding: '4px 8px', borderRadius: 4 }}>
+                            {Object.values(role.permissions).filter(Boolean).length} Explicit Perms
+                          </span>
+                          <span style={{ background: 'var(--bg-input)', padding: '4px 8px', borderRadius: 4 }}>
+                            {assignedCount} Users
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                          <Button onClick={() => openEditRoleModal(role)} variant="secondary" icon={<Edit2 size={14} />} style={{ flex: 1 }}>Edit</Button>
+                          <Button onClick={() => deleteCustomRole(role.id)} variant="danger" icon={<Trash2 size={14} />} disabled={assignedCount > 0} style={{ padding: '8px 12px' }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
+
         </div>
       </div>
 
@@ -423,11 +624,11 @@ export default function TeamPage() {
 
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>
-                  Base Role
+                  Custom Role Overlay
                 </label>
                 <select
-                  value={selectedUser.role}
-                  onChange={(e) => changeRole(e.target.value as UserRole)}
+                  value={selectedUser.custom_role_id || ''}
+                  onChange={(e) => changeCustomRole(e.target.value || null)}
                   style={{
                     width: '100%', padding: '10px 16px', borderRadius: 8,
                     fontSize: 13, fontWeight: 500, outline: 'none',
@@ -435,10 +636,14 @@ export default function TeamPage() {
                     color: 'var(--text-primary)', cursor: 'pointer',
                   }}
                 >
-                  <option value="member">Member</option>
-                  <option value="admin">Admin</option>
-                  <option value="superadmin">Superadmin</option>
+                  <option value="">None (Base Role Only)</option>
+                  {customRoles.map(cr => (
+                    <option key={cr.id} value={cr.id}>{cr.name}</option>
+                  ))}
                 </select>
+                <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 8 }}>
+                  Custom roles merge extra permissions on top of the base role defaults.
+                </p>
               </div>
             </div>
 
@@ -483,66 +688,166 @@ export default function TeamPage() {
                 Toggles override the base role. Blue is allowed, gray is denied.
               </p>
 
-              {Object.entries(groupedPerms).map(([group, perms]) => (
-                <div key={group} style={{ marginBottom: 24 }}>
-                  <h5 style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 12 }}>{group}</h5>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {perms.map(p => {
-                      const resolved = resolvePermissions(selectedUser.role, editingPermissions);
-                      const isAllowed = resolved[p.key];
-                      const isOverride = (p.key in editingPermissions);
+                {Object.entries(groupedPerms).map(([group, perms]) => (
+                  <div key={group} style={{ marginBottom: 24 }}>
+                    <h5 style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 12 }}>{group}</h5>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {perms.map(p => {
+                        const crPerms = selectedUser.custom_roles?.permissions || {};
+                        const resolved = resolvePermissions(selectedUser.role, crPerms, editingPermissions);
+                        const isAllowed = resolved[p.key];
+                        
+                        const isUserOverride = (p.key in editingPermissions) && typeof editingPermissions[p.key] === 'boolean';
+                        const isRoleOverride = (p.key in crPerms) && typeof crPerms[p.key] === 'boolean' && !isUserOverride;
 
-                      const toggleP = () => {
-                        const next = { ...editingPermissions };
-                        next[p.key] = !isAllowed;
-                        setEditingPermissions(next);
-                      };
+                        const toggleP = () => {
+                          const next = { ...editingPermissions };
+                          // If it was already a user override, delete the override to fallback to Role/Base
+                          if (isUserOverride) {
+                            delete next[p.key];
+                          } else {
+                            // Specify exact opposite of current effective state
+                            next[p.key] = !isAllowed;
+                          }
+                          setEditingPermissions(next);
+                        };
 
-                      return (
-                        <div
-                          key={p.key}
-                          onClick={toggleP}
-                          style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '8px 12px', borderRadius: 8,
-                            background: isAllowed ? 'var(--accent-muted)' : 'var(--bg-app)',
-                            border: `1px solid ${isAllowed ? 'var(--accent)' : 'var(--border)'}`,
-                            cursor: 'pointer', transition: 'all 0.1s',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div style={{
-                              width: 14, height: 14, borderRadius: 4,
-                              background: isAllowed ? 'var(--accent)' : 'transparent',
-                              border: `1.5px solid ${isAllowed ? 'var(--accent)' : 'var(--border)'}`,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}>
-                              {isAllowed && <Check size={10} strokeWidth={3} color="#fff" />}
+                        return (
+                          <div
+                            key={p.key}
+                            onClick={toggleP}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '8px 12px', borderRadius: 8,
+                              background: isAllowed ? 'var(--accent-muted)' : 'var(--bg-app)',
+                              border: `1px solid ${isAllowed ? 'var(--accent)' : 'var(--border)'}`,
+                              cursor: 'pointer', transition: 'all 0.1s',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{
+                                width: 14, height: 14, borderRadius: 4,
+                                background: isAllowed ? 'var(--accent)' : 'transparent',
+                                border: `1.5px solid ${isAllowed ? 'var(--accent)' : 'var(--border)'}`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}>
+                                {isAllowed && <Check size={10} strokeWidth={3} color="#fff" />}
+                              </div>
+                              <span style={{ fontSize: 12, fontWeight: 500, color: isAllowed ? 'var(--accent)' : 'var(--text-secondary)' }}>
+                                {p.label}
+                              </span>
                             </div>
-                            <span style={{ fontSize: 12, fontWeight: 500, color: isAllowed ? 'var(--accent)' : 'var(--text-secondary)' }}>
-                              {p.label}
-                            </span>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              {isRoleOverride && (
+                                <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--purple)', background: 'var(--purple-muted)', padding: '2px 6px', borderRadius: 4 }}>
+                                  FROM ROLE
+                                </span>
+                              )}
+                              {isUserOverride && (
+                                <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--yellow)', background: 'var(--yellow-muted)', padding: '2px 6px', borderRadius: 4 }}>
+                                  USER OVERRIDE
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          {isOverride && (
-                            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--yellow)', background: 'var(--yellow-muted)', padding: '2px 6px', borderRadius: 4 }}>
-                              OVERRIDE
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+
             </div>
 
+            {/* Panel Footer */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-app)' }}>
+              <Button onClick={savePermissions} disabled={savingPermissions} full>
+                {savingPermissions ? 'Saving...' : 'Save Permissions'}
+              </Button>
+            </div>
           </div>
+        )}
+      </div>
 
-          {/* Panel Footer */}
-          <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-app)' }}>
-            <Button onClick={savePermissions} disabled={savingPermissions} full>
-              {savingPermissions ? 'Saving...' : 'Save Permissions'}
-            </Button>
+      {/* CUSTOM ROLE MODAL */}
+      {isRoleModalOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, paddingBottom: 100
+        }}>
+          <div className="animate-slideInRight" style={{
+            background: 'var(--bg-app)', border: '1px solid var(--border)', borderRadius: 16, width: 600, maxWidth: '100%',
+            maxHeight: '90vh', display: 'flex', flexDirection: 'column'
+          }}>
+            <div style={{ padding: 24, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: 18, margin: 0 }}>{editingRole ? 'Edit Custom Role' : 'Create Custom Role'}</h2>
+              <button onClick={() => setIsRoleModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer' }}>✕</button>
+            </div>
+            
+            <form onSubmit={saveRoleMutation} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              
+              <div style={{ padding: 24, overflowY: 'auto' }} className="main-scroll-desktop">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 32 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Role Name</label>
+                    <input
+                      required
+                      value={roleFormName} onChange={(e) => setRoleFormName(e.target.value)}
+                      placeholder="e.g. Sales Manager"
+                      style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Description (Optional)</label>
+                    <input
+                      value={roleFormDesc} onChange={(e) => setRoleFormDesc(e.target.value)}
+                      placeholder="What does this role do?"
+                      style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 24 }}>
+                  <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Select Permissions</h4>
+                  {Object.entries(groupedPerms).map(([group, perms]) => (
+                    <div key={group} style={{ marginBottom: 24 }}>
+                      <h5 style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 12 }}>{group}</h5>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+                        {perms.map(p => {
+                          const isAllowed = !!roleFormPerms[p.key];
+                          return (
+                            <label
+                              key={p.key}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: 8,
+                                padding: '8px 12px', borderRadius: 8,
+                                background: isAllowed ? 'var(--accent-muted)' : 'var(--bg-card)',
+                                border: `1px solid ${isAllowed ? 'var(--accent)' : 'var(--border)'}`,
+                                cursor: 'pointer', transition: 'all 0.1s',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isAllowed}
+                                onChange={(e) => setRoleFormPerms(prev => ({ ...prev, [p.key]: e.target.checked }))}
+                                style={{ margin: 0 }}
+                              />
+                              <span style={{ fontSize: 12, fontWeight: 500, color: isAllowed ? 'var(--accent)' : 'var(--text-secondary)' }}>
+                                {p.label}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-app)', display: 'flex', gap: 12 }}>
+                <Button type="submit" disabled={savingRole} style={{ flex: 1 }}>{savingRole ? 'Saving...' : (editingRole ? 'Save Changes' : 'Create Role')}</Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

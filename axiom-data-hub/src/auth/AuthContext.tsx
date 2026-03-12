@@ -99,18 +99,31 @@ const ROLE_DEFAULTS: Record<UserRole, Record<PermissionKey, boolean>> = {
   },
 };
 
-/** Resolve effective permissions: explicit DB overrides > role defaults */
+/** Resolve effective permissions: explicit DB overrides > custom role overrides > role defaults */
 export function resolvePermissions(
   role: UserRole,
-  overrides: Partial<Record<PermissionKey, boolean>> = {},
+  customRoleOverrides: Partial<Record<PermissionKey, boolean>> = {},
+  userOverrides: Partial<Record<PermissionKey, boolean>> = {},
 ): Record<PermissionKey, boolean> {
   const defaults = ROLE_DEFAULTS[role] ?? ROLE_DEFAULTS.member;
+  
+  // Start with base defaults
   const resolved = { ...defaults };
-  for (const [key, value] of Object.entries(overrides)) {
+  
+  // Layer 1: Custom Role Defaults
+  for (const [key, value] of Object.entries(customRoleOverrides)) {
     if (key in resolved && typeof value === 'boolean') {
       (resolved as Record<string, boolean>)[key] = value;
     }
   }
+
+  // Layer 2: Per-User Overrides (highest precedence)
+  for (const [key, value] of Object.entries(userOverrides)) {
+    if (key in resolved && typeof value === 'boolean') {
+      (resolved as Record<string, boolean>)[key] = value;
+    }
+  }
+
   return resolved;
 }
 
@@ -141,6 +154,9 @@ export interface ProfileRow {
   full_name:      string;
   avatar_url:     string | null;
   role:           UserRole;
+  custom_role_id: string | null;
+  /** Supabase joined custom role data */
+  custom_roles?:  { name: string; permissions: Partial<Record<PermissionKey, boolean>> } | null;
   is_active:      boolean;
   permissions:    Partial<Record<PermissionKey, boolean>>;
   invited_by:     string | null;
@@ -159,9 +175,12 @@ export interface AuthUser {
   fullName:            string;
   initials:            string;
   role:                UserRole;
+  customRoleId?:       string | null;
+  customRoleName?:     string | null;
+  customRolePermissions: Partial<Record<PermissionKey, boolean>>;
   /** Explicit per-user overrides fetched from public.profiles */
   permissionOverrides: Partial<Record<PermissionKey, boolean>>;
-  /** Resolved: overrides merged on top of role defaults */
+  /** Resolved: per-user overrides > custom role overrides > base role defaults */
   permissions:         Record<PermissionKey, boolean>;
   avatarUrl?:          string;
 }
@@ -171,14 +190,20 @@ function profileRowToAuthUser(row: ProfileRow): AuthUser | null {
   if (!row.is_active) return null;
 
   const fullName = row.full_name || row.email.split('@')[0] || 'User';
+  
+  const crPerms = row.custom_roles?.permissions || {};
+  
   return {
     id:                  row.id,
     email:               row.email,
     fullName,
     initials:            fullName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2),
     role:                row.role,
+    customRoleId:        row.custom_role_id,
+    customRoleName:      row.custom_roles?.name,
+    customRolePermissions: crPerms,
     permissionOverrides: row.permissions,
-    permissions:         resolvePermissions(row.role, row.permissions),
+    permissions:         resolvePermissions(row.role, crPerms, row.permissions),
     avatarUrl:           row.avatar_url ?? undefined,
   };
 }
@@ -191,14 +216,19 @@ function parseUserFromMeta(user: User): AuthUser {
   const role: UserRole = isValidRole(meta.role) ? meta.role : 'member';
   const overrides: Partial<Record<PermissionKey, boolean>> =
     meta.permissions && typeof meta.permissions === 'object' ? meta.permissions : {};
+  
+  // The JWT may not have custom roles injected securely (they change without full re-login).
+  // This fallback will compute against Base Role + Per User Override. Once the DB query finishes in 50ms, the full Custom Role matrix gets injected.
+  
   return {
     id:                  user.id,
     email:               user.email || '',
     fullName,
     initials:            fullName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2),
     role,
+    customRolePermissions: {},
     permissionOverrides: overrides,
-    permissions:         resolvePermissions(role, overrides),
+    permissions:         resolvePermissions(role, {}, overrides),
     avatarUrl:           meta.avatar_url,
   };
 }
@@ -232,7 +262,7 @@ async function fetchProfileFromDB(userId: string, accessToken: string, fallbackU
     // race conditions where the shared supabase client hasn't set the session yet
     // (happens during lock contention on cold start / HMR).
     const resp = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?select=*&id=eq.${userId}`,
+      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?select=*,custom_roles(name,permissions)&id=eq.${userId}`,
       {
         headers: {
           'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
