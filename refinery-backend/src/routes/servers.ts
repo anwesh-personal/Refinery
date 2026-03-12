@@ -55,7 +55,7 @@ router.post('/', requireSuperadmin, async (req, res) => {
     await logAudit((req as any).userId, 'server_created', server.id, { name, type, host });
 
     // server is already ServerSafe (no credentials)
-    res.json({ server });
+    res.status(201).json({ server });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

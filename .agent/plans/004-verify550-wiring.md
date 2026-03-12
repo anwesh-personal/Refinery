@@ -2,7 +2,7 @@
 
 **Priority**: MEDIUM  
 **Estimated effort**: 1 hour  
-**Status**: 🔲 Not started  
+**Status**: ✅ Done  
 **Prerequisites**: Backend verification service is complete (`refinery-backend/src/services/verification.ts`)
 
 ## Goal

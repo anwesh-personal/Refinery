@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import * as verifyService from '../services/verification.js';
-import { command, query } from '../db/clickhouse.js';
+import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
 
 const router = Router();
+
+// All verification routes require authentication
+router.use(requireAuth);
 
 // ═══════════════════════════════════════════════════════════════
 // Verify550 API Routes — Production
@@ -46,7 +49,7 @@ router.get('/batches/:id', async (req, res) => {
 // POST /api/verification/start
 // Start a new verification batch for a segment
 // Body: { segmentId: string }
-router.post('/start', async (req, res) => {
+router.post('/start', requireSuperadmin, async (req, res) => {
   try {
     const { segmentId } = req.body;
     if (!segmentId || typeof segmentId !== 'string') {
@@ -64,9 +67,9 @@ router.post('/start', async (req, res) => {
 
 // POST /api/verification/cancel/:id
 // Cancel a running verification batch
-router.post('/cancel/:id', async (req, res) => {
+router.post('/cancel/:id', requireSuperadmin, async (req, res) => {
   try {
-    await verifyService.cancelBatch(req.params.id);
+    await verifyService.cancelBatch(String(req.params.id));
     res.json({ message: 'Batch cancellation requested' });
   } catch (e: any) {
     res.status(400).json({ error: e.message });
@@ -75,7 +78,7 @@ router.post('/cancel/:id', async (req, res) => {
 
 // POST /api/verification/test
 // Test the Verify550 API connection
-router.post('/test', async (_req, res) => {
+router.post('/test', requireSuperadmin, async (_req, res) => {
   try {
     const result = await verifyService.testConnection();
     res.json(result);
@@ -87,30 +90,15 @@ router.post('/test', async (_req, res) => {
 // POST /api/verification/config
 // Save Verify550 configuration to system_config
 // Body: { endpoint?: string, apiKey?: string, batchSize?: number, concurrency?: number }
-router.post('/config', async (req, res) => {
+router.post('/config', requireSuperadmin, async (req, res) => {
   try {
     const { endpoint, apiKey, batchSize, concurrency } = req.body;
-    const configs: { key: string; value: string; isSecret: number }[] = [];
-
-    if (endpoint !== undefined) configs.push({ key: 'verify550_endpoint', value: String(endpoint), isSecret: 0 });
-    if (apiKey !== undefined) configs.push({ key: 'verify550_api_key', value: String(apiKey), isSecret: 1 });
-    if (batchSize !== undefined) configs.push({ key: 'verify550_batch_size', value: String(Number(batchSize) || 5000), isSecret: 0 });
-    if (concurrency !== undefined) configs.push({ key: 'verify550_concurrency', value: String(Number(concurrency) || 3), isSecret: 0 });
-
-    if (configs.length === 0) {
-      return res.status(400).json({ error: 'No configuration values provided' });
-    }
-
-    // Upsert each config value (ReplacingMergeTree handles dedup)
-    for (const cfg of configs) {
-      await command(`
-        INSERT INTO system_config (config_key, config_value, is_secret, updated_at)
-        VALUES ('${cfg.key}', '${cfg.value.replace(/'/g, "''")}', ${cfg.isSecret}, now())
-      `);
-    }
-
-    res.json({ message: 'Configuration saved', updated: configs.map(c => c.key) });
+    const updated = await verifyService.saveConfig({ endpoint, apiKey, batchSize, concurrency });
+    res.json({ message: 'Configuration saved', updated });
   } catch (e: any) {
+    if (e.message.includes('No configuration')) {
+      return res.status(400).json({ error: e.message });
+    }
     res.status(500).json({ error: e.message });
   }
 });
@@ -119,22 +107,7 @@ router.post('/config', async (req, res) => {
 // Get current Verify550 configuration (API key is masked)
 router.get('/config', async (_req, res) => {
   try {
-    const rows = await query<{ config_key: string; config_value: string; is_secret: number }>(`
-      SELECT config_key, config_value, is_secret FROM system_config
-      WHERE config_key LIKE 'verify550_%'
-      FINAL
-    `);
-
-    const config: Record<string, string> = {};
-    for (const row of rows) {
-      // Mask secret values
-      if (Number(row.is_secret) === 1 && row.config_value) {
-        config[row.config_key] = row.config_value.slice(0, 8) + '••••••••';
-      } else {
-        config[row.config_key] = row.config_value;
-      }
-    }
-
+    const config = await verifyService.getConfig();
     res.json(config);
   } catch (e: any) {
     res.status(500).json({ error: e.message });

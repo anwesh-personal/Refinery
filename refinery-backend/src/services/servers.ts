@@ -55,13 +55,6 @@ export interface ServerSafe {
   updated_at: string;
 }
 
-// ── Helpers ──
-
-/** Strip credentials from a server record */
-function toSafe(record: ServerRecord): ServerSafe {
-  const { username: _u, password: _p, access_key: _a, secret_key: _s, ...safe } = record;
-  return safe;
-}
 
 /** Allowlisted fields for CREATE */
 const CREATE_FIELDS = [
@@ -159,10 +152,7 @@ export async function updateServer(id: string, updates: Record<string, any>): Pr
   // If password/secret_key is empty string, don't update it (keep existing)
   if (sanitized.password === '') delete sanitized.password;
   if (sanitized.secret_key === '') delete sanitized.secret_key;
-  if (sanitized.access_key === '') delete sanitized.access_key;
-  if (sanitized.username === '') {
-    // Empty username is valid for some systems, only strip if literally undefined
-  }
+  if (sanitized.access_key === '')  delete sanitized.access_key;
 
   if (Object.keys(sanitized).length === 0) {
     return getServer(id); // Nothing to update

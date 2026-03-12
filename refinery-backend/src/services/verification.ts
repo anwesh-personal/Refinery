@@ -63,6 +63,49 @@ async function getConfigFromDB(): Promise<Record<string, string>> {
   }
 }
 
+/** Public: Get current config with secrets masked. Safe for API response. */
+export async function getConfig(): Promise<Record<string, string>> {
+  const rows = await query<{ config_key: string; config_value: string; is_secret: number }>(
+    `SELECT config_key, config_value, is_secret FROM system_config
+     WHERE config_key LIKE 'verify550_%'
+     FINAL`,
+  );
+  const config: Record<string, string> = {};
+  for (const row of rows) {
+    if (Number(row.is_secret) === 1 && row.config_value) {
+      config[row.config_key] = row.config_value.slice(0, 8) + '••••••••';
+    } else {
+      config[row.config_key] = row.config_value;
+    }
+  }
+  return config;
+}
+
+/** Public: Save config values to system_config (ReplacingMergeTree handles dedup). */
+export async function saveConfig(
+  updates: { endpoint?: string; apiKey?: string; batchSize?: number; concurrency?: number },
+): Promise<string[]> {
+  const configs: { key: string; value: string; isSecret: number }[] = [];
+
+  if (updates.endpoint !== undefined) configs.push({ key: 'verify550_endpoint', value: String(updates.endpoint), isSecret: 0 });
+  if (updates.apiKey !== undefined) configs.push({ key: 'verify550_api_key', value: String(updates.apiKey), isSecret: 1 });
+  if (updates.batchSize !== undefined) configs.push({ key: 'verify550_batch_size', value: String(Number(updates.batchSize) || 5000), isSecret: 0 });
+  if (updates.concurrency !== undefined) configs.push({ key: 'verify550_concurrency', value: String(Number(updates.concurrency) || 3), isSecret: 0 });
+
+  if (configs.length === 0) {
+    throw new Error('No configuration values provided');
+  }
+
+  for (const cfg of configs) {
+    await command(
+      `INSERT INTO system_config (config_key, config_value, is_secret, updated_at)
+       VALUES ('${cfg.key}', '${cfg.value.replace(/'/g, "''")}', ${cfg.isSecret}, now())`,
+    );
+  }
+
+  return configs.map(c => c.key);
+}
+
 // ─── Start a Verification Batch ───
 
 export async function startBatch(segmentId: string): Promise<string> {
