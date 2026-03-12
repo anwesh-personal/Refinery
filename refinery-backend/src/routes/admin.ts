@@ -1,18 +1,58 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import rateLimit from 'express-rate-limit';
 import { env } from '../config/env.js';
 import * as adminService from '../services/admin.js';
 import { createClient } from '@supabase/supabase-js';
 
 const router = Router();
 
-// Supabase admin client for role verification (uses service key, bypasses RLS)
+// Supabase admin client (service key, bypasses RLS)
 const supabaseAdmin = createClient(
   env.supabase.url,
-  env.supabase.secretKey || '',
+  env.supabase.secretKey || env.supabase.publishableKey,
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-// Middleware: Verify Superadmin Role via JWT → Supabase user lookup → profiles check
+// ═══════════════════════════════════════════════════════════════
+// Rate Limiting — configurable via system_config table
+// Defaults: 20 requests per 1 minute window per IP
+// Override via system_config: admin_rate_limit_window_ms, admin_rate_limit_max
+// ═══════════════════════════════════════════════════════════════
+let rateLimitWindowMs = 60_000; // 1 minute
+let rateLimitMax = 20;
+
+// Load rate limit config from Supabase on startup (non-blocking)
+(async () => {
+  try {
+    const { data } = await supabaseAdmin
+      .from('system_config')
+      .select('config_key, config_value')
+      .in('config_key', ['admin_rate_limit_window_ms', 'admin_rate_limit_max']);
+
+    if (data) {
+      for (const row of data) {
+        if (row.config_key === 'admin_rate_limit_window_ms') rateLimitWindowMs = Number(row.config_value) || rateLimitWindowMs;
+        if (row.config_key === 'admin_rate_limit_max') rateLimitMax = Number(row.config_value) || rateLimitMax;
+      }
+    }
+    console.log(`[Admin] Rate limit: ${rateLimitMax} req / ${rateLimitWindowMs / 1000}s window`);
+  } catch {
+    console.warn('[Admin] Could not load rate limit config from DB — using defaults');
+  }
+})();
+
+const adminRateLimit = rateLimit({
+  windowMs: rateLimitWindowMs,
+  max: rateLimitMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many admin requests. Please wait before trying again.' },
+});
+
+router.use(adminRateLimit);
+
+// ═══════════════════════════════════════════════════════════════
+// Auth Middleware
 // ═══════════════════════════════════════════════════════════════
 const requireSuperadmin = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -22,15 +62,12 @@ const requireSuperadmin = async (req: Request, res: Response, next: NextFunction
     }
 
     const token = authHeader.split(' ')[1];
-
-    // Verify the JWT and get the user via Supabase Auth API
     const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
 
     if (authError || !user) {
       return res.status(401).json({ error: 'Invalid authentication token' });
     }
 
-    // Check role in profiles using the admin client (queries PostgreSQL, not ClickHouse)
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('role')
@@ -41,7 +78,6 @@ const requireSuperadmin = async (req: Request, res: Response, next: NextFunction
       return res.status(403).json({ error: 'Superadmin privileges required' });
     }
 
-    // Attach verified user ID for downstream handlers
     (req as any).adminId = user.id;
     next();
   } catch (err: any) {
@@ -52,43 +88,69 @@ const requireSuperadmin = async (req: Request, res: Response, next: NextFunction
 router.use(requireSuperadmin);
 
 // ═══════════════════════════════════════════════════════════════
+// Audit Helper
+// ═══════════════════════════════════════════════════════════════
+async function auditLog(actorId: string, action: string, targetId: string | null, details: Record<string, unknown>) {
+  try {
+    await supabaseAdmin.from('audit_log').insert({
+      actor_id: actorId,
+      action,
+      target_id: targetId,
+      details,
+    });
+  } catch (err: any) {
+    console.error('[Admin Audit] Failed to write audit log:', err.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Endpoints
 // ═══════════════════════════════════════════════════════════════
 
-// Direct password change logic
+// Direct password reset
 router.post('/reset-password', async (req, res) => {
   try {
     const { userId, newPassword } = req.body;
+    const adminId = (req as any).adminId;
+
     if (!userId || !newPassword) return res.status(400).json({ error: 'Missing userId or newPassword' });
     if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
 
     await adminService.resetPassword(userId, newPassword);
+    await auditLog(adminId, 'admin_password_reset', userId, { method: 'direct' });
     res.json({ message: 'Password updated successfully' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Generate recovery link
+// Send recovery link
 router.post('/send-reset-link', async (req, res) => {
   try {
     const { email } = req.body;
+    const adminId = (req as any).adminId;
+
     if (!email) return res.status(400).json({ error: 'Missing email' });
 
     await adminService.sendResetLink(email);
+    await auditLog(adminId, 'admin_send_reset_link', null, { email });
     res.json({ message: 'Reset link dispatched' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Generate magic link to IMPERSONATE a user
+// Impersonate user
 router.post('/impersonate', async (req, res) => {
   try {
     const { userId } = req.body;
+    const adminId = (req as any).adminId;
+
     if (!userId) return res.status(400).json({ error: 'Missing target userId' });
+    if (userId === adminId) return res.status(400).json({ error: 'Cannot impersonate yourself' });
 
     const link = await adminService.generateImpersonationLink(userId);
+    await auditLog(adminId, 'admin_impersonate', userId, {});
     res.json({ link });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -99,11 +161,50 @@ router.post('/impersonate', async (req, res) => {
 router.post('/delete-user', async (req, res) => {
   try {
     const { userId } = req.body;
+    const adminId = (req as any).adminId;
+
     if (!userId) return res.status(400).json({ error: 'Missing target userId' });
+    if (userId === adminId) return res.status(400).json({ error: 'Cannot delete yourself' });
 
     await adminService.deleteAuthUser(userId);
-    // Profile row cascades or is handled by triggers
+    await auditLog(adminId, 'admin_delete_user', userId, {});
     res.json({ message: 'User deleted successfully' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get current rate limit config
+router.get('/config', async (_req, res) => {
+  res.json({
+    rateLimitWindowMs,
+    rateLimitMax,
+  });
+});
+
+// Update rate limit config (stored in system_config)
+router.post('/config', async (req, res) => {
+  try {
+    const { windowMs, max } = req.body;
+    const adminId = (req as any).adminId;
+
+    if (windowMs) {
+      await supabaseAdmin.from('system_config').upsert(
+        { config_key: 'admin_rate_limit_window_ms', config_value: String(windowMs) },
+        { onConflict: 'config_key' }
+      );
+      rateLimitWindowMs = Number(windowMs);
+    }
+    if (max) {
+      await supabaseAdmin.from('system_config').upsert(
+        { config_key: 'admin_rate_limit_max', config_value: String(max) },
+        { onConflict: 'config_key' }
+      );
+      rateLimitMax = Number(max);
+    }
+
+    await auditLog(adminId, 'admin_config_update', null, { windowMs, max });
+    res.json({ message: 'Config updated. Rate limit changes take effect on next server restart.', rateLimitWindowMs, rateLimitMax });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

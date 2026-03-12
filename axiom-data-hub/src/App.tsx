@@ -14,10 +14,12 @@ import LogsPage from './pages/Logs';
 import TeamPage from './pages/Team';
 import SettingsPage from './pages/Settings';
 import NotFoundPage from './pages/NotFound';
+import ImpersonationBanner from './components/ImpersonationBanner';
 
 export default function App() {
   return (
     <BrowserRouter>
+      <ImpersonationBanner />
       <Routes>
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />

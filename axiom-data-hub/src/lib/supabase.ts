@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { Database } from './database.types';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
@@ -14,10 +15,10 @@ if (!supabaseUrl || !supabaseKey) {
 // Each createClient() acquires a navigator lock for auth token management.
 // If the old client's lock isn't released before a new client grabs it,
 // GoTrue throws "Lock broken by another request with the steal option".
-const globalRef = globalThis as unknown as { __supabase?: ReturnType<typeof createClient> };
+const globalRef = globalThis as unknown as { __supabase?: ReturnType<typeof createClient<Database>> };
 
 if (!globalRef.__supabase) {
-  globalRef.__supabase = createClient(supabaseUrl, supabaseKey);
+  globalRef.__supabase = createClient<Database>(supabaseUrl, supabaseKey);
 }
 
 export const supabase = globalRef.__supabase;

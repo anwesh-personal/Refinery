@@ -50,7 +50,7 @@ export default function TeamPage() {
     setInviteLoading(true);
     setInviteMessage({ text: '', type: '' });
 
-    const { error } = await (supabase.from('team_invites') as any).insert({
+    const { error } = await supabase.from('team_invites').insert({
       email: inviteEmail.trim(),
       role: inviteRole,
       invited_by: user.id,
@@ -60,7 +60,7 @@ export default function TeamPage() {
     if (error) {
       setInviteMessage({ text: `Error: ${error.message}`, type: 'error' });
     } else {
-      await (supabase.from('audit_log') as any).insert({
+      await supabase.from('audit_log').insert({
         actor_id: user.id,
         action: 'invite_sent',
         target_id: null,
@@ -87,15 +87,15 @@ export default function TeamPage() {
     if (!selectedUser || !editingPermissions) return;
     setSavingPermissions(true);
 
-    const { error } = await (supabase.from('profiles') as any)
-      .update({ permissions: editingPermissions })
+    const { error } = await supabase.from('profiles')
+      .update({ permissions: editingPermissions } as any)
       .eq('id', selectedUser.id);
 
     if (error) {
       alert(`Error saving permissions: ${error.message}`);
     } else {
-      await (supabase.from('audit_log') as any).insert({
-        actor_id: user?.id,
+      await supabase.from('audit_log').insert({
+        actor_id: user!.id,
         action: 'permission_update',
         target_id: selectedUser.id,
         details: { permissions: editingPermissions },
@@ -115,15 +115,15 @@ export default function TeamPage() {
       return;
     }
 
-    const { error } = await (supabase.from('profiles') as any)
-      .update({ role: newRole })
+    const { error } = await supabase.from('profiles')
+      .update({ role: newRole } as any)
       .eq('id', selectedUser.id);
 
     if (error) {
       alert(`Error changing role: ${error.message}`);
     } else {
-      await (supabase.from('audit_log') as any).insert({
-        actor_id: user?.id,
+      await supabase.from('audit_log').insert({
+        actor_id: user!.id,
         action: 'role_update',
         target_id: selectedUser.id,
         details: { old_role: selectedUser.role, new_role: newRole },
@@ -141,8 +141,8 @@ export default function TeamPage() {
       return;
     }
 
-    const { error } = await (supabase.from('profiles') as any)
-      .update({ is_active: isActive })
+    const { error } = await supabase.from('profiles')
+      .update({ is_active: isActive } as any)
       .eq('id', selectedUser.id);
 
     if (error) {
@@ -199,7 +199,7 @@ export default function TeamPage() {
     const res = await handleAdminApiCall('impersonate', { userId: selectedUser.id });
     if (res?.link) {
       // Store current token in session storage to return later
-      sessionStorage.setItem('return_token', session?.access_token || '');
+      sessionStorage.setItem('impersonation_return_token', session?.access_token || '');
       // Navigate via magic link
       window.location.href = res.link;
     }
