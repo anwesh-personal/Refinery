@@ -1,10 +1,15 @@
 import { ShieldCheck, CheckCircle, XCircle, Clock, Upload, RefreshCw } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, DataTable, Button, Input } from '../components/UI';
+import { ServerSelector } from '../components/ServerSelector';
 
 export default function VerificationPage() {
   return (
     <>
-      <PageHeader title="Verification" sub="Clean and verify lead data through Verify550 before mailing." />
+      <PageHeader 
+        title="Verification" 
+        sub="Clean and verify lead data through Verify550 before mailing." 
+        action={<ServerSelector type="clickhouse" />}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20, marginBottom: 36 }}>
         <StatCard label="Verified" value="0" sub="Clean leads ready" icon={<CheckCircle size={18} />} color="var(--green)" colorMuted="var(--green-muted)" delay={0.06} />

@@ -1,13 +1,18 @@
 import { Database, Table2, Rows3, HardDrive, Play, Copy } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, DataTable, Button } from '../components/UI';
 import { useState } from 'react';
+import { ServerSelector } from '../components/ServerSelector';
 
 export default function DatabasePage() {
   const [query, setQuery] = useState('SELECT * FROM leads LIMIT 100;');
 
   return (
     <>
-      <PageHeader title="ClickHouse" sub="Query, inspect, and manage your lead database directly." />
+      <PageHeader 
+        title="ClickHouse" 
+        sub="Query, inspect, and manage your lead database directly." 
+        action={<ServerSelector type="clickhouse" />} 
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20, marginBottom: 36 }}>
         <StatCard label="Total Rows" value="0" sub="Leads in database" icon={<Rows3 size={18} />} color="var(--blue)" colorMuted="var(--blue-muted)" delay={0.06} />

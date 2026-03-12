@@ -1,10 +1,15 @@
 import { Filter, Plus, Layers, Users, Tag } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, DataTable, Button, Input } from '../components/UI';
+import { ServerSelector } from '../components/ServerSelector';
 
 export default function SegmentsPage() {
   return (
     <>
-      <PageHeader title="Segments" sub="Create and manage lead segmentation rules for niche-based routing." />
+      <PageHeader 
+        title="Segments" 
+        sub="Create and manage lead segmentation rules for niche-based routing." 
+        action={<ServerSelector type="clickhouse" />}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginBottom: 36 }}>
         <StatCard label="Total Segments" value="0" sub="Active niche segments" icon={<Filter size={18} />} color="var(--blue)" colorMuted="var(--blue-muted)" delay={0.06} />

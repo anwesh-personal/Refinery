@@ -1,10 +1,15 @@
 import { CloudDownload, FolderSync, HardDrive, Clock, Plus, RefreshCw } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, DataTable, Button, Input } from '../components/UI';
+import { ServerSelector } from '../components/ServerSelector';
 
 export default function IngestionPage() {
   return (
     <>
-      <PageHeader title="S3 Ingestion" sub="Manage data downloads from the 5x5 Co-Op S3 buckets to your Linode storage." />
+      <PageHeader 
+        title="S3 Ingestion" 
+        sub="Manage data downloads from the 5x5 Co-Op S3 buckets to your ClickHouse server." 
+        action={<ServerSelector type="clickhouse" />}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20, marginBottom: 36 }}>
         <StatCard label="Pending Files" value="0" sub="Awaiting download" icon={<Clock size={18} />} color="var(--yellow)" colorMuted="var(--yellow-muted)" delay={0.06} />

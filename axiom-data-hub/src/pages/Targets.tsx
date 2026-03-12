@@ -1,10 +1,15 @@
 import { Send, Users, Plus, FileDown } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, DataTable, Button, Input } from '../components/UI';
+import { ServerSelector } from '../components/ServerSelector';
 
 export default function TargetsPage() {
   return (
     <>
-      <PageHeader title="Email Targets" sub="Manage client target lists and export verified leads for mailing." />
+      <PageHeader 
+        title="Email Targets" 
+        sub="Manage client target lists and export verified leads for mailing." 
+        action={<ServerSelector type="clickhouse" />}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, marginBottom: 36 }}>
         <StatCard label="Target Lists" value="0" sub="Client-specific lists" icon={<Send size={18} />} color="var(--accent)" colorMuted="var(--accent-muted)" delay={0.06} />

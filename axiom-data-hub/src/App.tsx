@@ -15,6 +15,7 @@ import TeamPage from './pages/Team';
 import SettingsPage from './pages/Settings';
 import NotFoundPage from './pages/NotFound';
 import ImpersonationBanner from './components/ImpersonationBanner';
+import { ServerProvider } from './components/ServerSelector';
 
 export default function App() {
   return (
@@ -29,23 +30,25 @@ export default function App() {
           path="*"
           element={
             <ProtectedRoute>
-              <Layout>
-                <Routes>
-                  <Route path="/" element={<DashboardPage />} />
-                  <Route path="/ingestion" element={<ProtectedRoute requires="canViewIngestion"><IngestionPage /></ProtectedRoute>} />
-                  <Route path="/database" element={<ProtectedRoute requires="canViewDatabase"><DatabasePage /></ProtectedRoute>} />
-                  <Route path="/segments" element={<ProtectedRoute requires="canViewSegments"><SegmentsPage /></ProtectedRoute>} />
-                  <Route path="/verification" element={<ProtectedRoute requires="canViewVerification"><VerificationPage /></ProtectedRoute>} />
-                  <Route path="/targets" element={<ProtectedRoute requires="canViewTargets"><TargetsPage /></ProtectedRoute>} />
-                  <Route path="/queue" element={<ProtectedRoute requires="canViewQueue"><QueuePage /></ProtectedRoute>} />
-                  <Route path="/config" element={<ProtectedRoute requires="canViewConfig"><ConfigPage /></ProtectedRoute>} />
-                  <Route path="/team" element={<ProtectedRoute requires="canManageUsers"><TeamPage /></ProtectedRoute>} />
-                  <Route path="/logs" element={<ProtectedRoute requires="canViewLogs"><LogsPage /></ProtectedRoute>} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  {/* Catch-all 404 for protected routes */}
-                  <Route path="*" element={<NotFoundPage />} />
-                </Routes>
-              </Layout>
+              <ServerProvider>
+                <Layout>
+                  <Routes>
+                    <Route path="/" element={<DashboardPage />} />
+                    <Route path="/ingestion" element={<ProtectedRoute requires="canViewIngestion"><IngestionPage /></ProtectedRoute>} />
+                    <Route path="/database" element={<ProtectedRoute requires="canViewDatabase"><DatabasePage /></ProtectedRoute>} />
+                    <Route path="/segments" element={<ProtectedRoute requires="canViewSegments"><SegmentsPage /></ProtectedRoute>} />
+                    <Route path="/verification" element={<ProtectedRoute requires="canViewVerification"><VerificationPage /></ProtectedRoute>} />
+                    <Route path="/targets" element={<ProtectedRoute requires="canViewTargets"><TargetsPage /></ProtectedRoute>} />
+                    <Route path="/queue" element={<ProtectedRoute requires="canViewQueue"><QueuePage /></ProtectedRoute>} />
+                    <Route path="/config" element={<ProtectedRoute requires="canViewConfig"><ConfigPage /></ProtectedRoute>} />
+                    <Route path="/team" element={<ProtectedRoute requires="canManageUsers"><TeamPage /></ProtectedRoute>} />
+                    <Route path="/logs" element={<ProtectedRoute requires="canViewLogs"><LogsPage /></ProtectedRoute>} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                    {/* Catch-all 404 for protected routes */}
+                    <Route path="*" element={<NotFoundPage />} />
+                  </Routes>
+                </Layout>
+              </ServerProvider>
             </ProtectedRoute>
           }
         />

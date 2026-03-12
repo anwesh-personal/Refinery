@@ -4,15 +4,18 @@ import { ChevronRight } from 'lucide-react';
 /* ═══════════════════════════════════════
    PAGE HEADER
    ═══════════════════════════════════════ */
-export function PageHeader({ title, sub }: { title: string; sub: string }) {
+export function PageHeader({ title, sub, action }: { title: string; sub: string; action?: ReactNode }) {
   return (
-    <div className="animate-fadeIn" style={{ marginBottom: 32 }}>
-      <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
-        {title}
-      </h1>
-      <p style={{ fontSize: 14, fontWeight: 500, marginTop: 6, color: 'var(--text-secondary)' }}>
-        {sub}
-      </p>
+    <div className="animate-fadeIn" style={{ marginBottom: 32, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div>
+        <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-primary)', margin: 0 }}>
+          {title}
+        </h1>
+        <p style={{ fontSize: 14, fontWeight: 500, marginTop: 6, color: 'var(--text-secondary)' }}>
+          {sub}
+        </p>
+      </div>
+      {action && <div>{action}</div>}
     </div>
   );
 }
@@ -385,8 +388,8 @@ export function Input({ placeholder, value, onChange, type = 'text' }: {
 /* ═══════════════════════════════════════
    BUTTON
    ═══════════════════════════════════════ */
-export function Button({ children, variant = 'primary', onClick, icon, full = false, disabled = false }: {
-  children: ReactNode; variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
+export function Button({ children, variant = 'primary', onClick, icon, full = false, disabled = false, style, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  children?: ReactNode; variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   onClick?: () => void; icon?: ReactNode; full?: boolean; disabled?: boolean;
 }) {
   const base: React.CSSProperties = {
@@ -406,9 +409,10 @@ export function Button({ children, variant = 'primary', onClick, icon, full = fa
 
   return (
     <button
+      {...rest}
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
-      style={variants[variant]}
+      style={{ ...variants[variant], ...style }}
       onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.opacity = '0.9'; }}}
       onMouseLeave={(e) => { if (!disabled) { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = '1'; }}}
       onMouseDown={(e) => { if (!disabled) e.currentTarget.style.transform = 'scale(0.97)'; }}

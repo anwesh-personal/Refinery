@@ -1,10 +1,15 @@
 import { ListOrdered, Send, Clock, CheckCircle, XCircle, Play, Pause } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, DataTable, Button } from '../components/UI';
+import { ServerSelector } from '../components/ServerSelector';
 
 export default function QueuePage() {
   return (
     <>
-      <PageHeader title="Mail Queue" sub="Monitor and control email dispatch jobs from verified target lists." />
+      <PageHeader 
+        title="Mail Queue" 
+        sub="Monitor and control email dispatch jobs from verified target lists." 
+        action={<ServerSelector type="clickhouse" />}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20, marginBottom: 36 }}>
         <StatCard label="Queued" value="0" sub="Emails pending" icon={<Clock size={18} />} color="var(--yellow)" colorMuted="var(--yellow-muted)" delay={0.06} />

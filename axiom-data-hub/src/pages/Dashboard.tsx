@@ -1,12 +1,17 @@
 import {
   CloudDownload, Database, ShieldCheck, TrendingUp, Filter, Send, Activity, Zap, ServerCrash,
 } from 'lucide-react';
-import { GradientCard, StatCard, ActionCard, SectionHeader, EmptyState, PageHeader } from '../components/UI';
+import { PageHeader, StatCard, GradientCard, ActionCard, SectionHeader, EmptyState } from '../components/UI';
+import { ServerSelector } from '../components/ServerSelector';
 
 export default function DashboardPage() {
   return (
     <>
-      <PageHeader title="Pipeline Overview" sub="Monitor your entire data pipeline from ingestion to delivery." />
+      <PageHeader
+        title="Intelligence Hub"
+        sub="Monitor your lead database, mailing queue, and recent verification batches."
+        action={<ServerSelector type="clickhouse" />}
+      />
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, marginBottom: 36 }}>
