@@ -1,0 +1,53 @@
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Layout from './Layout';
+import { ProtectedRoute } from './auth/ProtectedRoute';
+import LoginPage from './pages/Login';
+import DashboardPage from './pages/Dashboard';
+import IngestionPage from './pages/Ingestion';
+import DatabasePage from './pages/Database';
+import SegmentsPage from './pages/Segments';
+import VerificationPage from './pages/Verification';
+import TargetsPage from './pages/Targets';
+import QueuePage from './pages/Queue';
+import ConfigPage from './pages/Config';
+import LogsPage from './pages/Logs';
+import TeamPage from './pages/Team';
+import SettingsPage from './pages/Settings';
+import NotFoundPage from './pages/NotFound';
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Public */}
+        <Route path="/login" element={<LoginPage />} />
+
+        {/* Protected — wrapped in Layout shell */}
+        <Route
+          path="*"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <Routes>
+                  <Route path="/" element={<DashboardPage />} />
+                  <Route path="/ingestion" element={<ProtectedRoute requires="canViewIngestion"><IngestionPage /></ProtectedRoute>} />
+                  <Route path="/database" element={<ProtectedRoute requires="canViewDatabase"><DatabasePage /></ProtectedRoute>} />
+                  <Route path="/segments" element={<ProtectedRoute requires="canViewSegments"><SegmentsPage /></ProtectedRoute>} />
+                  <Route path="/verification" element={<ProtectedRoute requires="canViewVerification"><VerificationPage /></ProtectedRoute>} />
+                  <Route path="/targets" element={<ProtectedRoute requires="canViewTargets"><TargetsPage /></ProtectedRoute>} />
+                  <Route path="/queue" element={<ProtectedRoute requires="canViewQueue"><QueuePage /></ProtectedRoute>} />
+                  <Route path="/config" element={<ProtectedRoute requires="canViewConfig"><ConfigPage /></ProtectedRoute>} />
+                  <Route path="/team" element={<ProtectedRoute requires="canManageUsers"><TeamPage /></ProtectedRoute>} />
+                  <Route path="/logs" element={<ProtectedRoute requires="canViewLogs"><LogsPage /></ProtectedRoute>} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  {/* Catch-all 404 for protected routes */}
+                  <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
+  );
+}

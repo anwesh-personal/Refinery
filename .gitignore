@@ -1,0 +1,43 @@
+# ═══════════════════════════════════════════════════════════════
+# Refinery Nexus — Monorepo .gitignore
+# ═══════════════════════════════════════════════════════════════
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# Environment files (NEVER commit secrets)
+.env
+.env.local
+.env.*.local
+
+# Seed files with credentials
+*DELETE_AFTER_USE*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Gemini/AI context (local only)
+.gemini/
+.agent/
+.agents/
+*.png
