@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { supabaseAdmin } from '../services/supabaseAdmin.js';
 import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
 import * as serverService from '../services/servers.js';
+import { logAudit } from '../services/auditLog.js';
 
 const router = Router();
 
@@ -52,12 +52,7 @@ router.post('/', requireSuperadmin, async (req, res) => {
       created_by: (req as any).userId,
     });
 
-    await supabaseAdmin.from('audit_log').insert({
-      actor_id: (req as any).userId,
-      action: 'server_created',
-      target_id: server.id,
-      details: { name, type, host },
-    } as any);
+    await logAudit((req as any).userId, 'server_created', server.id, { name, type, host });
 
     // server is already ServerSafe (no credentials)
     res.json({ server });
@@ -73,12 +68,7 @@ router.put('/:id', requireSuperadmin, async (req, res) => {
     // Allowlisted fields only — handled by serverService.updateServer
     const server = await serverService.updateServer(serverId, req.body);
 
-    await supabaseAdmin.from('audit_log').insert({
-      actor_id: (req as any).userId,
-      action: 'server_updated',
-      target_id: serverId,
-      details: { fields: Object.keys(req.body) },
-    } as any);
+    await logAudit((req as any).userId, 'server_updated', serverId, { fields: Object.keys(req.body) });
 
     // server is already ServerSafe (no credentials)
     res.json({ server });
@@ -92,12 +82,7 @@ router.delete('/:id', requireSuperadmin, async (req, res) => {
     const serverId = String(req.params.id);
     await serverService.deleteServer(serverId);
 
-    await supabaseAdmin.from('audit_log').insert({
-      actor_id: (req as any).userId,
-      action: 'server_deleted',
-      target_id: serverId,
-      details: {},
-    } as any);
+    await logAudit((req as any).userId, 'server_deleted', serverId, {});
 
     res.json({ message: 'Server deactivated' });
   } catch (err: any) {
@@ -110,12 +95,7 @@ router.post('/:id/set-default', requireSuperadmin, async (req, res) => {
     const serverId = String(req.params.id);
     await serverService.setDefault(serverId);
 
-    await supabaseAdmin.from('audit_log').insert({
-      actor_id: (req as any).userId,
-      action: 'server_set_default',
-      target_id: serverId,
-      details: {},
-    } as any);
+    await logAudit((req as any).userId, 'server_set_default', serverId, {});
 
     res.json({ message: 'Default server updated' });
   } catch (err: any) {

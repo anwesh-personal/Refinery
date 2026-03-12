@@ -2,7 +2,7 @@
 
 **Priority**: HIGH  
 **Estimated effort**: 2–3 hours  
-**Status**: 🔲 Not started
+**Status**: ✅ Done
 
 ## Goal
 Allow connecting multiple ClickHouse and S3/Linode servers. Users can select which server to use for each operation. Superadmins can add, edit, and remove server connections from the UI.
