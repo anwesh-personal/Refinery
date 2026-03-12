@@ -390,7 +390,7 @@ export function Input({ placeholder, value, onChange, type = 'text' }: {
    ═══════════════════════════════════════ */
 export function Button({ children, variant = 'primary', onClick, icon, full = false, disabled = false, style, ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   children?: ReactNode; variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
-  onClick?: () => void; icon?: ReactNode; full?: boolean; disabled?: boolean;
+  icon?: ReactNode; full?: boolean; disabled?: boolean;
 }) {
   const base: React.CSSProperties = {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
