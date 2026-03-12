@@ -2,7 +2,7 @@
 
 **Priority**: MEDIUM  
 **Estimated effort**: 1.5 hours  
-**Status**: 🔲 Not started  
+**Status**: ✅ Done  
 **Prerequisites**: Migration 005 already applied (teams, team_memberships tables exist)
 
 ## Goal

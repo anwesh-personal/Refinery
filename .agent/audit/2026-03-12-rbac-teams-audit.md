@@ -1,46 +1,93 @@
-# RBAC v2 & Teams Feature Audit Report — 2026-03-12
+# RBAC v2 & Teams — Forensic Audit — 2026-03-12
 
-## 1. Executive Summary
-This audit validates the implementation of the Role-Based Access Control (RBAC) v2 system and the "Teams" organizational feature. Both the `axiom-data-hub` frontend and the `refinery-backend` were reviewed.
+## Self-Assessment
+The first version of this audit was shallow — a checkbox list that glossed over real problems. This version is honest.
 
-**Overall Verdict:** The implementation successfully maps to the requirements. The code exhibits production-level quality, avoiding "band-aids" in favor of proper architectural patterns (e.g., explicit audit logging, resilient auth fetching, normalized joins). All Phase 1-4 goals from the RBAC v2 plan are now met.
+---
 
-## 2. Implemented Features Check
+## 🚨 CRITICAL ISSUES
 
-### A. Custom Roles (Plan 002)
-- ✅ **Backend Services & Routes (`refinery-backend/src/services/customRoles.ts`, `routes/customRoles.ts`)**: Implemented explicit creation, modification, and deletion.
-- ✅ **Data Normalization & Protection**: Correct mapping of the `label` field instead of `description`. `is_system` flag prevents deletion/modification of system roles. Explicit guards prevent deleting roles that are assigned to active users.
-- ✅ **Frontend UI (`axiom-data-hub/src/pages/Team.tsx`)**: Created a dedicated "Custom Roles" tab for superadmins to define and manage custom permission profiles.
+### C1. Return type lies in `teams.ts` service
+**File:** `refinery-backend/src/services/teams.ts` lines 130-148, 150-165  
+**Problem:** `addMember()` and `updateMemberRole()` declare their return type as `Promise<TeamMembership>` but actually return `NormalizedMembership` (via `normalizeMembership()`). This is a type lie — the TypeScript compiler doesn't catch it because we're casting through `as TeamMembership`, but at runtime the shape is `{ profile, team_role }` not `{ profiles, custom_roles }`.  
+**Impact:** Any consumer expecting `TeamMembership` (with array-style `.profiles[]`) will get the normalized shape instead. Currently the routes don't destructure the return, so it doesn't crash — but it's a time bomb.  
+**Fix Required:** Change return types to `Promise<NormalizedMembership>`.
 
-### B. Teams & Groups (Plan 003)
-- ✅ **Backend Services & Routes (`refinery-backend/src/services/teams.ts`, `routes/teams.ts`)**: Built full CRUD for `teams` and `team_memberships`.
-- ✅ **Supabase Join Normalization**: Addressed PostgREST's behavior where many-to-one foreign key joins return arrays. `TeamMembership` data is explicitly flattened (`NormalizedMembership`) so the API returns clean, predictable single-object associations for profile and role data.
-- ✅ **Frontend UI (`axiom-data-hub/src/pages/Team.tsx`)**: Added a proper "Teams" tab. Superadmins can create teams, manage descriptions, and use a safe dropdown to add members (filtering out users who are already members).
-- ✅ **Team-Scoped Roles**: A user can be assigned a specific team-scoped role (which leverages the `custom_roles` table) for their membership in a specific team.
+### C2. `fetchTeam()` still uses raw Supabase client with join
+**File:** `axiom-data-hub/src/pages/Team.tsx` lines 216-227  
+**Problem:** `fetchTeam()` (which loads the Members tab data) uses `supabase.from('profiles').select('*, custom_roles(name, label, permissions)')` — the exact same join pattern that broke the AuthContext and demoted the user to Member. If PostgREST schema cache is stale, this will return `null` data or an error, silently hiding all team members.  
+**Impact:** Members tab could show empty or fail without any error message.  
+**Fix Required:** Same resilience pattern as AuthContext — try with join, retry without.
 
-### C. Authentication Fetch Resilience (Fix)
-- ✅ **Issue**: Adding `custom_roles` to the profile fetch query (`select=*,custom_roles()`) caused the query to fail entirely if the PostgREST schema cache was stale, silently falling back to a JWT-metadata parser that defaulted everyone to `member`.
-- ✅ **Resolution (`axiom-data-hub/src/auth/AuthContext.tsx`)**: The `fetchProfileFromDB` function now exhibits graceful degradation. It attempts the joined query first; if that fails (e.g., 400 Bad Request due to schema cache), it retries with a plain `select=*` to guarantee the user's base identity and DB `role` are always retrieved.
+### C3. `listTeamsWithMemberCount()` fetches ALL membership rows
+**File:** `refinery-backend/src/services/teams.ts` lines 179-195  
+**Problem:** This function fetches every single row from `team_memberships` just to count them in JS. With 100 teams × 50 members each = 5,000 rows transferred just for a count. This won't scale.  
+**Fix Required:** Use a Supabase RPC or a proper count query. Ideal: `supabase.from('teams').select('*, team_memberships(count)')` or a SQL view.
 
-### D. Audit Logging
-- ✅ **Explicit Attribution (`refinery-backend/src/services/auditLog.ts`)**: Replaced broken PostgreSQL triggers (which had `NULL` attribution because `auth.uid()` fails under service-role connections) with a dedicated Node.js service. The backend now writes to the `audit_log` explicitly, pulling the `actorId` securely from the JWT on every mutation route.
+---
 
-## 3. Discrepancies vs. Original Plans
-There is one technical discrepancy between the original `003-team-groups.md` plan and the actual database migration that was handled successfully in the code:
-- **Plan 003 stated:** `team_memberships.user_id (UUID)` and `team_memberships.role (TEXT)`.
-- **Actual DB Migration (005):** The table uses `profile_id (UUID)` and `role_id (UUID)` referencing the `custom_roles` table. 
-- **Handling:** The implemented TypeScript interfaces and API logic correctly use `profile_id` and `role_id`, seamlessly integrating team-scoped roles with the newly built Custom Roles system.
+## ⚠️ HIGH SEVERITY
 
-## 4. Pending Plans Status Check
-Below is the status of the remaining planned work defined in the `.agent/plans/` directory:
+### H1. `API_URL` still used alongside `apiCall`
+**File:** `axiom-data-hub/src/pages/Team.tsx` line 9, used on line 372  
+**Problem:** `handleAdminApiCall()` uses the raw `API_URL` constant with manual `fetch()` and manual session token handling, while all the new code correctly uses the `apiCall()` utility. Two HTTP request patterns in the same file = inconsistency, potential token-handling divergence.  
+**Fix Required:** Refactor `handleAdminApiCall()` to use `apiCall()`, then remove the `API_URL` constant.
 
-| Plan ID | Title | Status |
+### H2. `handleInvite()` writes audit log via Supabase client
+**File:** `axiom-data-hub/src/pages/Team.tsx` lines 244-249  
+**Problem:** The invite function writes to `audit_log` directly via the Supabase client, which uses the user's auth token. This might work with RLS, but it's inconsistent with the backend pattern where all audit writes happen through `logAudit()` service using the admin client.  
+**Impact:** If RLS on `audit_log` is tightened (e.g., INSERT restricted to service-role), this will silently fail.
+
+### H3. Audit triggers in migration 005 still exist in the migration file
+**File:** `axiom-data-hub/supabase/migrations/005_rbac_v2.sql` lines 52-89  
+**Problem:** Migration 005 creates audit triggers that use `auth.uid()`, and migration 008 drops them. This is fine for existing deployments — but for new deployments running migrations sequentially, the triggers are created then immediately dropped. Not harmful, but messy.  
+**Fix Required:** None needed — just documented. Future cleanup: remove trigger code from 005 and squash migrations.
+
+### H4. No click-outside handler for add-member dropdown
+**File:** `axiom-data-hub/src/pages/Team.tsx` (Teams tab)  
+**Problem:** The "Add Member" dropdown (`addMemberDropdownOpen`) has no click-outside listener. It only closes when a member is added or the button is toggled. If the user clicks anywhere else on the page, the dropdown stays open.  
+**Fix Required:** Add a `useEffect` with `mousedown` listener to close dropdown on outside click.
+
+---
+
+## 🟡 MEDIUM SEVERITY
+
+### M1. No duplicate team name check
+**File:** `refinery-backend/src/routes/teams.ts`  
+**Problem:** The `teams` table has no `UNIQUE` constraint on `name` (unlike `custom_roles.name`). Two teams can have the same name, which will confuse users.  
+**Fix Required:** Either add a DB-level unique constraint via migration, or add a pre-insert check in the service.
+
+### M2. Team routes don't validate team existence before member ops
+**File:** `refinery-backend/src/routes/teams.ts` lines 102-153  
+**Problem:** Adding/removing/updating members uses `req.params.id` as the team ID without checking if the team exists first. The Supabase FK constraint will catch it, but the error message will be a cryptic FK violation instead of "Team not found."  
+**Fix Required:** Add a `getTeam()` check first, return 404 if not found.
+
+### M3. Plans 002 and 003 still marked as "Not Started"
+**Files:** `.agent/plans/002-custom-roles.md`, `.agent/plans/003-team-groups.md`  
+**Problem:** Both plans still show `Status: 🔲 Not started` even though the work is complete.  
+**Fix Required:** Update status fields.
+
+---
+
+## ✅ CLEAN — NO ISSUES
+
+| File | Verdict |
+|---|---|
+| `refinery-backend/src/services/auditLog.ts` | Clean. 23 lines, single responsibility, failure is logged and swallowed. |
+| `refinery-backend/src/services/customRoles.ts` | Clean. Explicit column list, system-role guards, in-use check before delete. |
+| `refinery-backend/src/routes/customRoles.ts` | Clean. `sanitizePerms` only stores `true` grants; proper 403/409 error codes. |
+| `axiom-data-hub/src/auth/AuthContext.tsx` (profile fetch) | Clean after fix. Graceful degradation join → plain → metadata. |
+| `axiom-data-hub/supabase/migrations/008_fix_custom_role_triggers.sql` | Clean. Correctly drops broken triggers with clear documentation. |
+| `axiom-data-hub/supabase/migrations/005_rbac_v2.sql` (schema) | Clean. `label NOT NULL`, `is_system`, proper RLS policies, composite PK on memberships. |
+
+---
+
+## PLAN STATUS UPDATE
+
+| Plan | Title | Actual Status |
 |---|---|---|
-| **001** | Multi-Server Support (Server Pool) | 🔲 **Not Started**. High priority. Involves creating a `servers` table and refactoring the ClickHouse client. |
-| **002** | Custom Role CRUD UI | ✅ **Done** |
-| **003** | Team Groups UI | ✅ **Done** |
-| **004** | Verify550 Frontend Wiring | 🔲 **Not Started**. Med priority. API utility needs to be built to connect the Verification UI to existing backend endpoints. |
-| **005** | In-Built Email Verification Engine | 🔲 **Not Started**. Low priority. Deferred until infrastructure costs justify replacing the Verify550 API. |
-
-## 5. Next Steps Recommendation
-Based on the audit, the RBAC and Team systems are structurally sound and complete. The logical next phase is to proceed to **Plan 001 — Multi-Server Support**. This will allow the application to dynamically switch between different ClickHouse and object storage backends, setting the stage for enterprise scalability.
+| 001 | Multi-Server Support | 🔲 Not Started |
+| 002 | Custom Role CRUD UI | ✅ **Done** — update the plan file |
+| 003 | Team Groups UI | ✅ **Done** — update the plan file |
+| 004 | Verify550 Frontend Wiring | 🔲 Not Started |
+| 005 | In-Built Verification Engine | 🔲 Not Started (deferred) |

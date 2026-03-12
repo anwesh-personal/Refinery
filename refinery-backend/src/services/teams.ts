@@ -131,7 +131,7 @@ export async function addMember(
   teamId: string,
   profileId: string,
   roleId: string | null,
-): Promise<TeamMembership> {
+): Promise<NormalizedMembership> {
   const { data, error } = await supabaseAdmin
     .from('team_memberships')
     .insert({ team_id: teamId, profile_id: profileId, role_id: roleId })
@@ -151,7 +151,7 @@ export async function updateMemberRole(
   teamId: string,
   profileId: string,
   roleId: string | null,
-): Promise<TeamMembership> {
+): Promise<NormalizedMembership> {
   const { data, error } = await supabaseAdmin
     .from('team_memberships')
     .update({ role_id: roleId })

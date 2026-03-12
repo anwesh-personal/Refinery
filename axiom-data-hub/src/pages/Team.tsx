@@ -6,7 +6,6 @@ import { Check, X as CloseIcon, Key, LogIn, Mail, Plus, Trash2, Edit2, ShieldAle
 import { supabase } from '../lib/supabase';
 import { apiCall } from '../lib/api';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 interface CustomRole {
   id: string;
@@ -216,11 +215,24 @@ export default function TeamPage() {
   const fetchTeam = async () => {
     if (!user) return;
     setLoading(true);
-    const { data, error } = await supabase
+
+    // Attempt with custom_roles join first (needed for permission resolution display)
+    let { data, error } = await supabase
       .from('profiles')
       .select('*, custom_roles(name, label, permissions)')
       .order('created_at', { ascending: true });
-    
+
+    // If the join fails (PostgREST schema cache stale), retry without join
+    if (error) {
+      console.warn('[Team] Join query failed, retrying without custom_roles join:', error.message);
+      const retry = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: true });
+      data = retry.data as typeof data;
+      error = retry.error;
+    }
+
     if (data) setTeam(data as ProfileRow[]);
     if (error) console.error('Error fetching team:', error);
     setLoading(false);
@@ -366,20 +378,9 @@ export default function TeamPage() {
   };
 
   const handleAdminApiCall = async (endpoint: string, payload: any) => {
-    if (!session?.access_token) return null;
     try {
       setAdminActionLoading(true);
-      const res = await fetch(`${API_URL}/api/admin/${endpoint}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Server error');
-      return data;
+      return await apiCall(`/api/admin/${endpoint}`, { method: 'POST', body: payload });
     } catch (err: any) {
       alert(`Admin Action Failed: ${err.message}`);
       return null;
@@ -408,7 +409,7 @@ export default function TeamPage() {
     if (!selectedUser) return;
     if (selectedUser.id === user?.id) return;
     
-    const res = await handleAdminApiCall('impersonate', { userId: selectedUser.id });
+    const res = await handleAdminApiCall('impersonate', { userId: selectedUser.id }) as { link?: string } | null;
     if (res?.link) {
       // Store current token in session storage to return later
       sessionStorage.setItem('impersonation_return_token', session?.access_token || '');
