@@ -1,17 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { env } from '../config/env.js';
-
-// Create a Supabase admin client using the secret role key.
-// This client bypasses RLS and can manage auth users.
-if (!env.supabase.secretKey) {
-  console.error('[Admin Service] ⛔ SUPABASE_SECRET_KEY is missing. Admin mutations (password reset, impersonation) WILL FAIL.');
-}
-
-const supabaseAdmin = createClient(
-  env.supabase.url,
-  env.supabase.secretKey || env.supabase.publishableKey, // Falls back to anon key (admin calls will 403, but client won't crash)
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+import { supabaseAdmin } from './supabaseAdmin.js';
 
 // ═══════════════════════════════════════════════════════════════
 // Admin Services

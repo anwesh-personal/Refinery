@@ -1,24 +1,12 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { env } from '../config/env.js';
 import * as adminService from '../services/admin.js';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '../services/supabaseAdmin.js';
+import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
 
 const router = Router();
 
-// Supabase admin client (service key, bypasses RLS)
-const supabaseAdmin = createClient(
-  env.supabase.url,
-  env.supabase.secretKey || env.supabase.publishableKey,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
-
-// ═══════════════════════════════════════════════════════════════
-// Rate Limiting — configurable via system_config table
-// Defaults: 20 requests per 1 minute window per IP
-// Override via system_config: admin_rate_limit_window_ms, admin_rate_limit_max
-// ═══════════════════════════════════════════════════════════════
-let rateLimitWindowMs = 60_000; // 1 minute
+let rateLimitWindowMs = 60_000;
 let rateLimitMax = 20;
 
 // Load rate limit config from Supabase on startup (non-blocking)
@@ -41,50 +29,19 @@ let rateLimitMax = 20;
   }
 })();
 
+// Use arrow functions so the limiter reads the LATEST values after async load
 const adminRateLimit = rateLimit({
-  windowMs: rateLimitWindowMs,
-  max: rateLimitMax,
+  windowMs: () => rateLimitWindowMs,
+  max: () => rateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many admin requests. Please wait before trying again.' },
-});
+} as any);
 
 router.use(adminRateLimit);
 
-// ═══════════════════════════════════════════════════════════════
-// Auth Middleware
-// ═══════════════════════════════════════════════════════════════
-const requireSuperadmin = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Missing or invalid Authorization header' });
-    }
-
-    const token = authHeader.split(' ')[1];
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-
-    if (authError || !user) {
-      return res.status(401).json({ error: 'Invalid authentication token' });
-    }
-
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError || !profile || profile.role !== 'superadmin') {
-      return res.status(403).json({ error: 'Superadmin privileges required' });
-    }
-
-    (req as any).adminId = user.id;
-    next();
-  } catch (err: any) {
-    res.status(500).json({ error: `Auth validation failed: ${err.message}` });
-  }
-};
-
+// Use shared auth middleware — requireAuth + requireSuperadmin
+router.use(requireAuth);
 router.use(requireSuperadmin);
 
 // ═══════════════════════════════════════════════════════════════
@@ -111,7 +68,7 @@ async function auditLog(actorId: string, action: string, targetId: string | null
 router.post('/reset-password', async (req, res) => {
   try {
     const { userId, newPassword } = req.body;
-    const adminId = (req as any).adminId;
+    const adminId = (req as any).userId;
 
     if (!userId || !newPassword) return res.status(400).json({ error: 'Missing userId or newPassword' });
     if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
@@ -128,7 +85,7 @@ router.post('/reset-password', async (req, res) => {
 router.post('/send-reset-link', async (req, res) => {
   try {
     const { email } = req.body;
-    const adminId = (req as any).adminId;
+    const adminId = (req as any).userId;
 
     if (!email) return res.status(400).json({ error: 'Missing email' });
 
@@ -144,7 +101,7 @@ router.post('/send-reset-link', async (req, res) => {
 router.post('/impersonate', async (req, res) => {
   try {
     const { userId } = req.body;
-    const adminId = (req as any).adminId;
+    const adminId = (req as any).userId;
 
     if (!userId) return res.status(400).json({ error: 'Missing target userId' });
     if (userId === adminId) return res.status(400).json({ error: 'Cannot impersonate yourself' });
@@ -161,7 +118,7 @@ router.post('/impersonate', async (req, res) => {
 router.post('/delete-user', async (req, res) => {
   try {
     const { userId } = req.body;
-    const adminId = (req as any).adminId;
+    const adminId = (req as any).userId;
 
     if (!userId) return res.status(400).json({ error: 'Missing target userId' });
     if (userId === adminId) return res.status(400).json({ error: 'Cannot delete yourself' });
@@ -186,7 +143,7 @@ router.get('/config', async (_req, res) => {
 router.post('/config', async (req, res) => {
   try {
     const { windowMs, max } = req.body;
-    const adminId = (req as any).adminId;
+    const adminId = (req as any).userId;
 
     if (windowMs) {
       await supabaseAdmin.from('system_config').upsert(

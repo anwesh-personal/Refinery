@@ -26,6 +26,10 @@ interface ServerData {
   secret_key?: string;
 }
 
+export type ServerFormData = Partial<ServerData> & { 
+  type: 'clickhouse' | 's3' | 'linode';
+};
+
 export default function ConfigPage() {
   const [servers, setServers] = useState<ServerData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +39,7 @@ export default function ConfigPage() {
   const [editingServer, setEditingServer] = useState<ServerData | null>(null);
 
   // Form states
-  const [formData, setFormData] = useState<Partial<ServerData>>({
+  const [formData, setFormData] = useState<ServerFormData>({
     type: 'clickhouse',
     name: '',
     host: '',
@@ -49,7 +53,7 @@ export default function ConfigPage() {
     secret_key: '',
     endpoint_url: '',
     is_default: false,
-  } as any);
+  });
 
   const { refresh: refreshGlobalServers } = useServers();
 
@@ -274,7 +278,7 @@ export default function ConfigPage() {
                     required
                     value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="e.g. Production US"
-                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: '#fff', fontSize: 14 }}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
                   />
                 </div>
 
@@ -284,7 +288,7 @@ export default function ConfigPage() {
                     required
                     value={formData.host} onChange={(e) => setFormData({ ...formData, host: e.target.value })}
                     placeholder="e.g. http://localhost or s3.us-east-1.amazonaws.com"
-                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: '#fff', fontSize: 14 }}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
                   />
                 </div>
 
@@ -295,7 +299,7 @@ export default function ConfigPage() {
                       type="number"
                       value={formData.port || ''} onChange={(e) => setFormData({ ...formData, port: Number(e.target.value) })}
                       placeholder={formData.type === 'clickhouse' ? "8123" : "443"}
-                      style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: '#fff', fontSize: 14 }}
+                      style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
                     />
                   </div>
                   {formData.type === 'clickhouse' && (
@@ -304,7 +308,7 @@ export default function ConfigPage() {
                       <input
                         value={formData.database_name} onChange={(e) => setFormData({ ...formData, database_name: e.target.value })}
                         placeholder="default"
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: '#fff', fontSize: 14 }}
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
                       />
                     </div>
                   )}
@@ -318,7 +322,7 @@ export default function ConfigPage() {
                         <input
                           value={formData.bucket || ''} onChange={(e) => setFormData({ ...formData, bucket: e.target.value })}
                           placeholder="data-bucket"
-                          style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: '#fff', fontSize: 14 }}
+                          style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
                         />
                       </div>
                       <div style={{ flex: 1 }}>
@@ -326,7 +330,7 @@ export default function ConfigPage() {
                         <input
                           value={formData.region || ''} onChange={(e) => setFormData({ ...formData, region: e.target.value })}
                           placeholder="us-east-1"
-                          style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: '#fff', fontSize: 14 }}
+                          style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
                         />
                       </div>
                     </div>
@@ -335,7 +339,7 @@ export default function ConfigPage() {
                       <input
                         value={formData.endpoint_url || ''} onChange={(e) => setFormData({ ...formData, endpoint_url: e.target.value })}
                         placeholder="https://us-east-1.linodeobjects.com"
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: '#fff', fontSize: 14 }}
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
                       />
                     </div>
                   </>
@@ -351,30 +355,30 @@ export default function ConfigPage() {
                   {formData.type === 'clickhouse' ? (
                     <div style={{ display: 'flex', gap: 16 }}>
                       <input
-                        value={(formData as any).username || ''} onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                        value={formData.username || ''} onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                         placeholder="Username (e.g. default)"
-                        style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: '#fff', fontSize: 14 }}
+                        style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
                       />
                       <input
                         type="password"
-                        value={(formData as any).password || ''} onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        value={formData.password || ''} onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                         placeholder="Password"
-                        style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: '#fff', fontSize: 14 }}
+                        style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
                       />
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                       <input
                         type="password"
-                        value={(formData as any).access_key || ''} onChange={(e) => setFormData({ ...formData, access_key: e.target.value })}
+                        value={formData.access_key || ''} onChange={(e) => setFormData({ ...formData, access_key: e.target.value })}
                         placeholder="Access Key"
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: '#fff', fontSize: 14 }}
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
                       />
                       <input
                         type="password"
-                        value={(formData as any).secret_key || ''} onChange={(e) => setFormData({ ...formData, secret_key: e.target.value })}
+                        value={formData.secret_key || ''} onChange={(e) => setFormData({ ...formData, secret_key: e.target.value })}
                         placeholder="Secret Key"
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: '#fff', fontSize: 14 }}
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
                       />
                     </div>
                   )}

@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext, type ReactNode } from 'react';
-import { supabase } from '../lib/supabase';
+import { apiCall } from '../lib/api';
 import { Server, ChevronDown, Check, Wifi, WifiOff } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════
@@ -25,8 +25,6 @@ interface ServerContextType {
 
 const ServerContext = createContext<ServerContextType | undefined>(undefined);
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-
 export function ServerProvider({ children }: { children: ReactNode }) {
   const [servers, setServers] = useState<ServerInfo[]>([]);
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
@@ -34,27 +32,21 @@ export function ServerProvider({ children }: { children: ReactNode }) {
 
   const fetchServers = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) return;
+      const data = await apiCall<{ servers: ServerInfo[] }>('/api/servers');
+      const list = data.servers || [];
+      setServers(list);
 
-      const resp = await fetch(`${API_URL}/api/servers`, {
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-      if (!resp.ok) return;
-      const { servers: list } = await resp.json();
-      setServers(list || []);
-
-      // Auto-select default or first, or restore from localStorage
+      // Auto-select: restore from localStorage, then fall back to default, then first
       const stored = localStorage.getItem('selected_server_id');
-      const valid = (list || []).find((s: ServerInfo) => s.id === stored);
+      const valid = list.find((s) => s.id === stored);
       if (valid) {
         setSelectedServerId(valid.id);
       } else {
-        const defaultServer = (list || []).find((s: ServerInfo) => s.is_default && s.type === 'clickhouse');
+        const defaultServer = list.find((s) => s.is_default && s.type === 'clickhouse');
         if (defaultServer) setSelectedServerId(defaultServer.id);
       }
     } catch {
-      // silently fail — servers table might not exist yet
+      // Silently fail — servers table might not exist yet
     } finally {
       setLoading(false);
     }
@@ -92,7 +84,6 @@ export function ServerSelector({ type = 'clickhouse' }: { type?: 'clickhouse' | 
   const selected = filtered.find(s => s.id === selectedServerId) || filtered.find(s => s.is_default) || filtered[0];
 
   if (filtered.length <= 1) {
-    // Don't show selector if there's 0 or 1 server
     if (selected) {
       return (
         <div style={{
