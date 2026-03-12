@@ -11,7 +11,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 interface CustomRole {
   id: string;
   name: string;
-  description: string | null;
+  label: string;
+  is_system: boolean;
   permissions: Record<string, boolean>;
 }
 
@@ -72,7 +73,7 @@ export default function TeamPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select('*, custom_roles(name, label, permissions)')
       .order('created_at', { ascending: true });
     
     if (data) setTeam(data as ProfileRow[]);
@@ -185,11 +186,18 @@ export default function TeamPage() {
         target_id: selectedUser.id,
         details: { custom_role_id: roleId },
       });
-      // A full refresh is better here to resolve the joined permissions
-      fetchTeam();
+      // Await the full team refresh so joined custom_roles data is available
+      await fetchTeam();
       if (selectedUser.id === user?.id) await refreshProfile();
-      // Keep panel open but wait for next props, or just close it to be safe
-      closeUserPanel(); 
+      // Re-select the user from the refreshed team list to update the panel
+      setTeam(prev => {
+        const updated = prev.find(m => m.id === selectedUser.id);
+        if (updated) {
+          setSelectedUser(updated);
+          setEditingPermissions({ ...updated.permissions });
+        }
+        return prev;
+      });
     }
   };
 
@@ -291,8 +299,11 @@ export default function TeamPage() {
   const openEditRoleModal = (role: CustomRole) => {
     setEditingRole(role);
     setRoleFormName(role.name);
-    setRoleFormDesc(role.description || '');
-    setRoleFormPerms({ ...role.permissions });
+    setRoleFormDesc(role.label || '');
+    // Only keep explicit true grants — false entries should not exist in the record
+    const truePerms: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(role.permissions)) { if (v === true) truePerms[k] = true; }
+    setRoleFormPerms(truePerms);
     setIsRoleModalOpen(true);
   };
 
@@ -302,7 +313,7 @@ export default function TeamPage() {
     try {
       const payload = {
         name: roleFormName,
-        description: roleFormDesc,
+        label: roleFormDesc,
         permissions: roleFormPerms,
       };
       
@@ -330,12 +341,6 @@ export default function TeamPage() {
     }
   };
 
-  // Group permissions for the modal
-  const groupedPerms = Object.entries(ALL_PERMISSIONS).reduce((acc, [k, v]) => {
-    if (!acc[v.group]) acc[v.group] = [];
-    acc[v.group].push({ key: k as PermissionKey, ...v });
-    return acc;
-  }, {} as Record<string, Array<{ key: PermissionKey; label: string; group: string }>>);
 
   return (
     <div style={{ display: 'flex', gap: 24, height: 'calc(100vh - 120px)' }}>
@@ -494,6 +499,7 @@ export default function TeamPage() {
                 );
               })
             )}
+          </div>
             </>
           )}
 
@@ -509,7 +515,7 @@ export default function TeamPage() {
               ) : customRoles.length === 0 ? (
                 <div style={{ padding: 48, textAlign: 'center', background: 'var(--bg-card)', borderRadius: 12, border: '1px dashed var(--border)' }}>
                   <ShieldAlert size={32} style={{ color: 'var(--text-tertiary)', marginBottom: 16, margin: '0 auto' }} />
-                  <p style={{ color: 'var(--text-secondary)', marginBottom: 16 }}>No custom roles created yes.</p>
+                  <p style={{ color: 'var(--text-secondary)', marginBottom: 16 }}>No custom roles created yet.</p>
                   <Button onClick={openNewRoleModal}>Create First Role</Button>
                 </div>
               ) : (
@@ -524,7 +530,7 @@ export default function TeamPage() {
                       }}>
                         <h3 style={{ margin: '0 0 8px 0', fontSize: 16, color: 'var(--text-primary)' }}>{role.name}</h3>
                         <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, flex: 1 }}>
-                          {role.description || 'No description provided.'}
+                          {role.label || 'No description provided.'}
                         </p>
                         
                         <div style={{ display: 'flex', gap: 16, marginTop: 16, marginBottom: 16, fontSize: 12, color: 'var(--text-tertiary)' }}>
@@ -620,6 +626,26 @@ export default function TeamPage() {
                     Deactivated
                   </button>
                 </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>
+                  Base Role
+                </label>
+                <select
+                  value={selectedUser.role}
+                  onChange={(e) => changeRole(e.target.value as UserRole)}
+                  style={{
+                    width: '100%', padding: '10px 16px', borderRadius: 8,
+                    fontSize: 13, fontWeight: 500, outline: 'none',
+                    background: 'var(--bg-input)', border: '1px solid var(--border)',
+                    color: 'var(--text-primary)', cursor: 'pointer',
+                  }}
+                >
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                  <option value="superadmin">Superadmin</option>
+                </select>
               </div>
 
               <div>
@@ -767,7 +793,7 @@ export default function TeamPage() {
             </div>
           </div>
         )}
-      </div>
+
 
       {/* CUSTOM ROLE MODAL */}
       {isRoleModalOpen && (
@@ -829,7 +855,11 @@ export default function TeamPage() {
                               <input
                                 type="checkbox"
                                 checked={isAllowed}
-                                onChange={(e) => setRoleFormPerms(prev => ({ ...prev, [p.key]: e.target.checked }))}
+                                onChange={(e) => setRoleFormPerms(prev => {
+                                  const next = { ...prev };
+                                  if (e.target.checked) { next[p.key] = true; } else { delete next[p.key]; }
+                                  return next;
+                                })}
                                 style={{ margin: 0 }}
                               />
                               <span style={{ fontSize: 12, fontWeight: 500, color: isAllowed ? 'var(--accent)' : 'var(--text-secondary)' }}>

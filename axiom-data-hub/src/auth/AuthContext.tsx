@@ -155,8 +155,8 @@ export interface ProfileRow {
   avatar_url:     string | null;
   role:           UserRole;
   custom_role_id: string | null;
-  /** Supabase joined custom role data */
-  custom_roles?:  { name: string; permissions: Partial<Record<PermissionKey, boolean>> } | null;
+  /** Supabase joined custom role data — matches custom_roles table columns */
+  custom_roles?:  { name: string; label: string; permissions: Partial<Record<PermissionKey, boolean>> } | null;
   is_active:      boolean;
   permissions:    Partial<Record<PermissionKey, boolean>>;
   invited_by:     string | null;
@@ -262,7 +262,7 @@ async function fetchProfileFromDB(userId: string, accessToken: string, fallbackU
     // race conditions where the shared supabase client hasn't set the session yet
     // (happens during lock contention on cold start / HMR).
     const resp = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?select=*,custom_roles(name,permissions)&id=eq.${userId}`,
+      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?select=*,custom_roles(name,label,permissions)&id=eq.${userId}`,
       {
         headers: {
           'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
