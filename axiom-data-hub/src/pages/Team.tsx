@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth, ROLE_LABELS, ROLE_COLORS, ALL_PERMISSIONS, resolvePermissions } from '../auth/AuthContext';
 import type { UserRole, PermissionKey, ProfileRow } from '../auth/AuthContext';
 import { PageHeader, SectionHeader, Button, Input, Badge } from '../components/UI';
-import { Check, X as CloseIcon, Key, LogIn, Mail, Plus, Trash2, Edit2, ShieldAlert } from 'lucide-react';
+import { Check, X as CloseIcon, Key, LogIn, Mail, Plus, Trash2, Edit2, ShieldAlert, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { apiCall } from '../lib/api';
 
@@ -16,13 +16,30 @@ interface CustomRole {
   permissions: Record<string, boolean>;
 }
 
+interface TeamGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  created_by: string | null;
+  member_count: number;
+  created_at: string;
+}
+
+interface TeamMember {
+  profile_id: string;
+  role_id: string | null;
+  joined_at: string;
+  profile: { full_name: string; email: string; avatar_url: string | null; role: string } | null;
+  team_role: { name: string; label: string } | null;
+}
+
 export default function TeamPage() {
   const { user, refreshProfile, session } = useAuth();
   const [team, setTeam] = useState<ProfileRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<'members' | 'roles'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'roles' | 'teams'>('members');
 
   // Custom Roles state
   const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
@@ -52,9 +69,23 @@ export default function TeamPage() {
   // Admin Actions state
   const [adminActionLoading, setAdminActionLoading] = useState(false);
 
+  // Teams state
+  const [teams, setTeams] = useState<TeamGroup[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [selectedTeam, setSelectedTeam] = useState<TeamGroup | null>(null);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [teamMembersLoading, setTeamMembersLoading] = useState(false);
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<TeamGroup | null>(null);
+  const [teamFormName, setTeamFormName] = useState('');
+  const [teamFormDesc, setTeamFormDesc] = useState('');
+  const [savingTeam, setSavingTeam] = useState(false);
+  const [addMemberDropdownOpen, setAddMemberDropdownOpen] = useState(false);
+
   useEffect(() => {
     fetchTeam();
     fetchCustomRoles();
+    fetchTeams();
   }, []);
 
   const fetchCustomRoles = async () => {
@@ -66,6 +97,120 @@ export default function TeamPage() {
       console.error('Failed to fetch roles:', err);
     }
     setRolesLoading(false);
+  };
+
+  const fetchTeams = async () => {
+    setTeamsLoading(true);
+    try {
+      const data = await apiCall<{ teams: TeamGroup[] }>('/api/teams');
+      setTeams(data.teams);
+    } catch (err: any) {
+      console.error('Failed to fetch teams:', err);
+    }
+    setTeamsLoading(false);
+  };
+
+  const fetchTeamMembers = async (teamId: string) => {
+    setTeamMembersLoading(true);
+    try {
+      const data = await apiCall<{ members: TeamMember[] }>(`/api/teams/${teamId}/members`);
+      setTeamMembers(data.members);
+    } catch (err: any) {
+      console.error('Failed to fetch team members:', err);
+    }
+    setTeamMembersLoading(false);
+  };
+
+  const selectTeam = (t: TeamGroup) => {
+    setSelectedTeam(t);
+    fetchTeamMembers(t.id);
+    setAddMemberDropdownOpen(false);
+  };
+
+  const openNewTeamModal = () => {
+    setEditingTeam(null);
+    setTeamFormName('');
+    setTeamFormDesc('');
+    setIsTeamModalOpen(true);
+  };
+
+  const openEditTeamModal = (t: TeamGroup) => {
+    setEditingTeam(t);
+    setTeamFormName(t.name);
+    setTeamFormDesc(t.description || '');
+    setIsTeamModalOpen(true);
+  };
+
+  const saveTeamMutation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingTeam(true);
+    try {
+      const payload = { name: teamFormName, description: teamFormDesc || null };
+      if (editingTeam) {
+        await apiCall(`/api/teams/${editingTeam.id}`, { method: 'PUT', body: payload });
+      } else {
+        await apiCall('/api/teams', { method: 'POST', body: payload });
+      }
+      setIsTeamModalOpen(false);
+      await fetchTeams();
+    } catch (err: any) {
+      alert(`Team save failed: ${err.message}`);
+    } finally {
+      setSavingTeam(false);
+    }
+  };
+
+  const deleteTeamAction = async (id: string) => {
+    if (!window.confirm('Delete this team and remove all memberships?')) return;
+    try {
+      await apiCall(`/api/teams/${id}`, { method: 'DELETE' });
+      if (selectedTeam?.id === id) {
+        setSelectedTeam(null);
+        setTeamMembers([]);
+      }
+      await fetchTeams();
+    } catch (err: any) {
+      alert(`Delete failed: ${err.message}`);
+    }
+  };
+
+  const addTeamMember = async (profileId: string) => {
+    if (!selectedTeam) return;
+    try {
+      await apiCall(`/api/teams/${selectedTeam.id}/members`, {
+        method: 'POST',
+        body: { profile_id: profileId },
+      });
+      await fetchTeamMembers(selectedTeam.id);
+      await fetchTeams(); // refresh member counts
+      setAddMemberDropdownOpen(false);
+    } catch (err: any) {
+      alert(`Add member failed: ${err.message}`);
+    }
+  };
+
+  const removeTeamMember = async (profileId: string) => {
+    if (!selectedTeam) return;
+    try {
+      await apiCall(`/api/teams/${selectedTeam.id}/members/${profileId}`, { method: 'DELETE' });
+      await fetchTeamMembers(selectedTeam.id);
+      await fetchTeams();
+    } catch (err: any) {
+      alert(`Remove failed: ${err.message}`);
+    }
+  };
+
+  const updateTeamMemberRole = async (profileId: string, roleId: string | null) => {
+    if (!selectedTeam) return;
+    try {
+      await apiCall(`/api/teams/${selectedTeam.id}/members/${profileId}`, {
+        method: 'PUT',
+        body: { role_id: roleId },
+      });
+      await fetchTeamMembers(selectedTeam.id);
+    } catch (err: any) {
+      alert(`Role update failed: ${err.message}`);
+    }
   };
 
   const fetchTeam = async () => {
@@ -373,6 +518,17 @@ export default function TeamPage() {
             >
               Custom Roles
             </button>
+            <button
+              onClick={() => setActiveTab('teams')}
+              style={{
+                padding: '6px 16px', borderRadius: 6, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+                background: activeTab === 'teams' ? 'var(--bg-app)' : 'transparent',
+                color: activeTab === 'teams' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                boxShadow: activeTab === 'teams' ? 'var(--shadow-sm)' : 'none',
+              }}
+            >
+              Teams
+            </button>
           </div>
         </div>
 
@@ -551,6 +707,175 @@ export default function TeamPage() {
                   })}
                 </div>
               )}
+            </>
+          )}
+
+          {activeTab === 'teams' && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <SectionHeader title="Teams" />
+                <Button onClick={openNewTeamModal} icon={<Plus size={16} />}>Create Team</Button>
+              </div>
+
+              <div style={{ display: 'flex', gap: 24 }}>
+                {/* Team List (left side) */}
+                <div style={{ width: 280, flexShrink: 0 }}>
+                  {teamsLoading ? (
+                    <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>Loading...</div>
+                  ) : teams.length === 0 ? (
+                    <div style={{ padding: 48, textAlign: 'center', background: 'var(--bg-card)', borderRadius: 12, border: '1px dashed var(--border)' }}>
+                      <Users size={32} style={{ color: 'var(--text-tertiary)', marginBottom: 16, margin: '0 auto' }} />
+                      <p style={{ color: 'var(--text-secondary)', marginBottom: 16 }}>No teams created yet.</p>
+                      <Button onClick={openNewTeamModal}>Create First Team</Button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {teams.map(t => (
+                        <div
+                          key={t.id}
+                          onClick={() => selectTeam(t)}
+                          style={{
+                            padding: '14px 16px', borderRadius: 10, cursor: 'pointer',
+                            background: selectedTeam?.id === t.id ? 'var(--accent-muted)' : 'var(--bg-card)',
+                            border: `1px solid ${selectedTeam?.id === t.id ? 'var(--accent)' : 'var(--border)'}`,
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</span>
+                            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{t.member_count} members</span>
+                          </div>
+                          {t.description && (
+                            <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.4 }}>{t.description}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Team Detail (right side) */}
+                {selectedTeam && (
+                  <div style={{ flex: 1, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 24 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                      <div>
+                        <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{selectedTeam.name}</h3>
+                        {selectedTeam.description && <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 0' }}>{selectedTeam.description}</p>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <Button onClick={() => openEditTeamModal(selectedTeam)} variant="secondary" icon={<Edit2 size={14} />}>Edit</Button>
+                        <Button onClick={() => deleteTeamAction(selectedTeam.id)} variant="danger" icon={<Trash2 size={14} />} />
+                      </div>
+                    </div>
+
+                    {/* Add Member */}
+                    <div style={{ marginBottom: 20 }}>
+                      <div style={{ position: 'relative' }}>
+                        <Button onClick={() => setAddMemberDropdownOpen(!addMemberDropdownOpen)} variant="secondary" icon={<Plus size={14} />}>Add Member</Button>
+                        {addMemberDropdownOpen && (
+                          <div style={{
+                            position: 'absolute', top: '100%', left: 0, marginTop: 8, zIndex: 100,
+                            background: 'var(--bg-app)', border: '1px solid var(--border)', borderRadius: 10,
+                            boxShadow: '0 8px 32px -4px rgba(0,0,0,0.3)', maxHeight: 240, overflowY: 'auto',
+                            width: 280, padding: 8,
+                          }}>
+                            {team
+                              .filter(m => !teamMembers.some(tm => tm.profile_id === m.id))
+                              .map(m => (
+                                <div
+                                  key={m.id}
+                                  onClick={() => addTeamMember(m.id)}
+                                  style={{
+                                    padding: '8px 12px', borderRadius: 6, cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: 10,
+                                    transition: 'background 0.1s',
+                                  }}
+                                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-card-hover)'}
+                                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                >
+                                  <div style={{
+                                    width: 28, height: 28, borderRadius: '50%',
+                                    background: 'var(--accent-muted)', color: 'var(--accent)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: 10, fontWeight: 800,
+                                  }}>
+                                    {(m.full_name || m.email).split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{m.full_name || 'Unnamed'}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{m.email}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            {team.filter(m => !teamMembers.some(tm => tm.profile_id === m.id)).length === 0 && (
+                              <p style={{ padding: 12, textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)' }}>All users are already members</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Member List */}
+                    {teamMembersLoading ? (
+                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>Loading members...</div>
+                    ) : teamMembers.length === 0 ? (
+                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>No members in this team yet.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {teamMembers.map(m => (
+                          <div
+                            key={m.profile_id}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 12,
+                              padding: '12px 16px', borderRadius: 10,
+                              background: 'var(--bg-app)', border: '1px solid var(--border)',
+                            }}
+                          >
+                            <div style={{
+                              width: 32, height: 32, borderRadius: '50%',
+                              background: 'var(--accent-muted)', color: 'var(--accent)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 11, fontWeight: 800,
+                            }}>
+                              {(m.profile?.full_name || m.profile?.email || '??').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{m.profile?.full_name || 'Unnamed'}</div>
+                              <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{m.profile?.email}</div>
+                            </div>
+                            <select
+                              value={m.role_id || ''}
+                              onChange={e => updateTeamMemberRole(m.profile_id, e.target.value || null)}
+                              style={{
+                                padding: '6px 10px', borderRadius: 6, fontSize: 11, fontWeight: 500,
+                                background: 'var(--bg-input)', border: '1px solid var(--border)',
+                                color: 'var(--text-primary)', cursor: 'pointer',
+                              }}
+                            >
+                              <option value="">No team role</option>
+                              {customRoles.map(cr => (
+                                <option key={cr.id} value={cr.id}>{cr.name}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => removeTeamMember(m.profile_id)}
+                              style={{
+                                background: 'none', border: 'none', color: 'var(--text-tertiary)',
+                                cursor: 'pointer', padding: 4, borderRadius: 4,
+                                transition: 'color 0.1s',
+                              }}
+                              onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
+                              onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </>
           )}
 
@@ -876,6 +1201,47 @@ export default function TeamPage() {
 
               <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-app)', display: 'flex', gap: 12 }}>
                 <Button type="submit" disabled={savingRole} style={{ flex: 1 }}>{savingRole ? 'Saving...' : (editingRole ? 'Save Changes' : 'Create Role')}</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* TEAM MODAL */}
+      {isTeamModalOpen && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+        }}>
+          <div className="animate-slideInRight" style={{
+            background: 'var(--bg-app)', border: '1px solid var(--border)', borderRadius: 16, width: 480, maxWidth: '100%',
+          }}>
+            <div style={{ padding: 24, borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: 18, margin: 0 }}>{editingTeam ? 'Edit Team' : 'Create Team'}</h2>
+              <button onClick={() => setIsTeamModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer' }}>✕</button>
+            </div>
+            <form onSubmit={saveTeamMutation}>
+              <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Team Name</label>
+                  <input
+                    required
+                    value={teamFormName} onChange={(e) => setTeamFormName(e.target.value)}
+                    placeholder="e.g. Sales Team"
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Description (Optional)</label>
+                  <input
+                    value={teamFormDesc} onChange={(e) => setTeamFormDesc(e.target.value)}
+                    placeholder="What does this team do?"
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
+                  />
+                </div>
+              </div>
+              <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-app)' }}>
+                <Button type="submit" disabled={savingTeam} full>{savingTeam ? 'Saving...' : (editingTeam ? 'Save Changes' : 'Create Team')}</Button>
               </div>
             </form>
           </div>

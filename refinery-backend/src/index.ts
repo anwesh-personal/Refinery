@@ -16,6 +16,7 @@ import configRoutes from './routes/config.js';
 import adminRoutes from './routes/admin.js';
 import serverRoutes from './routes/servers.js';
 import customRolesRoutes from './routes/customRoles.js';
+import teamsRoutes from './routes/teams.js';
 
 const app = express();
 
@@ -58,6 +59,7 @@ app.use('/api/config', configRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/servers', serverRoutes);
 app.use('/api/custom-roles', customRolesRoutes);
+app.use('/api/teams', teamsRoutes);
 
 // ── Health ──
 app.get('/api/health', (_req, res) => {

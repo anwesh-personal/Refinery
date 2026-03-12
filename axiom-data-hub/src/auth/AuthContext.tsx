@@ -257,20 +257,27 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /** Fetch profile from DB and build AuthUser. Falls back to metadata parse on error. Returns null for deactivated users. */
 async function fetchProfileFromDB(userId: string, accessToken: string, fallbackUser: User): Promise<AuthUser | null> {
+  const headers = {
+    'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+    'Authorization': `Bearer ${accessToken}`,
+    'Accept': 'application/json',
+  };
+
+  const baseUrl = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles`;
+
   try {
-    // Use the access token directly in the Authorization header to avoid
-    // race conditions where the shared supabase client hasn't set the session yet
-    // (happens during lock contention on cold start / HMR).
-    const resp = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?select=*,custom_roles(name,label,permissions)&id=eq.${userId}`,
-      {
-        headers: {
-          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          'Authorization': `Bearer ${accessToken}`,
-          'Accept': 'application/json',
-        },
-      },
+    // Attempt 1: fetch profile WITH custom_roles join (for three-tier permission resolution)
+    let resp = await fetch(
+      `${baseUrl}?select=*,custom_roles(name,label,permissions)&id=eq.${userId}`,
+      { headers },
     );
+
+    // If the join query fails (PostgREST schema cache miss, FK not recognized, etc.),
+    // retry WITHOUT the join so we at least get the correct base role + per-user overrides.
+    if (!resp.ok) {
+      console.warn('[AuthContext] Join query failed (status', resp.status, '), retrying without custom_roles join');
+      resp = await fetch(`${baseUrl}?select=*&id=eq.${userId}`, { headers });
+    }
 
     if (!resp.ok) {
       console.warn('[AuthContext] Profile fetch HTTP error:', resp.status);
