@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldCheck, CheckCircle, XCircle, Clock, Upload, RefreshCw, Activity, StopCircle, Play } from 'lucide-react';
+import { ShieldCheck, CheckCircle, XCircle, Clock, Upload, RefreshCw, Activity, StopCircle, Play, Download } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, DataTable, Button, Input, Badge } from '../components/UI';
 import { ServerSelector, useServers } from '../components/ServerSelector';
 import { apiCall } from '../lib/api';
@@ -195,6 +195,32 @@ export default function VerificationPage() {
     }
   };
 
+  const handleExportCSV = async (batchId: string) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      const resp = await fetch(`${apiUrl}/api/verification/batches/${batchId}/export`, {
+        headers: {
+          'Authorization': `Bearer ${(await (await import('../lib/supabase')).supabase.auth.getSession()).data.session?.access_token}`,
+        },
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+        throw new Error(err.error || `Export failed: ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `verification-${batchId.substring(0, 8)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(`Export failed: ${err.message}`);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'complete': return <Badge label="Complete" color="var(--green)" colorMuted="var(--green-muted)" />;
@@ -364,6 +390,8 @@ export default function VerificationPage() {
           </div>,
           action: ['pending', 'submitting', 'processing'].includes(b.status) ? (
             <Button variant="danger" style={{ padding: '6px 12px', fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleCancel(b.id); }} icon={<StopCircle size={12} />}>Halt</Button>
+          ) : ['complete', 'cancelled'].includes(b.status) ? (
+            <Button variant="secondary" style={{ padding: '6px 12px', fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleExportCSV(b.id); }} icon={<Download size={12} />}>CSV</Button>
           ) : null
         }))}
         emptyIcon={<ShieldCheck size={24} />}

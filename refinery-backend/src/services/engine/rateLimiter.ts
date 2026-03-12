@@ -9,6 +9,12 @@ import { sleep } from '../../utils/helpers.js';
 //   - Global concurrency cap
 //   - Exponential backoff support (triggered by 4xx responses)
 //
+// Architecture: In-memory (single-process). This is intentional:
+//   verification batches are tied to a single backend instance.
+//   For horizontal scaling, run verification on a dedicated worker
+//   process and back this limiter with Redis (swap the Map for
+//   ioredis calls — the acquireSlot/releaseSlot API stays the same).
+//
 // This is critical for production. Aggressive SMTP probing
 // without rate limiting WILL get your IP blocklisted.
 // ═══════════════════════════════════════════════════════════════

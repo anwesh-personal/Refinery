@@ -24,8 +24,38 @@ export interface VerificationResult {
 /** Batch status in the DB */
 export type BatchStatus = 'pending' | 'submitting' | 'processing' | 'complete' | 'failed' | 'cancelled';
 
-// Active batches that can be cancelled
+// Active batch control — tracks in-flight batches in THIS process.
+// Cancellation is also persisted to DB so it survives restarts.
 const activeBatches = new Map<string, { cancelled: boolean }>();
+
+/**
+ * Recover batches orphaned by a server restart.
+ * Marks any batch stuck in 'pending', 'submitting', or 'processing' as 'failed'.
+ * Must be called once at startup AFTER database init.
+ */
+export async function recoverOrphanedBatches(): Promise<number> {
+  try {
+    const orphaned = await query<{ id: string; status: string }>(
+      `SELECT id, status FROM verification_batches
+       WHERE status IN ('pending', 'submitting', 'processing')
+       ORDER BY started_at DESC`,
+    );
+    if (orphaned.length === 0) return 0;
+
+    for (const batch of orphaned) {
+      // Only mark as failed if this process isn't currently running it
+      if (!activeBatches.has(batch.id)) {
+        await updateBatchStatus(batch.id, 'failed', 'Server restarted — batch orphaned. Re-run to continue.');
+        console.log(`[Recovery] Marked orphaned batch ${batch.id} (was: ${batch.status}) as failed`);
+      }
+    }
+    console.log(`[Recovery] Recovered ${orphaned.length} orphaned batch(es)`);
+    return orphaned.length;
+  } catch (err: any) {
+    console.error('[Recovery] Failed to recover orphaned batches:', err.message);
+    return 0;
+  }
+}
 
 // ─── Config Resolution ───
 // Priority: DB system_config → env vars → error
@@ -86,10 +116,12 @@ export async function getConfig(): Promise<Record<string, string>> {
 /** Public: Save config values to system_config (ReplacingMergeTree handles dedup). */
 export async function saveConfig(
   updates: { 
-    endpoint?: string; apiKey?: string; batchSize?: number; concurrency?: number;
-    builtinHeloDomain?: string; builtinFromEmail?: string; builtinConcurrency?: number;
-    builtinTimeout?: number; builtinEnableCatchAll?: boolean; builtinMinInterval?: number;
-    builtinPort?: number; builtinMaxPerDomain?: number;
+    endpoint?: string; apiKey?: string;
+    batchSize?: string | number; concurrency?: string | number;
+    builtinHeloDomain?: string; builtinFromEmail?: string;
+    builtinConcurrency?: string | number; builtinTimeout?: string | number;
+    builtinEnableCatchAll?: string | boolean; builtinMinInterval?: string | number;
+    builtinPort?: string | number; builtinMaxPerDomain?: string | number;
   },
 ): Promise<string[]> {
   const configs: { key: string; value: string; isSecret: number }[] = [];
@@ -201,13 +233,23 @@ export async function startBatch(segmentId: string, engine: 'verify550' | 'built
 // ─── Cancel a Running Batch ───
 
 export async function cancelBatch(batchId: string): Promise<void> {
+  // 1. Try in-memory cancel (fast path — batch running in this process)
   const control = activeBatches.get(batchId);
   if (control) {
     control.cancelled = true;
-    await updateBatchStatus(batchId, 'cancelled');
-  } else {
-    throw new Error('Batch is not currently running or does not exist');
   }
+
+  // 2. Always persist to DB (survives restarts, works across instances)
+  const [batch] = await query<{ status: string }>(
+    `SELECT status FROM verification_batches WHERE id = '${batchId}' LIMIT 1`,
+  );
+  if (!batch) {
+    throw new Error('Batch not found');
+  }
+  if (!['pending', 'submitting', 'processing'].includes(batch.status)) {
+    throw new Error(`Batch is already ${batch.status} — cannot cancel`);
+  }
+  await updateBatchStatus(batchId, 'cancelled');
 }
 
 // ─── Pipeline Execution ───
@@ -231,6 +273,12 @@ async function runVerificationPipeline(
   let unknownTotal = 0;
 
   while (!control.cancelled) {
+    // ── DB-based cancellation check (survives restarts, works across instances) ──
+    if (await isBatchCancelledInDB(batchId)) {
+      control.cancelled = true;
+      break;
+    }
+
     const rows = await query<{ up_id: string; business_email: string; personal_emails: string }>(`
       SELECT up_id, business_email, personal_emails FROM universal_person
       WHERE has(_segment_ids, '${segmentId}')
@@ -487,4 +535,58 @@ export async function getVerificationStats() {
       ? ((Number(stats?.verified || 0) / Number(stats?.total || 0)) * 100).toFixed(1)
       : '0.0',
   };
+}
+
+// ─── DB Cancellation Check ───
+
+async function isBatchCancelledInDB(batchId: string): Promise<boolean> {
+  try {
+    const [row] = await query<{ status: string }>(
+      `SELECT status FROM verification_batches WHERE id = '${batchId}' LIMIT 1`,
+    );
+    return row?.status === 'cancelled';
+  } catch {
+    return false; // On DB error, don't cancel — let the batch continue
+  }
+}
+
+// ─── Batch Results Export ───
+
+/**
+ * Export verification results for a batch as CSV rows.
+ * Returns an array of objects with email, status, and reason.
+ */
+export async function exportBatchResults(
+  batchId: string,
+): Promise<{ email: string; status: string; verified_at: string }[]> {
+  if (!/^[a-zA-Z0-9_-]+$/.test(batchId)) throw new Error('Invalid batch ID');
+
+  // Get the batch to find its segment
+  const [batch] = await query<{ segment_id: string; status: string }>(
+    `SELECT segment_id, status FROM verification_batches WHERE id = '${batchId}' LIMIT 1`,
+  );
+  if (!batch) throw new Error('Batch not found');
+  if (batch.status !== 'complete' && batch.status !== 'cancelled') {
+    throw new Error('Batch is still running — export after completion');
+  }
+
+  // Query verified leads from this batch's segment
+  const rows = await query<{
+    business_email: string;
+    personal_emails: string;
+    _verification_status: string;
+    _verified_at: string;
+  }>(`
+    SELECT business_email, personal_emails, _verification_status, _verified_at
+    FROM universal_person
+    WHERE has(_segment_ids, '${batch.segment_id}')
+      AND _verification_status IS NOT NULL
+    ORDER BY _verified_at DESC
+  `);
+
+  return rows.map(r => ({
+    email: r.business_email || r.personal_emails || '',
+    status: r._verification_status,
+    verified_at: r._verified_at,
+  }));
 }

@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { env } from './config/env.js';
 import { initDatabase } from './db/init.js';
+import { recoverOrphanedBatches } from './services/verification.js';
 
 // Routes
 import ingestionRoutes from './routes/ingestion.js';
@@ -89,6 +90,12 @@ async function start() {
   try {
     await initDatabase();
     console.log('[Server] ✓ Database initialized');
+
+    // Recover any batches orphaned by a prior crash/restart
+    const recovered = await recoverOrphanedBatches();
+    if (recovered > 0) {
+      console.log(`[Server] ✓ Recovered ${recovered} orphaned batch(es)`);
+    }
   } catch (e: any) {
     console.warn(`[Server] ⚠ Database init skipped (ClickHouse unavailable): ${e.message}`);
     console.warn('[Server] ⚠ The API will start but database operations will fail until ClickHouse is available.');

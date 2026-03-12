@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import * as verifyService from '../services/verification.js';
 import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
 
@@ -11,6 +12,32 @@ router.use(requireAuth);
 // Verification API Routes — Production
 // Supports both Verify550 API and Built-In Native Engine
 // ═══════════════════════════════════════════════════════════════
+
+// ─── Zod Schemas ───
+
+const StartBatchSchema = z.object({
+  segmentId: z.string().min(1, 'segmentId is required').regex(/^[a-zA-Z0-9_-]+$/, 'segmentId must be alphanumeric'),
+  engine: z.enum(['verify550', 'builtin']).default('builtin'),
+});
+
+const SaveConfigSchema = z.object({
+  // Verify550
+  endpoint: z.string().optional(),
+  apiKey: z.string().optional(),
+  batchSize: z.union([z.string(), z.number()]).optional(),
+  concurrency: z.union([z.string(), z.number()]).optional(),
+  // Builtin Engine
+  builtinHeloDomain: z.string().optional(),
+  builtinFromEmail: z.string().optional(),
+  builtinConcurrency: z.union([z.string(), z.number()]).optional(),
+  builtinTimeout: z.union([z.string(), z.number()]).optional(),
+  builtinEnableCatchAll: z.union([z.string(), z.boolean()]).optional(),
+  builtinMinInterval: z.union([z.string(), z.number()]).optional(),
+  builtinPort: z.union([z.string(), z.number()]).optional(),
+  builtinMaxPerDomain: z.union([z.string(), z.number()]).optional(),
+}).refine(data => Object.values(data).some(v => v !== undefined), {
+  message: 'At least one configuration field must be provided',
+});
 
 // GET /api/verification/stats
 // Returns aggregate verification statistics across all leads
@@ -52,18 +79,15 @@ router.get('/batches/:id', async (req, res) => {
 // Body: { segmentId: string, engine?: 'verify550' | 'builtin' }
 router.post('/start', requireSuperadmin, async (req, res) => {
   try {
-    const { segmentId, engine = 'verify550' } = req.body;
-    if (!segmentId || typeof segmentId !== 'string') {
-      return res.status(400).json({ error: 'segmentId (string) is required' });
+    const parsed = StartBatchSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues.map(i => i.message).join('; ') });
     }
-    if (engine !== 'verify550' && engine !== 'builtin') {
-      return res.status(400).json({ error: "engine must be 'verify550' or 'builtin'" });
-    }
+    const { segmentId, engine } = parsed.data;
 
     const batchId = await verifyService.startBatch(segmentId, engine);
     res.json({ batchId, message: 'Verification batch started', engine });
   } catch (e: any) {
-    // Config errors return 422, everything else 500
     const status = e.message?.includes('not configured') ? 422 : 500;
     res.status(status).json({ error: e.message });
   }
@@ -96,21 +120,12 @@ router.post('/test', requireSuperadmin, async (_req, res) => {
 // Body: { endpoint?, apiKey?, batchSize?, concurrency?, builtinHeloDomain?, builtinFromEmail?, builtinConcurrency?, builtinTimeout?, builtinEnableCatchAll?, builtinMinInterval?, builtinPort?, builtinMaxPerDomain? }
 router.post('/config', requireSuperadmin, async (req, res) => {
   try {
-    const { 
-      // Verify550
-      endpoint, apiKey, batchSize, concurrency,
-      // Builtin Engine
-      builtinHeloDomain, builtinFromEmail, builtinConcurrency,
-      builtinTimeout, builtinEnableCatchAll, builtinMinInterval,
-      builtinPort, builtinMaxPerDomain
-    } = req.body;
+    const parsed = SaveConfigSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues.map(i => i.message).join('; ') });
+    }
 
-    const updated = await verifyService.saveConfig({ 
-      endpoint, apiKey, batchSize, concurrency,
-      builtinHeloDomain, builtinFromEmail, builtinConcurrency,
-      builtinTimeout, builtinEnableCatchAll, builtinMinInterval,
-      builtinPort, builtinMaxPerDomain
-    });
+    const updated = await verifyService.saveConfig(parsed.data);
     res.json({ message: 'Configuration saved', updated });
   } catch (e: any) {
     if (e.message.includes('No configuration')) {
@@ -128,6 +143,32 @@ router.get('/config', async (_req, res) => {
     res.json(config);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/verification/batches/:id/export
+// Export batch verification results as CSV
+router.get('/batches/:id/export', requireSuperadmin, async (req, res) => {
+  try {
+    const batchId = String(req.params.id);
+    if (!/^[a-zA-Z0-9_-]+$/.test(batchId)) {
+      return res.status(400).json({ error: 'Invalid batch ID format' });
+    }
+
+    const results = await verifyService.exportBatchResults(batchId);
+
+    // Build CSV
+    const header = 'email,status,verified_at\n';
+    const rows = results.map(r =>
+      `"${r.email.replace(/"/g, '""')}","${r.status}","${r.verified_at}"`
+    ).join('\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="verification-${batchId.substring(0, 8)}.csv"`);
+    res.send(header + rows);
+  } catch (e: any) {
+    const status = e.message.includes('not found') ? 404 : e.message.includes('still running') ? 409 : 500;
+    res.status(status).json({ error: e.message });
   }
 });
 
