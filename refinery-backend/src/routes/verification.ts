@@ -8,7 +8,8 @@ const router = Router();
 router.use(requireAuth);
 
 // ═══════════════════════════════════════════════════════════════
-// Verify550 API Routes — Production
+// Verification API Routes — Production
+// Supports both Verify550 API and Built-In Native Engine
 // ═══════════════════════════════════════════════════════════════
 
 // GET /api/verification/stats
@@ -48,16 +49,19 @@ router.get('/batches/:id', async (req, res) => {
 
 // POST /api/verification/start
 // Start a new verification batch for a segment
-// Body: { segmentId: string }
+// Body: { segmentId: string, engine?: 'verify550' | 'builtin' }
 router.post('/start', requireSuperadmin, async (req, res) => {
   try {
-    const { segmentId } = req.body;
+    const { segmentId, engine = 'verify550' } = req.body;
     if (!segmentId || typeof segmentId !== 'string') {
       return res.status(400).json({ error: 'segmentId (string) is required' });
     }
+    if (engine !== 'verify550' && engine !== 'builtin') {
+      return res.status(400).json({ error: "engine must be 'verify550' or 'builtin'" });
+    }
 
-    const batchId = await verifyService.startBatch(segmentId);
-    res.json({ batchId, message: 'Verification batch started' });
+    const batchId = await verifyService.startBatch(segmentId, engine);
+    res.json({ batchId, message: 'Verification batch started', engine });
   } catch (e: any) {
     // Config errors return 422, everything else 500
     const status = e.message?.includes('not configured') ? 422 : 500;
@@ -88,12 +92,25 @@ router.post('/test', requireSuperadmin, async (_req, res) => {
 });
 
 // POST /api/verification/config
-// Save Verify550 configuration to system_config
-// Body: { endpoint?: string, apiKey?: string, batchSize?: number, concurrency?: number }
+// Save verification configuration (Verify550 + Built-in engine)
+// Body: { endpoint?, apiKey?, batchSize?, concurrency?, builtinHeloDomain?, builtinFromEmail?, builtinConcurrency?, builtinTimeout?, builtinEnableCatchAll?, builtinMinInterval?, builtinPort?, builtinMaxPerDomain? }
 router.post('/config', requireSuperadmin, async (req, res) => {
   try {
-    const { endpoint, apiKey, batchSize, concurrency } = req.body;
-    const updated = await verifyService.saveConfig({ endpoint, apiKey, batchSize, concurrency });
+    const { 
+      // Verify550
+      endpoint, apiKey, batchSize, concurrency,
+      // Builtin Engine
+      builtinHeloDomain, builtinFromEmail, builtinConcurrency,
+      builtinTimeout, builtinEnableCatchAll, builtinMinInterval,
+      builtinPort, builtinMaxPerDomain
+    } = req.body;
+
+    const updated = await verifyService.saveConfig({ 
+      endpoint, apiKey, batchSize, concurrency,
+      builtinHeloDomain, builtinFromEmail, builtinConcurrency,
+      builtinTimeout, builtinEnableCatchAll, builtinMinInterval,
+      builtinPort, builtinMaxPerDomain
+    });
     res.json({ message: 'Configuration saved', updated });
   } catch (e: any) {
     if (e.message.includes('No configuration')) {

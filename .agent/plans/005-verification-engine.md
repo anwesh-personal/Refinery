@@ -1,8 +1,8 @@
 # Plan 005 — In-Built Email Verification Engine
 
-**Priority**: LOW (deferred)  
+**Priority**: LOW (deferred to Plan 005 delivery)  
 **Estimated effort**: Multi-session (8–12 hours total)  
-**Status**: 🔲 Not started  
+**Status**: ✅ Done  
 **Prerequisites**: ClickHouse running, SMTP configured, multi-server support (Plan 001)
 
 ## Goal

@@ -1,14 +1,16 @@
 import { query, command, insertRows } from '../db/clickhouse.js';
 import { env } from '../config/env.js';
 import { genId, sleep } from '../utils/helpers.js';
+import { verifyBatch as verifyBatchBuiltin, DEFAULT_ENGINE_CONFIG, type EngineConfig } from './verificationEngine.js';
 
 // ═══════════════════════════════════════════════════════════════
-// Verify550 Integration — Production-Grade
+// Verification Service — Dual-Engine (Verify550 API + Built-In SMTP)
 //
 // - Parameterized queries (no SQL injection)
-// - Retry logic with exponential backoff
+// - Retry logic with exponential backoff (Verify550)
+// - Per-domain rate limiting with adaptive backoff (Built-In)
 // - Batch cancellation support
-// - Rate limiting per API contract
+// - Engine selection per-batch (verify550 | builtin)
 // - Proper error states and recovery
 // ═══════════════════════════════════════════════════════════════
 
@@ -50,7 +52,7 @@ async function getConfigFromDB(): Promise<Record<string, string>> {
   try {
     const rows = await query<{ config_key: string; config_value: string }>(
       `SELECT config_key, config_value FROM system_config
-       WHERE config_key IN ('verify550_endpoint', 'verify550_api_key', 'verify550_batch_size', 'verify550_concurrency')
+       WHERE config_key LIKE 'verify550_%' OR config_key LIKE 'builtin_%'
        FINAL`,
     );
     const map: Record<string, string> = {};
@@ -67,7 +69,7 @@ async function getConfigFromDB(): Promise<Record<string, string>> {
 export async function getConfig(): Promise<Record<string, string>> {
   const rows = await query<{ config_key: string; config_value: string; is_secret: number }>(
     `SELECT config_key, config_value, is_secret FROM system_config
-     WHERE config_key LIKE 'verify550_%'
+     WHERE config_key LIKE 'verify550_%' OR config_key LIKE 'builtin_%'
      FINAL`,
   );
   const config: Record<string, string> = {};
@@ -83,14 +85,30 @@ export async function getConfig(): Promise<Record<string, string>> {
 
 /** Public: Save config values to system_config (ReplacingMergeTree handles dedup). */
 export async function saveConfig(
-  updates: { endpoint?: string; apiKey?: string; batchSize?: number; concurrency?: number },
+  updates: { 
+    endpoint?: string; apiKey?: string; batchSize?: number; concurrency?: number;
+    builtinHeloDomain?: string; builtinFromEmail?: string; builtinConcurrency?: number;
+    builtinTimeout?: number; builtinEnableCatchAll?: boolean; builtinMinInterval?: number;
+    builtinPort?: number; builtinMaxPerDomain?: number;
+  },
 ): Promise<string[]> {
   const configs: { key: string; value: string; isSecret: number }[] = [];
 
+  // Verify550 Config
   if (updates.endpoint !== undefined) configs.push({ key: 'verify550_endpoint', value: String(updates.endpoint), isSecret: 0 });
   if (updates.apiKey !== undefined) configs.push({ key: 'verify550_api_key', value: String(updates.apiKey), isSecret: 1 });
   if (updates.batchSize !== undefined) configs.push({ key: 'verify550_batch_size', value: String(Number(updates.batchSize) || 5000), isSecret: 0 });
   if (updates.concurrency !== undefined) configs.push({ key: 'verify550_concurrency', value: String(Number(updates.concurrency) || 3), isSecret: 0 });
+
+  // Builtin Engine Config
+  if (updates.builtinHeloDomain !== undefined) configs.push({ key: 'builtin_helo_domain', value: String(updates.builtinHeloDomain), isSecret: 0 });
+  if (updates.builtinFromEmail !== undefined) configs.push({ key: 'builtin_from_email', value: String(updates.builtinFromEmail), isSecret: 0 });
+  if (updates.builtinConcurrency !== undefined) configs.push({ key: 'builtin_concurrency', value: String(Number(updates.builtinConcurrency) || 10), isSecret: 0 });
+  if (updates.builtinTimeout !== undefined) configs.push({ key: 'builtin_timeout', value: String(Number(updates.builtinTimeout) || 15000), isSecret: 0 });
+  if (updates.builtinEnableCatchAll !== undefined) configs.push({ key: 'builtin_enable_catchall', value: String(updates.builtinEnableCatchAll) === '1' || updates.builtinEnableCatchAll === true as any ? '1' : '0', isSecret: 0 });
+  if (updates.builtinMinInterval !== undefined) configs.push({ key: 'builtin_min_interval', value: String(Number(updates.builtinMinInterval) || 2000), isSecret: 0 });
+  if (updates.builtinPort !== undefined) configs.push({ key: 'builtin_port', value: String(Number(updates.builtinPort) || 25), isSecret: 0 });
+  if (updates.builtinMaxPerDomain !== undefined) configs.push({ key: 'builtin_max_per_domain', value: String(Number(updates.builtinMaxPerDomain) || 2), isSecret: 0 });
 
   if (configs.length === 0) {
     throw new Error('No configuration values provided');
@@ -106,11 +124,27 @@ export async function saveConfig(
   return configs.map(c => c.key);
 }
 
+// ─── Config Resolution (Built-In Engine) ───
+async function resolveBuiltinConfig(): Promise<EngineConfig> {
+  const dbConfig = await getConfigFromDB();
+  return {
+    heloDomain: dbConfig.builtin_helo_domain || DEFAULT_ENGINE_CONFIG.heloDomain,
+    fromEmail: dbConfig.builtin_from_email || DEFAULT_ENGINE_CONFIG.fromEmail,
+    concurrency: Number(dbConfig.builtin_concurrency) || DEFAULT_ENGINE_CONFIG.concurrency,
+    timeout: Number(dbConfig.builtin_timeout) || DEFAULT_ENGINE_CONFIG.timeout,
+    port: Number(dbConfig.builtin_port) || 25,
+    enableCatchAllDetection: dbConfig.builtin_enable_catchall === '1',
+    minIntervalMs: Number(dbConfig.builtin_min_interval) || DEFAULT_ENGINE_CONFIG.minIntervalMs,
+    maxConcurrentPerDomain: Number(dbConfig.builtin_max_per_domain) || DEFAULT_ENGINE_CONFIG.maxConcurrentPerDomain,
+  };
+}
+
 // ─── Start a Verification Batch ───
 
-export async function startBatch(segmentId: string): Promise<string> {
+export async function startBatch(segmentId: string, engine: 'verify550' | 'builtin' = 'verify550'): Promise<string> {
   // Validate config before starting
-  const config = await resolveVerify550Config();
+  const v550Config = engine === 'verify550' ? await resolveVerify550Config() : undefined;
+  const builtinConfig = engine === 'builtin' ? await resolveBuiltinConfig() : undefined;
 
   const batchId = genId();
 
@@ -137,6 +171,7 @@ export async function startBatch(segmentId: string): Promise<string> {
   await insertRows('verification_batches', [{
     id: batchId,
     segment_id: segmentId,
+    engine: engine,
     total_leads: totalLeads,
     status: 'pending',
   }]);
@@ -146,8 +181,15 @@ export async function startBatch(segmentId: string): Promise<string> {
   activeBatches.set(batchId, control);
 
   // Run verification pipeline in background
-  runVerificationPipeline(batchId, segmentId, config, control).catch(async (err) => {
-    console.error(`[Verify550] Batch ${batchId} failed:`, err.message);
+  runVerificationPipeline(
+    batchId, 
+    segmentId, 
+    engine, 
+    v550Config, 
+    builtinConfig, 
+    control
+  ).catch(async (err) => {
+    console.error(`[Engine - ${engine}] Batch ${batchId} failed:`, err.message);
     await updateBatchStatus(batchId, 'failed', err.message);
   }).finally(() => {
     activeBatches.delete(batchId);
@@ -173,10 +215,15 @@ export async function cancelBatch(batchId: string): Promise<void> {
 async function runVerificationPipeline(
   batchId: string,
   segmentId: string,
-  config: { endpoint: string; apiKey: string; batchSize: number; concurrency: number },
+  engine: 'verify550' | 'builtin',
+  v550Config: { endpoint: string; apiKey: string; batchSize: number; concurrency: number } | undefined,
+  builtinConfig: EngineConfig | undefined,
   control: { cancelled: boolean },
 ) {
   await updateBatchStatus(batchId, 'submitting');
+  
+  // Use V550 batch size, or a large default for builtin (it processes concurrently internally)
+  const batchSize = engine === 'verify550' ? v550Config!.batchSize : 5000;
 
   let offset = 0;
   let verifiedTotal = 0;
@@ -189,7 +236,7 @@ async function runVerificationPipeline(
       WHERE has(_segment_ids, '${segmentId}')
         AND (business_email IS NOT NULL OR personal_emails IS NOT NULL)
         AND _verification_status IS NULL
-      LIMIT ${config.batchSize} OFFSET ${offset}
+      LIMIT ${batchSize} OFFSET ${offset}
     `);
 
     if (rows.length === 0) break;
@@ -207,23 +254,33 @@ async function runVerificationPipeline(
     }
 
     if (emailBatch.length === 0) {
-      offset += config.batchSize;
+      offset += batchSize;
       continue;
     }
 
-    // Call Verify550 API with retry logic
+    // Execute Verification
     let results: VerificationResult[];
-    try {
-      results = await callVerify550WithRetry(
-        config.endpoint,
-        config.apiKey,
-        emailBatch.map((e) => e.email),
-        3, // max retries
-      );
-    } catch (err: any) {
-      // Log but don't kill the batch — mark these as unknown and continue
-      console.error(`[Verify550] Batch ${batchId}: API call failed after retries: ${err.message}`);
-      results = emailBatch.map((e) => ({ email: e.email, status: 'unknown' as const, reason: 'api_error' }));
+    
+    if (engine === 'verify550') {
+      try {
+        results = await callVerify550WithRetry(
+          v550Config!.endpoint,
+          v550Config!.apiKey,
+          emailBatch.map((e) => e.email),
+          3, // max retries
+        );
+      } catch (err: any) {
+        console.error(`[Verify550] Batch ${batchId}: API call failed after retries: ${err.message}`);
+        results = emailBatch.map((e) => ({ email: e.email, status: 'unknown' as const, reason: 'api_error' }));
+      }
+    } else {
+      // Built-in Native Engine
+      try {
+        results = await verifyBatchBuiltin(emailBatch.map(e => e.email), builtinConfig!);
+      } catch (err: any) {
+        console.error(`[BuiltinEngine] Batch ${batchId}: Processing failed: ${err.message}`);
+        results = emailBatch.map((e) => ({ email: e.email, status: 'unknown' as const, reason: 'engine_failure' }));
+      }
     }
 
     // Process results — update each lead
@@ -254,15 +311,15 @@ async function runVerificationPipeline(
       WHERE id = '${batchId}'
     `);
 
-    offset += config.batchSize;
-    console.log(`[Verify550] Batch ${batchId}: ${offset} emails processed (V:${verifiedTotal} B:${bouncedTotal} U:${unknownTotal})`);
+    offset += batchSize;
+    console.log(`[Engine - ${engine}] Batch ${batchId}: ${offset} emails processed (V:${verifiedTotal} B:${bouncedTotal} U:${unknownTotal})`);
 
-    // Rate limit: pause between batches to respect API limits
-    await sleep(1000);
+    // Rate limit: pause between batches to respect overall system load
+    await sleep(engine === 'verify550' ? 1000 : 500);
   }
 
   if (control.cancelled) {
-    console.log(`[Verify550] Batch ${batchId}: Cancelled by user`);
+    console.log(`[Engine - ${engine}] Batch ${batchId}: Cancelled by user`);
     return;
   }
 
@@ -275,7 +332,7 @@ async function runVerificationPipeline(
       unknown_count = ${unknownTotal}
     WHERE id = '${batchId}'
   `);
-  console.log(`[Verify550] Batch ${batchId}: Complete. V:${verifiedTotal} B:${bouncedTotal} U:${unknownTotal}`);
+  console.log(`[Engine - ${engine}] Batch ${batchId}: Complete. V:${verifiedTotal} B:${bouncedTotal} U:${unknownTotal}`);
 }
 
 // ─── API Call with Retry ───

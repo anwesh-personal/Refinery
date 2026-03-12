@@ -113,6 +113,7 @@ const SCHEMAS = [
   `CREATE TABLE IF NOT EXISTS verification_batches (
     id                String,
     segment_id        String,
+    engine            String DEFAULT 'verify550',
     total_leads       UInt64 DEFAULT 0,
     verified_count    UInt64 DEFAULT 0,
     bounced_count     UInt64 DEFAULT 0,
