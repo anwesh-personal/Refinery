@@ -38,6 +38,6 @@ npm-debug.log*
 
 # Gemini/AI context (local only)
 .gemini/
-.agent/
+# .agent/ is INTENTIONALLY tracked — carries project knowledge for any AI/IDE
 .agents/
 *.png
