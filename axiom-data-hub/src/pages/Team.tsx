@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth, ROLE_LABELS, ROLE_COLORS, ALL_PERMISSIONS, resolvePermissions } from '../auth/AuthContext';
 import type { UserRole, PermissionKey, ProfileRow } from '../auth/AuthContext';
 import { PageHeader, SectionHeader, Button, Input, Badge } from '../components/UI';
@@ -80,6 +80,19 @@ export default function TeamPage() {
   const [teamFormDesc, setTeamFormDesc] = useState('');
   const [savingTeam, setSavingTeam] = useState(false);
   const [addMemberDropdownOpen, setAddMemberDropdownOpen] = useState(false);
+  const addMemberDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close add-member dropdown on outside click
+  useEffect(() => {
+    if (!addMemberDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (addMemberDropdownRef.current && !addMemberDropdownRef.current.contains(e.target as Node)) {
+        setAddMemberDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [addMemberDropdownOpen]);
 
   useEffect(() => {
     fetchTeam();
@@ -253,12 +266,6 @@ export default function TeamPage() {
     if (error) {
       setInviteMessage({ text: `Error: ${error.message}`, type: 'error' });
     } else {
-      await supabase.from('audit_log').insert({
-        actor_id: user.id,
-        action: 'invite_sent',
-        target_id: null,
-        details: { email: inviteEmail.trim(), role: inviteRole },
-      });
       setInviteMessage({ text: 'Invite recorded successfully! They will receive these roles upon signup.', type: 'success' });
       setInviteEmail('');
       setInviteRole('member');
@@ -771,7 +778,7 @@ export default function TeamPage() {
 
                     {/* Add Member */}
                     <div style={{ marginBottom: 20 }}>
-                      <div style={{ position: 'relative' }}>
+                      <div ref={addMemberDropdownRef} style={{ position: 'relative' }}>
                         <Button onClick={() => setAddMemberDropdownOpen(!addMemberDropdownOpen)} variant="secondary" icon={<Plus size={14} />}>Add Member</Button>
                         {addMemberDropdownOpen && (
                           <div style={{

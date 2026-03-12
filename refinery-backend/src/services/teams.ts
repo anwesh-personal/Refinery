@@ -78,6 +78,13 @@ export async function createTeam(
   description: string | null,
   createdBy: string,
 ): Promise<Team> {
+  // Guard: duplicate name
+  const { data: existing } = await supabaseAdmin
+    .from('teams').select('id').ilike('name', name.trim()).limit(1);
+  if (existing && existing.length > 0) {
+    throw new Error('A team with this name already exists.');
+  }
+
   const { data, error } = await supabaseAdmin
     .from('teams')
     .insert({ name, description, created_by: createdBy })
@@ -93,6 +100,13 @@ export async function updateTeam(
   name: string,
   description: string | null,
 ): Promise<Team> {
+  // Guard: duplicate name (exclude self)
+  const { data: existing } = await supabaseAdmin
+    .from('teams').select('id').ilike('name', name.trim()).neq('id', id).limit(1);
+  if (existing && existing.length > 0) {
+    throw new Error('A team with this name already exists.');
+  }
+
   const { data, error } = await supabaseAdmin
     .from('teams')
     .update({ name, description, updated_at: new Date().toISOString() })
@@ -177,19 +191,22 @@ export async function removeMember(teamId: string, profileId: string): Promise<v
 // ─── Convenience ──────────────────────────────────────────────────────────────
 
 export async function listTeamsWithMemberCount(): Promise<(Team & { member_count: number })[]> {
-  const teams = await listTeams();
-  
-  // Batch-fetch all membership counts in one query
-  const { data: counts, error } = await supabaseAdmin
-    .from('team_memberships')
-    .select('team_id');
+  // Single query: fetch teams with an embedded count of related memberships.
+  // Supabase PostgREST supports `table(count)` syntax for aggregated joins.
+  const { data, error } = await supabaseAdmin
+    .from('teams')
+    .select(`${TEAM_COLUMNS}, team_memberships(count)`)
+    .order('name');
 
-  if (error) throw new Error(`Failed to count members: ${error.message}`);
+  if (error) throw new Error(`Failed to list teams: ${error.message}`);
 
-  const countMap = new Map<string, number>();
-  for (const row of counts || []) {
-    countMap.set(row.team_id, (countMap.get(row.team_id) || 0) + 1);
-  }
-
-  return teams.map(t => ({ ...t, member_count: countMap.get(t.id) || 0 }));
+  return (data || []).map((t: any) => ({
+    id: t.id,
+    name: t.name,
+    description: t.description,
+    created_by: t.created_by,
+    created_at: t.created_at,
+    updated_at: t.updated_at,
+    member_count: t.team_memberships?.[0]?.count ?? 0,
+  }));
 }

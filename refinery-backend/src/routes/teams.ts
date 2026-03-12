@@ -49,6 +49,9 @@ router.post('/', requireAuth, requireSuperadmin, async (req, res) => {
     await logAudit(actorId, 'team_created', team.id, { name: team.name });
     res.status(201).json({ team });
   } catch (err: any) {
+    if (err.message.includes('already exists')) {
+      return res.status(409).json({ error: err.message });
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -68,6 +71,9 @@ router.put('/:id', requireAuth, requireSuperadmin, async (req, res) => {
     await logAudit(actorId, 'team_updated', team.id, { name: team.name });
     res.json({ team });
   } catch (err: any) {
+    if (err.message.includes('already exists')) {
+      return res.status(409).json({ error: err.message });
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -88,10 +94,22 @@ router.delete('/:id', requireAuth, requireSuperadmin, async (req, res) => {
 
 // ── Membership Management ─────────────────────────────────────────────────────
 
+/** Verify team exists or return 404 */
+async function assertTeamExists(teamId: string, res: any): Promise<boolean> {
+  try {
+    await teamService.getTeam(teamId);
+    return true;
+  } catch {
+    res.status(404).json({ error: 'Team not found' });
+    return false;
+  }
+}
+
 /** GET /api/teams/:id/members — get members with profile + role data */
 router.get('/:id/members', requireAuth, async (req, res) => {
   try {
     const teamId = String(req.params.id);
+    if (!(await assertTeamExists(teamId, res))) return;
     const members = await teamService.getTeamMembers(teamId);
     res.json({ members });
   } catch (err: any) {
@@ -103,6 +121,7 @@ router.get('/:id/members', requireAuth, async (req, res) => {
 router.post('/:id/members', requireAuth, requireSuperadmin, async (req, res) => {
   try {
     const teamId = String(req.params.id);
+    if (!(await assertTeamExists(teamId, res))) return;
     const actorId = (req as any).userId as string;
     const { profile_id, role_id } = req.body;
 
@@ -125,6 +144,7 @@ router.post('/:id/members', requireAuth, requireSuperadmin, async (req, res) => 
 router.put('/:id/members/:profileId', requireAuth, requireSuperadmin, async (req, res) => {
   try {
     const teamId = String(req.params.id);
+    if (!(await assertTeamExists(teamId, res))) return;
     const profileId = String(req.params.profileId);
     const actorId = (req as any).userId as string;
     const { role_id } = req.body;
@@ -141,6 +161,7 @@ router.put('/:id/members/:profileId', requireAuth, requireSuperadmin, async (req
 router.delete('/:id/members/:profileId', requireAuth, requireSuperadmin, async (req, res) => {
   try {
     const teamId = String(req.params.id);
+    if (!(await assertTeamExists(teamId, res))) return;
     const profileId = String(req.params.profileId);
     const actorId = (req as any).userId as string;
 
