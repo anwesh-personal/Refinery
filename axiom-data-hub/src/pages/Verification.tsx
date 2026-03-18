@@ -471,26 +471,24 @@ export default function VerificationPage() {
           </p>
           
           <div style={{ flex: 1 }}>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>API Endpoint</label>
-              <Input value={config.endpoint || 'https://app.verify550.com/api'} onChange={e => setConfig({ ...config, endpoint: e })} placeholder="https://app.verify550.com/api" />
-              <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>Pre-filled with the default Verify550 endpoint. Only change if you have a custom proxy.</span>
+            <div style={{ padding: 12, borderRadius: 8, background: 'var(--bg-hover)', marginBottom: 16, fontSize: 12, color: 'var(--text-secondary)' }}>
+              <strong style={{ color: 'var(--text-primary)' }}>Endpoint:</strong> https://app.verify550.com/api <span style={{ color: 'var(--text-tertiary)' }}>(configured server-side)</span>
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>API Secret Key</label>
-              <Input value={config.apiKey} onChange={e => setConfig({ ...config, apiKey: e })} placeholder="Paste your Verify550 API secret here" type="password" />
-              <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>Find this in your Verify550 dashboard → Settings → API. It starts with a long alphanumeric string.</span>
+              <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>API Secret</label>
+              <Input value={config.apiKey} onChange={e => setConfig({ ...config, apiKey: e })} placeholder="e.g. a1b2c3d4e5f6g7h8i9j0..." type="password" />
+              <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>Your Verify550 API secret. Found at <strong>app.verify550.com → Settings → API</strong>. Passed as the <code style={{ background: 'var(--bg-hover)', padding: '1px 4px', borderRadius: 3 }}>secret</code> query parameter.</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>Batch Size</label>
                 <Input value={config.batchSize || '5000'} onChange={e => setConfig({ ...config, batchSize: e })} placeholder="5000" type="number" />
-                <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>Emails per V550 API call. Default 5000 is optimal.</span>
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>Emails per API call. Default: 5000.</span>
               </div>
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>API Concurrency</label>
+                <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>Concurrency</label>
                 <Input value={config.concurrency || '3'} onChange={e => setConfig({ ...config, concurrency: e })} placeholder="3" type="number" />
-                <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>Parallel API calls. Keep at 3 to avoid rate limits.</span>
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>Parallel API calls. Keep at 3.</span>
               </div>
             </div>
           </div>
