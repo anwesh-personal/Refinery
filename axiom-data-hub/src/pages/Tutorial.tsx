@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { PageHeader, Button } from '../components/UI';
+import { Button } from '../components/UI';
 import { useNavigate } from 'react-router-dom';
 import { 
   CloudDownload, Database, Filter, ShieldCheck, 
-  Send, Server, Zap, ChevronRight, PlayCircle, 
-  CheckCircle2, AlertCircle, Clock, MousePointer2 
+  Send, Zap, ChevronRight, 
+  CheckCircle2, MousePointer2 
 } from 'lucide-react';
 
 // Animation and Hover effects are handled via inline CSS and classes
@@ -184,7 +184,7 @@ export default function TutorialPage() {
           zIndex: 0
         }} className="tutorial-line" />
 
-        {tutorialData.map((step, idx) => (
+        {tutorialData.map((step) => (
           <div 
             key={step.id} 
             className="animate-on-scroll step-card" 
