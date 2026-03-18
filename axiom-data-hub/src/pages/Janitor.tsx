@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { SectionHeader, Button } from '../components/UI';
 import { Trash2, AlertTriangle, Play, Info } from 'lucide-react';
+import { apiCall } from '../lib/api';
 
 interface CleanupRule {
   type: 'date_range' | 'missing_email' | 'keyword' | 'source' | 'duplicates' | 'empty_columns';
@@ -17,6 +18,7 @@ interface CleanupRule {
 
 interface CleanupPreview {
   affectedRows: number;
+  sampleRows: Record<string, unknown>[];
 }
 
 export default function JanitorPage() {
@@ -31,29 +33,9 @@ export default function JanitorPage() {
   const [executeResult, setExecuteResult] = useState<{ deletedRows: number } | null>(null);
   const [error, setError] = useState('');
 
-  // Use absolute URL since no context wrapper guarantees the helper here
-  // Adjust this API helper to match others in your stack if needed
-  const apiCall = async (path: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('nexus_token');
-    const res = await fetch(`http://107.172.56.66:3001${path}`, {
-      ...options,
-      headers: { 
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options.headers 
-      }
-    });
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      throw new Error(e.error || `API Error: ${res.status}`);
-    }
-    return res.json();
-  };
-
   useEffect(() => {
-    // Load dropdown options
-    apiCall('/api/janitor/columns').then(setColumns).catch(console.error);
-    apiCall('/api/janitor/jobs').then(setJobs).catch(console.error);
+    apiCall<string[]>('/api/janitor/columns').then(setColumns).catch(console.error);
+    apiCall<{ id: string; file_name: string; started_at: string }[]>('/api/janitor/jobs').then(setJobs).catch(console.error);
   }, []);
 
   const handlePreview = async () => {
@@ -62,10 +44,7 @@ export default function JanitorPage() {
     setPreviewResult(null);
     setExecuteResult(null);
     try {
-      const res = await apiCall('/api/janitor/preview', {
-        method: 'POST',
-        body: JSON.stringify(rule)
-      });
+      const res = await apiCall<CleanupPreview>('/api/janitor/preview', { method: 'POST', body: rule });
       setPreviewResult(res);
     } catch (e: any) {
       setError(e.message);
@@ -80,17 +59,25 @@ export default function JanitorPage() {
     setExecuting(true);
     setError('');
     try {
-      const res = await apiCall('/api/janitor/execute', {
-        method: 'POST',
-        body: JSON.stringify(rule)
-      });
+      const res = await apiCall<{ deletedRows: number }>('/api/janitor/execute', { method: 'POST', body: rule });
       setExecuteResult(res);
-      setPreviewResult(null); // Clear preview after execution
+      setPreviewResult(null);
     } catch (e: any) {
       setError(e.message);
     } finally {
       setExecuting(false);
     }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '10px 12px', borderRadius: 8,
+    background: 'var(--bg-app)', border: '1px solid var(--border)',
+    color: 'var(--text-primary)', fontSize: 14
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: 'block', fontSize: 13, fontWeight: 600,
+    color: 'var(--text-secondary)', marginBottom: 8
   };
 
   return (
@@ -112,14 +99,11 @@ export default function JanitorPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) 2fr', gap: 24, marginTop: 16 }}>
           {/* Rule Type Selector */}
           <div>
-            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Rule Type</label>
+            <label style={labelStyle}>Rule Type</label>
             <select 
               value={rule.type}
-              onChange={(e) => setRule({ type: e.target.value as any })}
-              style={{
-                width: '100%', padding: '10px', borderRadius: 8,
-                background: 'var(--bg-app)', border: '1px solid var(--border)', color: 'var(--text-primary)'
-              }}
+              onChange={(e) => setRule({ type: e.target.value as CleanupRule['type'] })}
+              style={inputStyle}
             >
               <option value="missing_email">Missing Email Address</option>
               <option value="duplicates">Deduplicate Rows</option>
@@ -145,12 +129,12 @@ export default function JanitorPage() {
             
             {rule.type === 'missing_email' && (
               <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Columns to check (comma separated)</label>
+                <label style={labelStyle}>Columns to check (comma separated)</label>
                 <input 
                   type="text" 
                   value={(rule.email_columns || ['email', 'email_address', 'work_email', 'personal_email']).join(', ')}
-                  onChange={e => setRule({ ...rule, email_columns: e.target.value.split(',').map(s => s.trim()) })}
-                  style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'var(--bg-app)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                  onChange={e => setRule({ ...rule, email_columns: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                  style={inputStyle}
                 />
                 <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8 }}>Row is deleted ONLY if ALL of these columns are empty.</p>
               </div>
@@ -158,14 +142,17 @@ export default function JanitorPage() {
 
             {rule.type === 'duplicates' && (
               <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Column to Deduplicate By</label>
+                <label style={labelStyle}>Column to Deduplicate By</label>
                 <select 
                   value={rule.dedup_column || 'email'}
                   onChange={e => setRule({ ...rule, dedup_column: e.target.value })}
-                  style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'var(--bg-app)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                  style={inputStyle}
                 >
-                  <option value="email">email</option>
-                  {columns.map(c => <option key={c} value={c}>{c}</option>)}
+                  {columns.length > 0 ? (
+                    columns.map(c => <option key={c} value={c}>{c}</option>)
+                  ) : (
+                    <option value="email">email</option>
+                  )}
                 </select>
               </div>
             )}
@@ -173,21 +160,21 @@ export default function JanitorPage() {
             {rule.type === 'date_range' && (
               <div style={{ display: 'flex', gap: 16 }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>From</label>
+                  <label style={labelStyle}>From</label>
                   <input 
                     type="datetime-local" 
                     value={rule.date_from || ''}
                     onChange={e => setRule({ ...rule, date_from: e.target.value })}
-                    style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'var(--bg-app)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    style={inputStyle}
                   />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>To</label>
+                  <label style={labelStyle}>To</label>
                   <input 
                     type="datetime-local" 
                     value={rule.date_to || ''}
                     onChange={e => setRule({ ...rule, date_to: e.target.value })}
-                    style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'var(--bg-app)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    style={inputStyle}
                   />
                 </div>
               </div>
@@ -196,25 +183,29 @@ export default function JanitorPage() {
             {rule.type === 'source' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Job ID (Exact Match)</label>
+                  <label style={labelStyle}>Job ID (Exact Match)</label>
                   <select 
                     value={rule.job_id || ''}
                     onChange={e => setRule({ ...rule, job_id: e.target.value, source_key: undefined })}
-                    style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'var(--bg-app)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    style={inputStyle}
                   >
                     <option value="">Select a recent job...</option>
-                    {jobs.map(j => <option key={j.id} value={j.id}>{j.file_name} ({new Date(j.started_at).toLocaleDateString()})</option>)}
+                    {jobs.map(j => (
+                      <option key={j.id} value={j.id}>
+                        {j.file_name} ({new Date(j.started_at).toLocaleDateString()})
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 12 }}>OR</div>
                 <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Source Key (Contains)</label>
+                  <label style={labelStyle}>Source Key (Contains)</label>
                   <input 
                     type="text" 
                     placeholder="e.g. leads_2023.csv"
                     value={rule.source_key || ''}
                     onChange={e => setRule({ ...rule, source_key: e.target.value, job_id: undefined })}
-                    style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'var(--bg-app)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    style={inputStyle}
                   />
                 </div>
               </div>
@@ -223,23 +214,23 @@ export default function JanitorPage() {
             {rule.type === 'keyword' && (
               <div style={{ display: 'flex', gap: 16 }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Column</label>
+                  <label style={labelStyle}>Column</label>
                   <select 
                     value={rule.column || ''}
                     onChange={e => setRule({ ...rule, column: e.target.value })}
-                    style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'var(--bg-app)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    style={inputStyle}
                   >
                     <option value="">Select column...</option>
                     {columns.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Keyword</label>
+                  <label style={labelStyle}>Keyword</label>
                   <input 
                     type="text" 
                     value={rule.keyword || ''}
                     onChange={e => setRule({ ...rule, keyword: e.target.value })}
-                    style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'var(--bg-app)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    style={inputStyle}
                   />
                 </div>
               </div>
@@ -247,12 +238,12 @@ export default function JanitorPage() {
 
             {rule.type === 'empty_columns' && (
               <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Columns that must be empty (comma separated)</label>
+                <label style={labelStyle}>Columns that must ALL be empty (comma separated)</label>
                 <input 
                   type="text" 
                   value={(rule.columns || []).join(', ')}
-                  onChange={e => setRule({ ...rule, columns: e.target.value.split(',').map(s => s.trim()) })}
-                  style={{ width: '100%', padding: '10px', borderRadius: 8, background: 'var(--bg-app)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                  onChange={e => setRule({ ...rule, columns: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+                  style={inputStyle}
                 />
               </div>
             )}
@@ -281,7 +272,6 @@ export default function JanitorPage() {
             <div>{error}</div>
           </div>
         )}
-
       </div>
 
       {previewResult && (
@@ -295,6 +285,37 @@ export default function JanitorPage() {
           }}>
             {previewResult.affectedRows.toLocaleString()} rows will be deleted.
           </div>
+
+          {/* Sample rows */}
+          {previewResult.sampleRows?.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12 }}>Sample affected rows (up to 10)</h3>
+              <div style={{ overflow: 'auto', maxHeight: 300, borderRadius: 8, border: '1px solid var(--border)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      {Object.keys(previewResult.sampleRows[0]).slice(0, 8).map(k => (
+                        <th key={k} style={{ padding: '8px 12px', textAlign: 'left', background: 'var(--bg-hover)', color: 'var(--text-secondary)', fontWeight: 600, borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>
+                          {k}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewResult.sampleRows.map((row, i) => (
+                      <tr key={i}>
+                        {Object.values(row).slice(0, 8).map((v, j) => (
+                          <td key={j} style={{ padding: '6px 12px', borderBottom: '1px solid var(--border)', color: 'var(--text-primary)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {v == null ? <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>null</span> : String(v)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
           
           <p style={{ color: 'var(--red)', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
             <AlertTriangle size={16} /> If you click EXECUTE, these rows will be permanently destroyed.
@@ -310,7 +331,6 @@ export default function JanitorPage() {
           </p>
         </div>
       )}
-
     </div>
   );
 }
