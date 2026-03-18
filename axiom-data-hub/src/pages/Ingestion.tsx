@@ -54,6 +54,7 @@ interface IngestionRule {
   file_types: string[];
   min_date: string | null;
   max_file_size_mb: number | null;
+  min_file_size_mb: number | null;
   schedule: string;
   enabled: number;
   skip_duplicates: number;
@@ -69,12 +70,19 @@ const SCHEDULE_PRESETS = [
   { label: 'Every 30 Minutes', value: '*/30 * * * *' },
   { label: 'Every Hour', value: '0 * * * *' },
   { label: 'Every 2 Hours', value: '0 */2 * * *' },
+  { label: 'Every 4 Hours', value: '0 */4 * * *' },
   { label: 'Every 6 Hours', value: '0 */6 * * *' },
   { label: 'Every 12 Hours', value: '0 */12 * * *' },
   { label: 'Daily (Midnight)', value: '0 0 * * *' },
   { label: 'Daily (6 AM)', value: '0 6 * * *' },
+  { label: 'Daily (Noon)', value: '0 12 * * *' },
   { label: 'Weekly (Sunday Midnight)', value: '0 0 * * 0' },
   { label: 'Weekly (Monday 6 AM)', value: '0 6 * * 1' },
+  { label: 'Bi-Weekly (1st & 15th)', value: '0 0 1,15 * *' },
+  { label: 'Monthly (1st at Midnight)', value: '0 0 1 * *' },
+  { label: 'Monthly (1st at 6 AM)', value: '0 6 1 * *' },
+  { label: 'Monthly (Last Day)', value: '0 0 28 * *' },
+  { label: 'Quarterly (Jan/Apr/Jul/Oct)', value: '0 0 1 1,4,7,10 *' },
 ];
 
 /* ---------------- Helpers ---------------- */
@@ -1194,7 +1202,7 @@ export default function IngestionPage() {
               </div>
 
               {/* Date + Size filters */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Only Files After (optional)</label>
                   <input type="date" value={editingRule.min_date ? editingRule.min_date.split('T')[0] : ''}
@@ -1202,6 +1210,11 @@ export default function IngestionPage() {
                     width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)',
                     background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13,
                   }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Min File Size (MB)</label>
+                  <Input placeholder="e.g. 1" value={(editingRule as any).min_file_size_mb?.toString() || ''}
+                    onChange={(v: string) => setEditingRule({...editingRule, min_file_size_mb: v ? Number(v) : null} as any)} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Max File Size (MB)</label>
