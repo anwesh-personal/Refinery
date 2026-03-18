@@ -1,28 +1,19 @@
-import { Database, Table2, Rows3, HardDrive, Play, Copy, Download, RefreshCw, Loader2, AlertCircle, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
-import { PageHeader, StatCard, SectionHeader, Button } from '../components/UI';
+import {
+  Database, Table2, Rows3, HardDrive, Play, Copy, Download, RefreshCw,
+  Loader2, AlertCircle, CheckCircle2, ChevronDown, ChevronUp,
+  Search, Filter, Columns, ChevronLeft, ChevronRight, Check
+} from 'lucide-react';
+import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
 import { useState, useEffect, useCallback } from 'react';
 import { ServerSelector } from '../components/ServerSelector';
 import { apiCall } from '../lib/api';
 
-interface DbStats {
-  totalRows: string;
-  totalBytes: string;
-  tableCount: string;
-  queriesToday: string;
-}
+// --- Interfaces ---
+interface DbStats { totalRows: string; totalBytes: string; tableCount: string; queriesToday: string; }
+interface TableInfo { table: string; rows: string; bytes_on_disk: string; last_modified: string; }
+interface QueryResult { rows: Record<string, unknown>[]; elapsed: number; total?: number; page?: number; pageSize?: number; }
 
-interface TableInfo {
-  table: string;
-  rows: string;
-  bytes_on_disk: string;
-  last_modified: string;
-}
-
-interface QueryResult {
-  rows: Record<string, unknown>[];
-  elapsed: number;
-}
-
+// --- Helpers ---
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const k = 1024;
@@ -31,48 +22,130 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-function formatNumber(n: string | number): string {
-  return Number(n).toLocaleString();
-}
+function formatNumber(n: string | number): string { return Number(n).toLocaleString(); }
 
+// --- Main Component ---
 export default function DatabasePage() {
-  const [query, setQuery] = useState('SELECT * FROM universal_person LIMIT 100');
+  // Tabs: 'browse' or 'sql'
+  const [activeTab, setActiveTab] = useState<'browse' | 'sql'>('browse');
+
+  // Stats
   const [stats, setStats] = useState<DbStats | null>(null);
   const [tables, setTables] = useState<TableInfo[]>([]);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  // Common Result State
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [showTables, setShowTables] = useState(false);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
+  // --- SQL Editor State ---
+  const [query, setQuery] = useState('SELECT * FROM universal_person LIMIT 100');
+  const [showTables, setShowTables] = useState(false);
+
+  // --- Browse (Data Explorer) State ---
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [showColPicker, setShowColPicker] = useState(false);
+  
+  // Available filters populated from backend limit 200
+  const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({});
+  
+  // Default visible columns
+  const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({
+    first_name: true, last_name: true, business_email: true, personal_emails: true,
+    company_name: true, job_title_normalized: true, personal_state: true, primary_industry: true
+  });
+
+  const availableFilters = ['personal_state', 'primary_industry', 'seniority_level', 'department', 'company_state'];
+  
+  const selectableCols = [
+    'first_name', 'last_name', 'business_email', 'personal_emails', 'mobile_phone',
+    'linkedin_url', 'personal_city', 'personal_state', 'contact_country',
+    'job_title_normalized', 'seniority_level', 'department',
+    'company_name', 'company_domain', 'company_revenue', 'company_employee_count', 'primary_industry'
+  ];
+
+  // --- Data Fetching ---
   const fetchStats = useCallback(async () => {
     setStatsLoading(true);
     try {
       const [s, t] = await Promise.all([
-        apiCall<DbStats>('/api/database/stats'),
-        apiCall<TableInfo[]>('/api/database/tables'),
+        apiCall<DbStats>('/api/database/stats').catch(() => null),
+        apiCall<TableInfo[]>('/api/database/tables').catch(() => []),
       ]);
-      setStats(s);
-      setTables(t);
-    } catch (e: any) {
-      console.error('Stats fetch failed:', e.message);
-    } finally {
-      setStatsLoading(false);
-    }
+      if (s) setStats(s);
+      if (t) setTables(t);
+    } catch { /* ignore */ }
+    setStatsLoading(false);
   }, []);
 
-  useEffect(() => { fetchStats(); }, [fetchStats]);
+  const fetchFilterOptions = useCallback(async () => {
+    try {
+      const opts: Record<string, string[]> = {};
+      await Promise.all(availableFilters.map(async (f) => {
+        opts[f] = await apiCall<string[]>(`/api/database/filter-options/${f}`).catch(() => []);
+      }));
+      setFilterOptions(opts);
+    } catch { /* ignore */ }
+  }, []);
 
-  const executeQuery = async () => {
+  useEffect(() => { 
+    fetchStats();
+    fetchFilterOptions();
+  }, [fetchStats, fetchFilterOptions]);
+
+  // Load browse data when filters, search, page or sort changes
+  const runBrowse = useCallback(async () => {
+    if (activeTab !== 'browse') return;
+    setLoading(true); setError(null);
+    try {
+      const activeFilters = Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== ''));
+      const activeCols = Object.entries(visibleCols).filter(([_, v]) => v).map(([k]) => k);
+      
+      const res = await apiCall<QueryResult>('/api/database/browse', {
+        method: 'POST',
+        body: {
+          search,
+          filters: activeFilters,
+          page,
+          pageSize: 50,
+          sortBy: sortCol || 'last_name',
+          sortDir,
+          columns: activeCols.length > 0 ? activeCols : ['id']
+        }
+      });
+      setResult(res);
+    } catch (e: any) {
+      setError(`Browse error: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [search, filters, page, sortCol, sortDir, visibleCols, activeTab]);
+
+  // Debounced search hook for browse
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      runBrowse();
+    }, 400); // 400ms debounce
+    return () => clearTimeout(timer);
+  }, [search, runBrowse]); // runs when search changes after 400ms
+
+  // Run browse immediately when non-search deps change
+  useEffect(() => {
+    if (activeTab === 'browse' && !loading) {
+      runBrowse();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, page, sortCol, sortDir, visibleCols, activeTab]);
+
+  const executeSQL = async () => {
     if (!query.trim()) return;
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-    setResult(null);
-    setSortCol(null);
+    setLoading(true); setError(null); setSuccess(null); setResult(null); setSortCol(null);
     try {
       const res = await apiCall<QueryResult>('/api/database/query', {
         method: 'POST',
@@ -90,16 +163,11 @@ export default function DatabasePage() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault();
-      executeQuery();
+      executeSQL();
     }
   };
 
-  const copySQL = () => {
-    navigator.clipboard.writeText(query);
-    setSuccess('SQL copied to clipboard');
-    setTimeout(() => setSuccess(null), 2000);
-  };
-
+  // --- UI Helpers ---
   const downloadCSV = () => {
     if (!result?.rows.length) return;
     const cols = Object.keys(result.rows[0]);
@@ -115,17 +183,15 @@ export default function DatabasePage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `query_result_${Date.now()}.csv`;
+    a.download = `export_${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const insertTableQuery = (tableName: string) => {
-    setQuery(`SELECT * FROM ${tableName} LIMIT 100`);
-  };
-
   // Sorting
   const columns = result?.rows.length ? Object.keys(result.rows[0]) : [];
+  
+  // For SQL mode, we sort locally. For Browse mode, backend sorts, but we can do local sort for currently displayed page too
   const sortedRows = result?.rows ? [...result.rows].sort((a, b) => {
     if (!sortCol) return 0;
     const aVal = String(a[sortCol] ?? '');
@@ -144,171 +210,221 @@ export default function DatabasePage() {
     }
   };
 
+  const toggleCol = (col: string) => {
+    setVisibleCols(prev => ({ ...prev, [col]: !prev[col] }));
+  };
+
   return (
     <>
       <PageHeader
-        title="ClickHouse"
-        sub="Query, inspect, and manage your lead database directly."
+        title="Universal Data Explorer"
+        sub="Browse, filter, and inspect your lead database."
         action={<ServerSelector type="clickhouse" />}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20, marginBottom: 36 }}>
-        <StatCard
-          label="Total Rows"
-          value={statsLoading ? '...' : formatNumber(stats?.totalRows || '0')}
-          sub="Leads in database"
-          icon={<Rows3 size={18} />}
-          color="var(--blue)" colorMuted="var(--blue-muted)" delay={0.06}
-        />
-        <StatCard
-          label="Tables"
-          value={statsLoading ? '...' : formatNumber(stats?.tableCount || '0')}
-          sub="Active tables"
-          icon={<Table2 size={18} />}
-          color="var(--purple)" colorMuted="var(--purple-muted)" delay={0.12}
-        />
-        <StatCard
-          label="DB Size"
-          value={statsLoading ? '...' : formatBytes(Number(stats?.totalBytes || 0))}
-          sub="on SSD"
-          icon={<HardDrive size={18} />}
-          color="var(--cyan)" colorMuted="var(--cyan-muted)" delay={0.18}
-        />
-        <StatCard
-          label="Queries Today"
-          value={statsLoading ? '...' : formatNumber(stats?.queriesToday || '0')}
-          sub="Executed queries"
-          icon={<Database size={18} />}
-          color="var(--accent)" colorMuted="var(--accent-muted)" delay={0.24}
-        />
+        <StatCard label="Total Rows" value={statsLoading ? '...' : formatNumber(stats?.totalRows || '0')} sub="Leads in database" icon={<Rows3 size={18} />} color="var(--blue)" colorMuted="var(--blue-muted)" delay={0.06} />
+        <StatCard label="Tables" value={statsLoading ? '...' : formatNumber(stats?.tableCount || '0')} sub="Active tables" icon={<Table2 size={18} />} color="var(--purple)" colorMuted="var(--purple-muted)" delay={0.12} />
+        <StatCard label="DB Size" value={statsLoading ? '...' : formatBytes(Number(stats?.totalBytes || 0))} sub="on SSD" icon={<HardDrive size={18} />} color="var(--cyan)" colorMuted="var(--cyan-muted)" delay={0.18} />
+        <StatCard label="Queries Today" value={statsLoading ? '...' : formatNumber(stats?.queriesToday || '0')} sub="Executed queries" icon={<Database size={18} />} color="var(--accent)" colorMuted="var(--accent-muted)" delay={0.24} />
       </div>
 
-      {/* Tables Browser */}
-      {tables.length > 0 && (
-        <>
-          <div
-            className="animate-fadeIn stagger-3"
-            style={{
-              background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16,
-              marginBottom: 24, overflow: 'hidden',
-            }}
-          >
-            <div
-              onClick={() => setShowTables(!showTables)}
-              style={{
-                padding: '16px 24px', cursor: 'pointer', display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between', userSelect: 'none',
-              }}
-            >
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
-                📋 Tables ({tables.length})
-              </span>
-              {showTables ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+      {/* TABS */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
+        <Button 
+          variant={activeTab === 'browse' ? 'primary' : 'ghost'} 
+          icon={<Search size={14} />} 
+          onClick={() => { setActiveTab('browse'); setResult(null); setSortCol('last_name'); }}
+        >
+          Data Explorer
+        </Button>
+        <Button 
+          variant={activeTab === 'sql' ? 'primary' : 'ghost'} 
+          icon={<Database size={14} />} 
+          onClick={() => { setActiveTab('sql'); setResult(null); setSortCol(null); }}
+        >
+          Advanced SQL Editor
+        </Button>
+      </div>
+
+      {/* --- TAB: BROWSE --- */}
+      {activeTab === 'browse' && (
+        <div className="animate-fadeIn">
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 24 }}>
+            {/* Search & Toolbar */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, position: 'relative', minWidth: 250 }}>
+                <Search size={16} style={{ position: 'absolute', left: 14, top: 12, color: 'var(--text-tertiary)' }} />
+                <input
+                  type="text"
+                  placeholder="Search names, emails, companies..."
+                  value={search}
+                  onChange={e => { setSearch(e.target.value); setPage(1); }}
+                  style={{
+                    width: '100%', padding: '10px 16px 10px 38px', borderRadius: 12,
+                    fontSize: 13, fontWeight: 500, outline: 'none',
+                    background: 'var(--bg-input)', border: '1px solid var(--border)',
+                    color: 'var(--text-primary)', transition: 'border-color 0.2s',
+                  }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+                />
+              </div>
+              
+              <div style={{ position: 'relative' }}>
+                <Button variant="secondary" icon={<Columns size={14} />} onClick={() => setShowColPicker(!showColPicker)}>
+                  Columns
+                </Button>
+                {showColPicker && (
+                  <div style={{
+                    position: 'absolute', top: 44, right: 0, width: 220, zIndex: 100,
+                    background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
+                    boxShadow: 'var(--shadow-lg)', padding: 12, maxHeight: 300, overflowY: 'auto'
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 8, paddingLeft: 8 }}>Visible Columns</div>
+                    {selectableCols.map(col => (
+                      <label key={col} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', cursor: 'pointer', borderRadius: 6 }}
+                        onMouseOver={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <input type="checkbox" checked={!!visibleCols[col]} onChange={() => toggleCol(col)} />
+                        <span style={{ fontSize: 13, userSelect: 'none' }}>{col.replace(/_/g, ' ')}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              <Button variant="secondary" icon={<RefreshCw size={14} />} onClick={runBrowse}>Refresh</Button>
             </div>
-            {showTables && (
-              <div style={{ padding: '0 24px 16px' }}>
-                {tables.map(t => (
-                  <div
-                    key={t.table}
-                    onClick={() => insertTableQuery(t.table)}
+
+            {/* Filters */}
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {availableFilters.map(f => (
+                <div key={f} style={{ minWidth: 160, flex: 1 }}>
+                  <select
+                    value={filters[f] || ''}
+                    onChange={e => {
+                      setFilters(prev => ({ ...prev, [f]: e.target.value }));
+                      setPage(1);
+                    }}
                     style={{
-                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
-                      border: '1px solid var(--border)', marginBottom: 6,
-                      transition: 'all 0.15s',
-                    }}
-                    onMouseOver={e => {
-                      (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)';
-                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--accent)';
-                    }}
-                    onMouseOut={e => {
-                      (e.currentTarget as HTMLElement).style.background = '';
-                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)';
+                      width: '100%', padding: '9px 12px', borderRadius: 10,
+                      fontSize: 13, fontWeight: 500, outline: 'none', cursor: 'pointer',
+                      background: 'var(--bg-input)', border: '1px solid var(--border)',
+                      color: filters[f] ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                      appearance: 'none',
                     }}
                   >
-                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 600 }}>{t.table}</span>
-                    <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                      {formatNumber(t.rows)} rows · {formatBytes(Number(t.bytes_on_disk))}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+                    <option value="">{f.split('_').join(' ').toUpperCase()} (All)</option>
+                    {(filterOptions[f] || []).map(opt => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+              {(Object.keys(filters).some(k => filters[k] !== '') || search) && (
+                <Button variant="ghost" onClick={() => { setFilters({}); setSearch(''); setPage(1); }}>
+                  Clear Filters
+                </Button>
+              )}
+            </div>
           </div>
-        </>
+        </div>
       )}
 
-      <SectionHeader title="SQL Query Editor" />
-      <div
-        className="animate-fadeIn stagger-4"
-        style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 28, marginBottom: 36 }}
-      >
-        <textarea
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          rows={6}
-          placeholder="SELECT * FROM universal_person WHERE personal_state = 'CA' LIMIT 100"
-          style={{
-            width: '100%', padding: '14px 18px', borderRadius: 12,
-            fontSize: 13, fontFamily: "'JetBrains Mono', 'Fira Code', monospace", fontWeight: 500,
-            outline: 'none', resize: 'vertical',
-            background: 'var(--bg-input)', border: '1px solid var(--border)',
-            color: 'var(--text-primary)', transition: 'border-color 0.2s',
-            marginBottom: 16,
-          }}
-          onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
-          onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
-        />
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Button icon={loading ? <Loader2 size={14} className="spin" /> : <Play size={14} />} onClick={executeQuery} disabled={loading}>
-            {loading ? 'Running...' : 'Execute (⌘+Enter)'}
-          </Button>
-          <Button variant="ghost" icon={<Copy size={14} />} onClick={copySQL}>Copy SQL</Button>
-          {result?.rows.length ? (
-            <Button variant="ghost" icon={<Download size={14} />} onClick={downloadCSV}>
-              Download CSV ({result.rows.length} rows)
-            </Button>
-          ) : null}
-          <Button variant="ghost" icon={<RefreshCw size={14} />} onClick={fetchStats}>Refresh Stats</Button>
-        </div>
+      {/* --- TAB: SQL --- */}
+      {activeTab === 'sql' && (
+        <div className="animate-fadeIn">
+          {tables.length > 0 && (
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, marginBottom: 24, overflow: 'hidden' }}>
+              <div onClick={() => setShowTables(!showTables)} style={{ padding: '16px 24px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', userSelect: 'none' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>📋 Database Tables ({tables.length})</span>
+                {showTables ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </div>
+              {showTables && (
+                <div style={{ padding: '0 24px 16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 8 }}>
+                  {tables.map(t => (
+                    <div key={t.table} onClick={() => setQuery(`SELECT * FROM ${t.table} LIMIT 100`)}
+                      style={{ padding: '8px 12px', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border)' }}
+                      onMouseOver={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                      onMouseOut={e => e.currentTarget.style.background = ''}
+                    >
+                      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, fontWeight: 600 }}>{t.table}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{formatNumber(t.rows)} rows</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
-        {/* Status messages */}
-        {error && (
-          <div style={{
-            marginTop: 16, padding: '12px 18px', borderRadius: 10,
-            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
-            display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#ef4444',
-          }}>
-            <AlertCircle size={16} /> {error}
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 28, marginBottom: 24 }}>
+            <textarea
+              value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKeyDown} rows={6}
+              style={{
+                width: '100%', padding: '14px 18px', borderRadius: 12, fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-primary)',
+                background: 'var(--bg-input)', border: '1px solid var(--border)', outline: 'none', resize: 'vertical', marginBottom: 16
+              }}
+              onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onBlur={e => e.currentTarget.style.borderColor = 'var(--border)'}
+            />
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <Button icon={loading ? <Loader2 size={14} className="spin" /> : <Play size={14} />} onClick={executeSQL} disabled={loading}>{loading ? 'Running...' : 'Execute SQL (⌘+Enter)'}</Button>
+              <Button variant="ghost" icon={<Copy size={14} />} onClick={() => { navigator.clipboard.writeText(query); setSuccess('Copied!'); setTimeout(()=>setSuccess(null),2000); }}>Copy SQL</Button>
+            </div>
           </div>
-        )}
-        {success && (
-          <div style={{
-            marginTop: 16, padding: '12px 18px', borderRadius: 10,
-            background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
-            display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#22c55e',
-          }}>
-            <CheckCircle2 size={16} /> {success}
-          </div>
-        )}
+        </div>
+      )}
+
+      {/* --- NOTIFICATIONS --- */}
+      {error && (
+        <div style={{ marginBottom: 24, padding: '12px 18px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#ef4444' }}>
+          <AlertCircle size={16} /> {error}
+        </div>
+      )}
+      {success && activeTab === 'sql' && (
+        <div style={{ marginBottom: 24, padding: '12px 18px', borderRadius: 10, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#22c55e' }}>
+          <CheckCircle2 size={16} /> {success}
+        </div>
+      )}
+
+      {/* --- RESULTS GRID --- */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
+          {activeTab === 'browse' ? (
+            loading ? (<span><Loader2 size={14} className="spin" style={{ display: 'inline', marginRight: 8 }}/> Loading data...</span>) : 
+            result ? `Showing ${formatNumber(result.total || 0)} results (${result.elapsed}ms)` : 'Data Results'
+          ) : (
+            `Query Results ${result ? `(${result.rows.length} rows, ${result.elapsed}ms)` : ''}`
+          )}
+        </h3>
+        
+        {/* Pagination & Export for Browse OR just Export for SQL */}
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+          {activeTab === 'browse' && result && (result.total || 0) > 0 && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Button variant="ghost" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={{ padding: '6px 10px' }}><ChevronLeft size={16}/></Button>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Page {page} of {Math.max(1, Math.ceil((result.total || 0) / 50))}
+              </span>
+              <Button variant="ghost" disabled={page >= Math.ceil((result.total || 0) / 50)} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 10px' }}><ChevronRight size={16}/></Button>
+            </div>
+          )}
+          {result?.rows.length ? (
+            <Button variant="ghost" icon={<Download size={14} />} onClick={downloadCSV}>Export CSV</Button>
+          ) : null}
+        </div>
       </div>
 
-      {/* Results Table */}
-      <SectionHeader title={result ? `Query Results (${result.rows.length} rows · ${result.elapsed}ms)` : 'Query Results'} />
-      <div style={{
-        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16,
-        overflow: 'hidden',
-      }}>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', minHeight: 400 }}>
         {sortedRows.length > 0 ? (
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', maxHeight: '70vh' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
+              <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 10, borderBottom: '1px solid var(--border)' }}>
                 <tr>
                   {columns.map(col => (
-                    <th
-                      key={col}
-                      onClick={() => toggleSort(col)}
+                    <th key={col} onClick={() => toggleSort(col)}
                       style={{
                         padding: '12px 16px', textAlign: 'left', fontWeight: 700,
                         fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em',
@@ -318,7 +434,7 @@ export default function DatabasePage() {
                       }}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {col}
+                        {col.replace(/_/g, ' ')}
                         {sortCol === col && (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
                       </span>
                     </th>
@@ -327,41 +443,31 @@ export default function DatabasePage() {
               </thead>
               <tbody>
                 {sortedRows.map((row, i) => (
-                  <tr
-                    key={i}
-                    style={{ transition: 'background 0.1s' }}
+                  <tr key={i} style={{ transition: 'background 0.1s' }}
                     onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                    onMouseOut={e => (e.currentTarget.style.background = '')}
-                  >
-                    {columns.map(col => (
-                      <td
-                        key={col}
-                        style={{
-                          padding: '10px 16px', borderBottom: '1px solid var(--border)',
-                          maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap', color: 'var(--text-secondary)',
-                        }}
-                        title={String(row[col] ?? '')}
-                      >
-                        {row[col] === null || row[col] === undefined ? (
-                          <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>NULL</span>
-                        ) : (
-                          String(row[col])
-                        )}
-                      </td>
-                    ))}
+                    onMouseOut={e => (e.currentTarget.style.background = '')}>
+                    {columns.map(col => {
+                      const val = row[col];
+                      return (
+                        <td key={col} style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }} title={String(val ?? '')}>
+                          {val === null || val === undefined ? <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>—</span> : String(val)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         ) : (
-          <div style={{
-            padding: 48, textAlign: 'center', color: 'var(--text-tertiary)',
-          }}>
-            <Database size={24} style={{ marginBottom: 12, opacity: 0.4 }} />
-            <div style={{ fontWeight: 600 }}>No results</div>
-            <div style={{ fontSize: 13, marginTop: 4 }}>Execute a query to see results here</div>
+          <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-tertiary)' }}>
+            {loading ? (
+               <Loader2 size={32} className="spin" style={{ marginBottom: 16, opacity: 0.5 }} />
+            ) : (
+               <Database size={32} style={{ marginBottom: 16, opacity: 0.3 }} />
+            )}
+            <div style={{ fontWeight: 600, fontSize: 15 }}>{loading ? 'Fetching data...' : 'No results found'}</div>
+            {!loading && <div style={{ fontSize: 13, marginTop: 6 }}>{activeTab === 'browse' ? 'Try adjusting your filters or search' : 'Execute a query to see results here'}</div>}
           </div>
         )}
       </div>

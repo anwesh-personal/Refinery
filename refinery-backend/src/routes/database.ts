@@ -35,6 +35,31 @@ router.post('/query', async (req, res) => {
   }
 });
 
+// POST /api/database/browse  { search, filters, page, pageSize, sortBy, sortDir, columns }
+router.post('/browse', async (req, res) => {
+  try {
+    const result = await dbService.browseData(req.body);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/database/filter-options/:column
+router.get('/filter-options/:column', async (req, res) => {
+  try {
+    const options = await dbService.getFilterOptions(req.params.column);
+    res.json(options);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/database/filterable-columns
+router.get('/filterable-columns', async (_req, res) => {
+  res.json(dbService.getFilterableColumns());
+});
+
 // GET /api/database/health
 router.get('/health', async (_req, res) => {
   try {
