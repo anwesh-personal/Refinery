@@ -1,4 +1,5 @@
 import { query, command, ping } from '../db/clickhouse.js';
+import { env } from '../config/env.js';
 
 /** Run a user SQL query (read-only, with safety checks) */
 export async function executeQuery(sql: string): Promise<{ rows: Record<string, unknown>[]; elapsed: number }> {
@@ -69,31 +70,35 @@ export async function checkHealth() {
   return { clickhouse: ok };
 }
 
-// ── Allowed columns for browse queries (whitelist for safety) ──
-const ALLOWED_COLUMNS = new Set([
-  'up_id', 'first_name', 'last_name', 'gender', 'age_range', 'married', 'children',
-  'income_range', 'net_worth', 'homeowner', 'business_email', 'personal_emails',
-  'mobile_phone', 'direct_number', 'personal_phone', 'linkedin_url',
-  'personal_address', 'personal_city', 'personal_state', 'personal_zip', 'contact_country',
-  'job_title', 'job_title_normalized', 'seniority_level', 'department',
-  'professional_city', 'professional_state',
-  'company_name', 'company_domain', 'company_phone',
-  'company_city', 'company_state', 'company_country',
-  'company_revenue', 'company_employee_count', 'primary_industry',
-  'business_email_validation_status', '_ingestion_job_id', '_ingested_at',
-  '_verification_status', '_verified_at',
-]);
+// ── Dynamic column discovery ──
+// Internal columns (metadata) that should appear last
+const INTERNAL_COLS = new Set(['_ingestion_job_id', '_ingested_at', '_segment_ids', '_verification_status', '_verified_at']);
 
-const SEARCHABLE_COLUMNS = [
-  'first_name', 'last_name', 'business_email', 'personal_emails',
-  'company_name', 'company_domain', 'job_title_normalized',
-];
+// Cache columns for 60 seconds to avoid hitting system.columns on every request
+let columnsCache: string[] = [];
+let columnsCacheTimestamp = 0;
+const COLUMNS_CACHE_TTL = 60_000;
 
-const FILTERABLE_COLUMNS = [
-  'personal_state', 'primary_industry', 'seniority_level', 'department',
-  'gender', 'income_range', 'homeowner', 'company_state',
-  'business_email_validation_status', '_verification_status',
-];
+/** Fetch all column names for universal_person from ClickHouse */
+async function getTableColumns(): Promise<string[]> {
+  const now = Date.now();
+  if (columnsCache.length > 0 && now - columnsCacheTimestamp < COLUMNS_CACHE_TTL) {
+    return columnsCache;
+  }
+  const rows = await query<{ name: string }>(`
+    SELECT name FROM system.columns
+    WHERE database = '${env.clickhouse.database}' AND table = 'universal_person'
+    ORDER BY position
+  `);
+  columnsCache = rows.map(r => r.name);
+  columnsCacheTimestamp = now;
+  return columnsCache;
+}
+
+/** Get columns exposed to the API */
+export async function getAvailableColumns(): Promise<string[]> {
+  return getTableColumns();
+}
 
 export interface BrowseParams {
   search?: string;
@@ -112,40 +117,47 @@ export async function browseData(params: BrowseParams) {
     filters = {},
     page = 1,
     pageSize = 50,
-    sortBy = 'last_name',
+    sortBy,
     sortDir = 'asc',
   } = params;
 
-  // Validate & sanitize columns
-  const selectCols = (params.columns?.length ? params.columns : [
-    'up_id', 'first_name', 'last_name', 'business_email', 'personal_emails',
-    'mobile_phone', 'personal_state', 'personal_city',
-    'job_title_normalized', 'seniority_level', 'company_name', 'primary_industry',
-  ]).filter(c => ALLOWED_COLUMNS.has(c));
+  const allColumns = await getTableColumns();
+  const allowedSet = new Set(allColumns);
+
+  // Default columns: show data-bearing columns first, then internal
+  const defaultCols = allColumns.filter(c => !INTERNAL_COLS.has(c)).slice(0, 12);
+
+  // Validate & sanitize requested columns
+  const selectCols = (params.columns?.length ? params.columns : defaultCols)
+    .filter(c => allowedSet.has(c));
+
+  if (selectCols.length === 0) {
+    throw new Error('No valid columns to select');
+  }
 
   // Build WHERE clauses
   const conditions: string[] = [];
 
-  // Search
+  // Search — search across all string-like columns that are in selectCols
   if (search.trim()) {
     const escaped = search.trim().replace(/'/g, "\\'");
-    const searchClauses = SEARCHABLE_COLUMNS
-      .map(col => `lower(coalesce(${col}, '')) LIKE lower('%${escaped}%')`)
+    const searchClauses = selectCols
+      .map(col => `lower(coalesce(toString(\`${col}\`), '')) LIKE lower('%${escaped}%')`)
       .join(' OR ');
     conditions.push(`(${searchClauses})`);
   }
 
   // Filters
   for (const [col, val] of Object.entries(filters)) {
-    if (!ALLOWED_COLUMNS.has(col) || !val) continue;
+    if (!allowedSet.has(col) || !val) continue;
     const escaped = val.replace(/'/g, "\\'");
-    conditions.push(`${col} = '${escaped}'`);
+    conditions.push(`\`${col}\` = '${escaped}'`);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
   // Validate sort column
-  const safeSortBy = ALLOWED_COLUMNS.has(sortBy) ? sortBy : 'last_name';
+  const safeSortBy = (sortBy && allowedSet.has(sortBy)) ? `\`${sortBy}\`` : `\`${selectCols[0]}\``;
   const safeSortDir = sortDir === 'desc' ? 'DESC' : 'ASC';
 
   // Clamp page size
@@ -160,9 +172,10 @@ export async function browseData(params: BrowseParams) {
   );
   const total = Number(countResult?.cnt || 0);
 
-  // Get rows
+  // Get rows — backtick-escape all column names for safety
+  const escapedCols = selectCols.map(c => `\`${c}\``).join(', ');
   const rows = await query(
-    `SELECT ${selectCols.join(', ')} FROM universal_person ${whereClause}
+    `SELECT ${escapedCols} FROM universal_person ${whereClause}
      ORDER BY ${safeSortBy} ${safeSortDir}
      LIMIT ${safePageSize} OFFSET ${offset}`
   );
@@ -174,13 +187,14 @@ export async function browseData(params: BrowseParams) {
 
 /** Get distinct values for a filter column (for populating dropdowns) */
 export async function getFilterOptions(column: string): Promise<string[]> {
-  if (!FILTERABLE_COLUMNS.includes(column)) {
-    throw new Error(`Column '${column}' is not filterable`);
+  const allColumns = await getTableColumns();
+  if (!allColumns.includes(column)) {
+    throw new Error(`Column '${column}' is not a valid column`);
   }
 
   const rows = await query<{ val: string }>(
-    `SELECT DISTINCT ${column} as val FROM universal_person
-     WHERE ${column} IS NOT NULL AND ${column} != ''
+    `SELECT DISTINCT \`${column}\` as val FROM universal_person
+     WHERE \`${column}\` IS NOT NULL AND toString(\`${column}\`) != ''
      ORDER BY val
      LIMIT 200`
   );
@@ -188,8 +202,9 @@ export async function getFilterOptions(column: string): Promise<string[]> {
   return rows.map(r => r.val);
 }
 
-/** Get available filterable columns */
-export function getFilterableColumns() {
-  return FILTERABLE_COLUMNS;
+/** Get filterable columns — dynamically returns all non-internal columns */
+export async function getFilterableColumns(): Promise<string[]> {
+  const allColumns = await getTableColumns();
+  return allColumns.filter(c => !INTERNAL_COLS.has(c));
 }
 

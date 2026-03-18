@@ -57,7 +57,22 @@ router.get('/filter-options/:column', async (req, res) => {
 
 // GET /api/database/filterable-columns
 router.get('/filterable-columns', async (_req, res) => {
-  res.json(dbService.getFilterableColumns());
+  try {
+    const cols = await dbService.getFilterableColumns();
+    res.json(cols);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/database/columns
+router.get('/columns', async (_req, res) => {
+  try {
+    const cols = await dbService.getAvailableColumns();
+    res.json(cols);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // GET /api/database/health
