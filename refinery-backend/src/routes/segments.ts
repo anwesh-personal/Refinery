@@ -48,11 +48,32 @@ router.post('/preview', async (req, res) => {
   }
 });
 
+// PUT /api/segments/:id  { name?, niche?, clientName?, filterQuery? }
+router.put('/:id', async (req, res) => {
+  try {
+    const { name, niche, clientName, filterQuery } = req.body;
+    await segService.updateSegment(req.params.id, { name, niche, clientName, filterQuery });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/segments/:id/execute
 router.post('/:id/execute', async (req, res) => {
   try {
     const count = await segService.executeSegment(req.params.id);
     res.json({ count });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/segments/:id/export
+router.get('/:id/export', async (req, res) => {
+  try {
+    const rows = await segService.exportSegmentLeads(req.params.id);
+    res.json({ rows, count: rows.length });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

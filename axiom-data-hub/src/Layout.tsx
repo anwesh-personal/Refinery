@@ -6,7 +6,7 @@ import type { PermissionKey } from './auth/AuthContext';
 import {
   LayoutDashboard, CloudDownload, Database, Filter, ShieldCheck,
   Send, ListOrdered, Server, ScrollText, Users, Settings2,
-  Moon, Sun, LogOut, Menu, X, Zap, ChevronRight, Beaker, Palette, Check, PlayCircle, Trash2
+  Moon, Sun, LogOut, Menu, X, ChevronRight, Beaker, Palette, Check, PlayCircle, Trash2
 } from 'lucide-react';
 
 interface LayoutProps { children: ReactNode; }
@@ -115,19 +115,12 @@ export default function Layout({ children }: LayoutProps) {
         className="sidebar-desktop"
       >
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '28px 24px 20px' }}>
-          <div
-            style={{
-              width: 36, height: 36, borderRadius: 10,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'var(--accent-muted)',
-            }}
-          >
-            <Zap size={18} style={{ color: 'var(--accent)' }} />
-          </div>
-          <span style={{ fontWeight: 800, fontSize: 18, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-            Refinery Nexus
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', padding: '28px 24px 20px' }}>
+          <img 
+            src={mode === 'dark' ? '/src/assets/1.png' : '/src/assets/2.png'} 
+            alt="Refinery Nexus"
+            style={{ maxHeight: 36, width: 'auto', objectFit: 'contain' }}
+          />
         </div>
 
         {/* Nav */}

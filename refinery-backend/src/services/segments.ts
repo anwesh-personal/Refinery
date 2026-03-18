@@ -89,6 +89,37 @@ export async function executeSegment(id: string): Promise<number> {
   return count;
 }
 
+/** Update a segment (uses ReplacingMergeTree dedup) */
+export async function updateSegment(id: string, input: Partial<SegmentInput>): Promise<void> {
+  const seg = await getSegment(id);
+  if (!seg) throw new Error(`Segment ${id} not found`);
+
+  await insertRows('segments', [{
+    id,
+    name: input.name || (seg as any).name,
+    niche: input.niche !== undefined ? (input.niche || null) : (seg as any).niche,
+    client_name: input.clientName !== undefined ? (input.clientName || null) : (seg as any).client_name,
+    filter_query: input.filterQuery || (seg as any).filter_query,
+    lead_count: (seg as any).lead_count || 0,
+    status: (seg as any).status,
+    created_at: (seg as any).created_at,
+    updated_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+  }]);
+}
+
+/** Export segment leads as array of objects */
+export async function exportSegmentLeads(id: string): Promise<Record<string, unknown>[]> {
+  const seg = await getSegment(id);
+  if (!seg) throw new Error(`Segment ${id} not found`);
+  const filterQuery = (seg as any).filter_query;
+
+  return query(`
+    SELECT * FROM universal_person
+    WHERE ${filterQuery}
+    LIMIT 50000
+  `);
+}
+
 /** Delete a segment */
 export async function deleteSegment(id: string): Promise<void> {
   await command(`ALTER TABLE segments DELETE WHERE id = '${id}'`);

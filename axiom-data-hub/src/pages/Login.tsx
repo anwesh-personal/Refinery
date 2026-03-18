@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../ThemeContext';
 import { Navigate } from 'react-router-dom';
-import { Zap, Sun, Moon, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Moon, Sun } from 'lucide-react';
 
 export default function LoginPage() {
   const { user, loading: authLoading, signIn } = useAuth();
@@ -63,24 +63,12 @@ export default function LoginPage() {
         }}
       >
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 40 }}>
-          <div
-            style={{
-              width: 48, height: 48, borderRadius: 14,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'var(--accent-muted)',
-            }}
-          >
-            <Zap size={24} style={{ color: 'var(--accent)' }} />
-          </div>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-              Refinery Nexus
-            </h1>
-            <p style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-tertiary)', marginTop: 2 }}>
-              Data Operations Hub
-            </p>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 40, width: '100%' }}>
+          <img 
+            src={mode === 'dark' ? '/src/assets/1.png' : '/src/assets/2.png'} 
+            alt="Refinery Nexus"
+            style={{ maxHeight: 60, width: 'auto', objectFit: 'contain' }}
+          />
         </div>
 
         {/* Card */}
