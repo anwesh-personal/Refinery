@@ -22,6 +22,7 @@ import verifyRoutes from './routes/verify.js';
 import s3sourcesRoutes from './routes/s3sources.js';
 import ingestionRulesRoutes from './routes/ingestion-rules.js';
 import janitorRoutes from './routes/janitor.js';
+import verify550Routes from './routes/verify550.js';
 import { setupScheduler } from './services/ingestion-rules.js';
 import { ensureEnvServersRegistered } from './services/servers.js';
 
@@ -71,6 +72,7 @@ app.use('/api/verify', verifyRoutes);
 app.use('/api/s3-sources', s3sourcesRoutes);
 app.use('/api/ingestion-rules', ingestionRulesRoutes);
 app.use('/api/janitor', janitorRoutes);
+app.use('/api/v550', verify550Routes);
 
 // ── Health ──
 app.get('/api/health', (_req, res) => {

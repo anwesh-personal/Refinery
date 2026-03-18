@@ -58,6 +58,15 @@ export default function VerificationPage() {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [segments, setSegments] = useState<Segment[]>([]);
 
+  // Verify550 Custom State
+  const [v550Credits, setV550Credits] = useState<number | null>(null);
+  const [v550Jobs, setV550Jobs] = useState<any[]>([]);
+  const [singleVerifyEmail, setSingleVerifyEmail] = useState('');
+  const [singleVerifyResult, setSingleVerifyResult] = useState<string | null>(null);
+  const [singleVerifying, setSingleVerifying] = useState(false);
+  const [uploadingCSV, setUploadingCSV] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ok: boolean; message: string} | null>(null);
@@ -86,13 +95,16 @@ export default function VerificationPage() {
   const fetchData = async (background = false) => {
     try {
       const opts = { serverId: selectedServerId || undefined };
-      const [s, c, b, segs] = await Promise.all([
-        apiCall<VerifyStats>('/api/verification/stats', opts),
-        !background ? apiCall<Record<string, string>>('/api/verification/config', opts) : Promise.resolve(null),
-        apiCall<Batch[]>('/api/verification/batches', opts),
-        !background ? apiCall<{ segments: Segment[] }>('/api/segments', opts) : Promise.resolve(null),
+      const [s, c, b, segs, credsResp, completedResp, runningResp] = await Promise.all([
+        apiCall<VerifyStats>('/api/verification/stats', opts).catch(()=>null),
+        !background ? apiCall<Record<string, string>>('/api/verification/config', opts).catch(()=>null) : Promise.resolve(null),
+        apiCall<Batch[]>('/api/verification/batches', opts).catch(()=>[]),
+        !background ? apiCall<{ segments: Segment[] }>('/api/segments', opts).catch(()=>null) : Promise.resolve(null),
+        apiCall<{ credits: number }>('/api/v550/credits', opts).catch(()=>null),
+        apiCall<any>('/api/v550/jobs/completed', opts).catch(()=>null),
+        apiCall<any>('/api/v550/jobs/running', opts).catch(()=>null),
       ]);
-      setStats(s);
+      if (s) setStats(s);
       if (c) {
         setConfig({
           endpoint: c.verify550_endpoint || '',
@@ -116,6 +128,20 @@ export default function VerificationPage() {
           setSelectedSegmentId(segs.segments[0].id);
         }
       }
+      
+      if (credsResp) setV550Credits(credsResp.credits);
+      
+      const vjobs: any[] = [];
+      const runningArr = Array.isArray(runningResp) ? runningResp : runningResp?.data || [];
+      const completedArr = Array.isArray(completedResp) ? completedResp : completedResp?.data || [];
+      
+      vjobs.push(...runningArr.map((j: any) => ({ ...j, status: 'progress' })));
+      vjobs.push(...completedArr.map((j: any) => ({ ...j, status: 'finished' })));
+      
+      if (vjobs.length > 0) {
+         setV550Jobs(vjobs.sort((a,b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime()));
+      }
+
       // Reset backoff on success
       pollFailures.current = 0;
     } catch (e) {
@@ -233,6 +259,74 @@ export default function VerificationPage() {
     }
   };
 
+  const handleSingleVerify = async () => {
+    if (!singleVerifyEmail) return;
+    setSingleVerifying(true);
+    setSingleVerifyResult(null);
+    try {
+      const resp = await apiCall<{status: string}>(`/api/v550/verify?email=${encodeURIComponent(singleVerifyEmail)}`);
+      setSingleVerifyResult(resp.status);
+    } catch (e: any) {
+      alert(`Verification failed: ${e.message}`);
+    } finally {
+      setSingleVerifying(false);
+    }
+  };
+
+  const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingCSV(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      const token = (await import('../lib/supabase').then(m => m.supabase.auth.getSession())).data.session?.access_token;
+      const resp = await fetch(`${apiUrl}/api/v550/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      if (!resp.ok) {
+         const err = await resp.json().catch(() => ({}));
+         throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+      alert('File uploaded to Verify550 successfully!');
+      fetchData(false);
+    } catch (err: any) {
+      alert(`Upload failed: ${err.message}`);
+    } finally {
+      setUploadingCSV(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleV550Export = async (jobId: string) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      const resp = await fetch(`${apiUrl}/api/v550/export/${jobId}?format=csv`, {
+        headers: {
+          'Authorization': `Bearer ${(await (await import('../lib/supabase')).supabase.auth.getSession()).data.session?.access_token}`,
+        },
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+        throw new Error(err.error || `Export failed: ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `verify550-${jobId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(`Export failed: ${err.message}`);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'complete': return <Badge label="Complete" color="var(--green)" colorMuted="var(--green-muted)" />;
@@ -330,14 +424,19 @@ export default function VerificationPage() {
 
         {/* ── Verify550 API Card ── */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 28, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-            <div style={{ background: 'var(--purple-muted, rgba(168,85,247,.15))', color: 'var(--purple, #a855f7)', padding: 8, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Activity size={20} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ background: 'var(--purple-muted, rgba(168,85,247,.15))', color: 'var(--purple, #a855f7)', padding: 8, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Activity size={20} />
+              </div>
+              <h4 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Verify550 API</h4>
             </div>
-            <h4 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Verify550 API</h4>
+            {v550Credits !== null && (
+               <Badge label={`${v550Credits.toLocaleString()} Credits`} color="var(--purple, #a855f7)" colorMuted="var(--purple-muted, rgba(168,85,247,.15))" />
+            )}
           </div>
           <p style={{ margin: '0 0 24px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            Third-party commercial verification. Highest accuracy via dynamic IP routing. Use when your server lacks Port 25 access or IP reputation is low.
+            Third-party commercial verification. Highest accuracy via dynamic IP routing. Use when your server lacks Port 25 access.
           </p>
           
           <div style={{ flex: 1 }}>
@@ -377,7 +476,72 @@ export default function VerificationPage() {
         </div>
       </div>
 
-      <SectionHeader title="Verification History" action="Start New Batch" onAction={() => setIsModalOpen(true)} />
+      <SectionHeader title="Verify550 Operations" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(400px, 2fr)', gap: 24, marginBottom: 36 }}>
+         {/* Single Verification */}
+         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+           <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600 }}>Quick Verification</h4>
+           <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>Check a single email address instantly against Verify550.</p>
+           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+             <Input placeholder="email@domain.com" value={singleVerifyEmail} onChange={(v: string) => setSingleVerifyEmail(v)} />
+             <Button disabled={!singleVerifyEmail || singleVerifying} onClick={handleSingleVerify} style={{ padding: '0 16px' }}>
+               {singleVerifying ? '...' : 'Verify'}
+             </Button>
+           </div>
+           {singleVerifyResult && (
+             <div style={{ padding: '12px 16px', borderRadius: 8, fontSize: 13, background: 'var(--bg-app)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Status:</span> 
+                <Badge label={singleVerifyResult} color="var(--purple)" colorMuted="var(--purple-muted)" />
+             </div>
+           )}
+         </div>
+
+         {/* Bulk CSV Upload */}
+         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+           <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600 }}>External Bulk Verification</h4>
+           <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20 }}>Upload a raw CSV file directly to Verify550 for verification without using internal segments. Bypasses local storage.</p>
+           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+             <input type="file" accept=".csv" ref={fileInputRef} onChange={handleBulkUpload} style={{ display: 'none' }} id="v550-upload" />
+             <label htmlFor="v550-upload" style={{
+                cursor: 'pointer', padding: '10px 20px', borderRadius: 10, background: 'var(--purple, #a855f7)', color: '#fff', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'background 0.2s',
+                opacity: uploadingCSV ? 0.7 : 1, pointerEvents: uploadingCSV ? 'none' : 'auto'
+             }}>
+                <Upload size={16} /> {uploadingCSV ? 'Uploading to Verify550...' : 'Select & Upload CSV'}
+             </label>
+           </div>
+         </div>
+      </div>
+
+      <SectionHeader title="Verify550 External Jobs" />
+      <div style={{ marginBottom: 36 }}>
+        <DataTable
+          columns={[
+            { key: 'jobId', label: 'Job ID' },
+            { key: 'file_name', label: 'Filename' },
+            { key: 'count', label: 'Total Logs' },
+            { key: 'processed', label: 'Processed' },
+            { key: 'uploadTime', label: 'Upload Time' },
+            { key: 'status', label: 'Status' },
+            { key: 'action', label: '' }
+          ]}
+          rows={v550Jobs.map(job => ({
+            jobId: <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{job.jobId}</span>,
+            file_name: <span style={{ fontSize: 13, fontWeight: 500 }}>{job.file_name}</span>,
+            count: (job.count || 0).toLocaleString(),
+            processed: (job.processed || 0).toLocaleString(),
+            uploadTime: new Date(job.uploadTime).toLocaleString(),
+            status: <Badge label={job.status} color={job.status === 'finished' ? 'var(--green)' : 'var(--blue)'} colorMuted={job.status === 'finished' ? 'var(--green-muted)' : 'var(--blue-muted)'} />,
+            action: job.status === 'finished' ? (
+               <Button variant="secondary" style={{ padding: '6px 12px', fontSize: 11 }} onClick={() => handleV550Export(job.jobId)} icon={<Download size={12} />}>Export ZIP</Button>
+            ) : null
+          }))}
+          emptyIcon={<Activity size={24} />}
+          emptyTitle="No external Verify550 jobs"
+          emptySub="Upload a CSV above to process it directly through Verify550."
+        />
+      </div>
+
+      <SectionHeader title="Native Verification History" action="Start Custom Batch" onAction={() => setIsModalOpen(true)} />
       <DataTable
         columns={[
           { key: 'id', label: 'Batch ID' },
