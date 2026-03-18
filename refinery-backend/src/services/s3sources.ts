@@ -2,6 +2,10 @@ import { S3Client, HeadBucketCommand, ListObjectsV2Command } from '@aws-sdk/clie
 import { query, command, insertRows } from '../db/clickhouse.js';
 import { genId } from '../utils/helpers.js';
 
+/* ── Constants ── */
+const DEFAULT_REGION = 'us-east-1';
+
+/* ── Types ── */
 export interface S3Source {
   id: string;
   label: string;
@@ -26,25 +30,43 @@ export interface S3SourceInput {
   prefix?: string;
 }
 
-/** Build an S3 client from a source record */
-export function buildClient(source: S3Source): S3Client {
+/* ── Helpers ── */
+
+/** Sanitise a string for safe inclusion in ClickHouse SQL (single-quote escaping) */
+function esc(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+/** Build an S3 client from a source record or raw credentials */
+export function buildClient(src: { region?: string; access_key: string; secret_key: string }): S3Client {
   return new S3Client({
-    region: source.region || 'us-east-1',
+    region: src.region || DEFAULT_REGION,
     credentials: {
-      accessKeyId: source.access_key,
-      secretAccessKey: source.secret_key,
+      accessKeyId: src.access_key,
+      secretAccessKey: src.secret_key,
     },
   });
 }
 
-/** List all S3 sources */
+/** Mask credentials for safe API responses */
+export function maskCredentials<T extends { access_key?: string; secret_key?: string }>(source: T): T {
+  return {
+    ...source,
+    access_key: source.access_key ? source.access_key.slice(0, 8) + '••••' : '',
+    secret_key: source.secret_key ? '••••••••' + source.secret_key.slice(-4) : '',
+  };
+}
+
+/* ── CRUD Operations ── */
+
+/** List all active S3 sources */
 export async function listSources(): Promise<S3Source[]> {
   return query<S3Source>('SELECT * FROM s3_sources FINAL WHERE is_active = 1 ORDER BY label');
 }
 
 /** Get a single source by ID */
 export async function getSource(id: string): Promise<S3Source | null> {
-  const rows = await query<S3Source>(`SELECT * FROM s3_sources FINAL WHERE id = '${id}' LIMIT 1`);
+  const rows = await query<S3Source>(`SELECT * FROM s3_sources FINAL WHERE id = '${esc(id)}' LIMIT 1`);
   return rows[0] || null;
 }
 
@@ -55,7 +77,7 @@ export async function createSource(input: S3SourceInput): Promise<string> {
     id,
     label: input.label,
     bucket: input.bucket,
-    region: input.region || 'us-east-1',
+    region: input.region || DEFAULT_REGION,
     access_key: input.accessKey,
     secret_key: input.secretKey,
     prefix: input.prefix || '',
@@ -83,58 +105,58 @@ export async function updateSource(id: string, input: Partial<S3SourceInput>): P
   }]);
 }
 
-/** Soft-delete a source */
+/** Hard-delete a source */
 export async function deleteSource(id: string): Promise<void> {
-  await command(`ALTER TABLE s3_sources DELETE WHERE id = '${id}'`);
+  await command(`ALTER TABLE s3_sources DELETE WHERE id = '${esc(id)}'`);
 }
 
-/** Test an S3 source's connection */
+/* ── Testing ── */
+
+/** Test an already-saved S3 source's connection */
 export async function testSource(id: string): Promise<{ ok: boolean; fileCount?: number; error?: string }> {
   const source = await getSource(id);
   if (!source) throw new Error(`Source ${id} not found`);
+
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
   try {
     const client = buildClient(source);
     await client.send(new HeadBucketCommand({ Bucket: source.bucket }));
 
-    // Also list files to confirm prefix works
     const list = await client.send(new ListObjectsV2Command({
       Bucket: source.bucket,
       Prefix: source.prefix || undefined,
       MaxKeys: 5,
     }));
 
-    // Update test status
+    // Persist test result
     await insertRows('s3_sources', [{
       ...source,
-      last_tested_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      last_tested_at: now,
       last_test_ok: 1,
-      updated_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      updated_at: now,
     }]);
 
     return { ok: true, fileCount: list.KeyCount || 0 };
   } catch (e: any) {
-    // Update test status as failed
     await insertRows('s3_sources', [{
       ...source,
-      last_tested_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      last_tested_at: now,
       last_test_ok: 0,
-      updated_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+      updated_at: now,
     }]);
 
     return { ok: false, error: e.message };
   }
 }
 
-/** Test credentials without saving (for the "test before save" flow) */
+/** Test credentials without saving (pre-save validation) */
 export async function testCredentials(input: S3SourceInput): Promise<{ ok: boolean; fileCount?: number; error?: string }> {
   try {
-    const client = new S3Client({
-      region: input.region || 'us-east-1',
-      credentials: {
-        accessKeyId: input.accessKey,
-        secretAccessKey: input.secretKey,
-      },
+    const client = buildClient({
+      region: input.region,
+      access_key: input.accessKey,
+      secret_key: input.secretKey,
     });
 
     await client.send(new HeadBucketCommand({ Bucket: input.bucket }));

@@ -202,9 +202,11 @@ export default function IngestionPage() {
     setBrowsing(true);
     setError(null);
     try {
-      let url = `/api/ingestion/source-files?1=1`;
-      if (prefix) url += `&prefix=${encodeURIComponent(prefix)}`;
-      if (selectedSourceId) url += `&sourceId=${encodeURIComponent(selectedSourceId)}`;
+      const params = new URLSearchParams();
+      if (prefix) params.set('prefix', prefix);
+      if (selectedSourceId) params.set('sourceId', selectedSourceId);
+      const qs = params.toString();
+      const url = `/api/ingestion/source-files${qs ? `?${qs}` : ''}`;
       
       const files = await apiCall<SourceFile[]>(url);
       setSourceFiles(files);
@@ -218,12 +220,12 @@ export default function IngestionPage() {
     setIngesting(sourceKey);
     setError(null);
     try {
-      const payload: any = { sourceKey };
-      if (selectedSourceId) payload.sourceId = selectedSourceId;
+      const body: { sourceKey: string; sourceId?: string } = { sourceKey };
+      if (selectedSourceId) body.sourceId = selectedSourceId;
 
       const res = await apiCall<{ jobId: string }>('/api/ingestion/start', {
         method: 'POST',
-        body: payload,
+        body,
       });
       setSuccess(`Job started: ${res.jobId}`);
       setTimeout(() => setSuccess(null), 3000);
@@ -430,11 +432,14 @@ export default function IngestionPage() {
 
       {/* --- ADD / EDIT SOURCE MODAL --- */}
       {showSourceModal && editingSource && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
-        }}>
+        <div 
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowSourceModal(false); setEditingSource(null); } }}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
+          }}
+        >
           <div className="animate-scaleIn" style={{
             background: 'var(--bg-app)', border: '1px solid var(--border)',
             padding: 32, borderRadius: 20, width: '100%', maxWidth: 500,
@@ -468,18 +473,7 @@ export default function IngestionPage() {
               
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Secret Access Key {editingSource.id ? '(Leave blank to keep)' : ''}</label>
-                {/* Normal input string to pass correctly to Input component */}
-                <input 
-                  type="password"
-                  placeholder="Secret key..." 
-                  value={editingSource.secret_key || ''} 
-                  onChange={(e) => setEditingSource({...editingSource, secret_key: e.target.value})}
-                  style={{ 
-                    width: '100%', padding: '10px 14px', borderRadius: 10, 
-                    border: '1px solid var(--border)', background: 'var(--bg-input)', 
-                    color: 'var(--text-primary)', fontSize: 14 
-                  }}
-                />
+                <Input placeholder="Secret key..." value={editingSource.secret_key || ''} onChange={(v: string) => setEditingSource({...editingSource, secret_key: v})} />
               </div>
 
               <div>
@@ -499,7 +493,7 @@ export default function IngestionPage() {
             )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32 }}>
-              <Button variant="secondary" onClick={() => setShowSourceModal(false)}>Cancel</Button>
+              <Button variant="secondary" onClick={() => { setShowSourceModal(false); setEditingSource(null); }}>Cancel</Button>
               <div style={{ display: 'flex', gap: 12 }}>
                 <Button 
                   variant="secondary" 

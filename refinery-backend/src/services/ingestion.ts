@@ -12,6 +12,11 @@ import { Readable } from 'stream';
 import { parse } from 'csv-parse';
 import * as s3Sources from './s3sources.js';
 
+/** Sanitise a string for inclusion in ClickHouse SQL */
+function esc(v: string): string {
+  return v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 /** Build an S3 client for the env-based source bucket (legacy fallback) */
 function getSourceClient(): S3Client {
   return new S3Client({
@@ -148,8 +153,8 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string): P
     console.error(`[Ingestion] Job ${jobId} failed:`, err.message);
     await command(`
       ALTER TABLE ingestion_jobs UPDATE 
-        status = 'failed', error_message = '${err.message.replace(/'/g, "\\\\'")}'
-      WHERE id = '${jobId}'
+        status = 'failed', error_message = '${esc(String(err.message || 'Unknown error'))}'
+      WHERE id = '${esc(jobId)}'
     `);
   });
 
