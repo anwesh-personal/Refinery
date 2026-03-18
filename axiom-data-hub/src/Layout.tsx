@@ -194,11 +194,17 @@ export default function Layout({ children }: LayoutProps) {
 
         {/* Footer */}
         <div style={{
-          padding: '16px 24px', borderTop: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '16px 20px', borderTop: '1px solid var(--border)',
+          display: 'flex', flexDirection: 'column', gap: 8,
         }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)' }} />
-          <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-tertiary)' }}>Daemon Online</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)', flexShrink: 0 }} />
+            <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-tertiary)' }}>Daemon Online</span>
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1.6, letterSpacing: '0.02em' }}>
+            <div>Built by <a href="https://anwe.sh" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>anwe.sh</a> with ❤️ for <span style={{ fontWeight: 600 }}>iiinfra</span></div>
+            <div style={{ opacity: 0.7 }}>Coffee ☕ · Coding 💻 · Chaos 🌀 · 2026</div>
+          </div>
         </div>
       </aside>
 
