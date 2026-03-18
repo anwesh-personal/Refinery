@@ -163,7 +163,7 @@ export default function IngestionPage() {
         <div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap', marginBottom: 16 }}>
           <div style={{ flex: 1, minWidth: 200 }}>
             <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>Prefix Filter</label>
-            <Input placeholder="e.g. 2026/ or leads/" value={prefix} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPrefix(e.target.value)} />
+            <Input placeholder="e.g. 2026/ or leads/" value={prefix} onChange={(v: string) => setPrefix(v)} />
           </div>
           <Button icon={browsing ? <Loader2 size={14} className="spin" /> : <Eye size={14} />} onClick={browseFiles} disabled={browsing}>
             {browsing ? 'Loading...' : 'Browse Files'}

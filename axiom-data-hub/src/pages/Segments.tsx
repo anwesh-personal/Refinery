@@ -156,15 +156,15 @@ export default function SegmentsPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 20 }}>
           <div>
             <label style={labelStyle}>Segment Name *</label>
-            <Input placeholder="e.g. Real Estate — Texas" value={name} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)} />
+            <Input placeholder="e.g. Real Estate — Texas" value={name} onChange={(v: string) => setName(v)} />
           </div>
           <div>
             <label style={labelStyle}>Niche</label>
-            <Input placeholder="e.g. Real Estate" value={niche} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNiche(e.target.value)} />
+            <Input placeholder="e.g. Real Estate" value={niche} onChange={(v: string) => setNiche(v)} />
           </div>
           <div>
             <label style={labelStyle}>Assigned Client</label>
-            <Input placeholder="e.g. Client A" value={clientName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClientName(e.target.value)} />
+            <Input placeholder="e.g. Client A" value={clientName} onChange={(v: string) => setClientName(v)} />
           </div>
         </div>
         <div style={{ marginBottom: 20 }}>
