@@ -63,12 +63,31 @@ export default function LoginPage() {
         }}
       >
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 40, width: '100%' }}>
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'column',
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          marginBottom: 48, 
+          width: '100%',
+        }}>
           <img 
-            src={mode === 'dark' ? '/src/assets/1.png' : '/src/assets/2.png'} 
+            src={mode === 'dark' ? '/logo-dark.png' : '/logo-light.png'} 
             alt="Refinery Nexus"
-            style={{ maxHeight: 60, width: 'auto', objectFit: 'contain' }}
+            style={{ 
+              width: '100%',
+              maxWidth: 320,
+              height: 'auto', 
+              objectFit: 'contain',
+              filter: mode === 'dark' 
+                ? 'drop-shadow(0 4px 20px rgba(99,102,241,0.25))' 
+                : 'drop-shadow(0 4px 16px rgba(0,0,0,0.12))',
+              marginBottom: 12,
+            }}
           />
+          <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-tertiary)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Data Operations Hub
+          </p>
         </div>
 
         {/* Card */}
