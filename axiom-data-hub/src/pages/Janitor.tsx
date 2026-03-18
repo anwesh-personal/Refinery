@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { SectionHeader, Button } from '../components/UI';
 import { Trash2, AlertTriangle, Play, Info } from 'lucide-react';
 
