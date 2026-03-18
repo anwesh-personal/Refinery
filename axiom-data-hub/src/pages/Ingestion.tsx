@@ -39,6 +39,7 @@ interface S3Source {
   access_key: string;
   secret_key: string;
   prefix: string;
+  endpoint_url?: string;
   is_active: number;
   last_tested_at?: string;
   last_test_result?: string;
@@ -64,11 +65,16 @@ interface IngestionRule {
 }
 
 const SCHEDULE_PRESETS = [
+  { label: 'Every 15 Minutes', value: '*/15 * * * *' },
+  { label: 'Every 30 Minutes', value: '*/30 * * * *' },
   { label: 'Every Hour', value: '0 * * * *' },
+  { label: 'Every 2 Hours', value: '0 */2 * * *' },
   { label: 'Every 6 Hours', value: '0 */6 * * *' },
   { label: 'Every 12 Hours', value: '0 */12 * * *' },
   { label: 'Daily (Midnight)', value: '0 0 * * *' },
   { label: 'Daily (6 AM)', value: '0 6 * * *' },
+  { label: 'Weekly (Sunday Midnight)', value: '0 0 * * 0' },
+  { label: 'Weekly (Monday 6 AM)', value: '0 6 * * 1' },
 ];
 
 /* ---------------- Helpers ---------------- */
@@ -262,6 +268,7 @@ export default function IngestionPage() {
         region: editingSource.region || 'us-east-1',
         accessKey: editingSource.access_key,
         secretKey: editingSource.secret_key,
+        endpoint_url: editingSource.endpoint_url || null,
         prefix: editingSource.prefix || ''
       };
       
@@ -305,6 +312,7 @@ export default function IngestionPage() {
           region: editingSource.region || 'us-east-1',
           accessKey: editingSource.access_key || '',
           secretKey: editingSource.secret_key || '',
+          endpoint_url: editingSource.endpoint_url || null,
           prefix: editingSource.prefix || ''
         }
       });
@@ -961,6 +969,12 @@ export default function IngestionPage() {
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Secret Access Key {editingSource.id ? '(Leave blank to keep)' : ''}</label>
                 <Input placeholder="Secret key..." value={editingSource.secret_key || ''} onChange={(v: string) => setEditingSource({...editingSource, secret_key: v})} />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Endpoint URL <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>(MinIO / Linode / S3-compatible)</span></label>
+                <Input placeholder="e.g. https://us-east-1.linodeobjects.com" value={editingSource.endpoint_url || ''} onChange={(v: string) => setEditingSource({...editingSource, endpoint_url: v})} />
+                <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>Leave blank for standard AWS S3</p>
               </div>
 
               <div>

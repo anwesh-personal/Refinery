@@ -1,7 +1,7 @@
 import {
   Database, Table2, Rows3, HardDrive, Play, Copy, Download, RefreshCw,
   Loader2, AlertCircle, CheckCircle2, ChevronDown, ChevronUp,
-  Search, Columns, ChevronLeft, ChevronRight, Layers
+  Search, Columns, ChevronLeft, ChevronRight, Layers, X
 } from 'lucide-react';
 import { PageHeader, StatCard, Button } from '../components/UI';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -67,6 +67,12 @@ export default function DatabasePage() {
   const [dataSourceFilter, setDataSourceFilter] = useState<string>('');
   const colPickerRef = useRef<HTMLDivElement>(null);
   const colPickerBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Data source options for filter
+  const [dataSourceOptions, setDataSourceOptions] = useState<{id: string; label: string}[]>([]);
+
+  // Row detail modal
+  const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
   
   // Available filters populated from backend limit 200
   const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({});
@@ -123,6 +129,10 @@ export default function DatabasePage() {
   useEffect(() => { 
     fetchStats();
     fetchColumns();
+    // Fetch data source options (ingestion job IDs)
+    apiCall<{id: string; label: string}[]>('/api/ingestion/sources').then(sources => {
+      if (sources) setDataSourceOptions(sources.map((s: any) => ({ id: s.id, label: s.label || s.id })));
+    }).catch(() => {});
   }, [fetchStats, fetchColumns]);
 
   useEffect(() => {
@@ -543,7 +553,9 @@ export default function DatabasePage() {
                     fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
                   }}>
                     <option value="">All Sources</option>
-                    {/* Job IDs from result metadata could be listed here — for now, user can type */}
+                    {dataSourceOptions.map(ds => (
+                      <option key={ds.id} value={ds.id}>{ds.label}</option>
+                    ))}
                   </select>
                 </div>
 
@@ -611,7 +623,8 @@ export default function DatabasePage() {
               </thead>
               <tbody>
                 {sortedRows.map((row, i) => (
-                  <tr key={i} style={{ transition: 'background 0.1s' }}
+                  <tr key={i} style={{ transition: 'background 0.1s', cursor: 'pointer' }}
+                    onClick={() => setSelectedRow(row)}
                     onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                     onMouseOut={e => (e.currentTarget.style.background = '')}>
                     {resultCols.map(col => {
@@ -635,6 +648,79 @@ export default function DatabasePage() {
           </div>
         )}
       </div>
+
+      {/* Row Detail Modal */}
+      {selectedRow && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setSelectedRow(null); }}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+          }}
+        >
+          <div className="animate-scaleIn" style={{
+            background: 'var(--bg-app)', border: '1px solid var(--border)',
+            borderRadius: 20, width: '100%', maxWidth: 600, maxHeight: '80vh',
+            boxShadow: 'var(--shadow-lg)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '20px 24px', borderBottom: '1px solid var(--border)',
+            }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Row Detail</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(JSON.stringify(selectedRow, null, 2));
+                  }}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px',
+                    borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    background: 'var(--bg-card-hover)', border: '1px solid var(--border)',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  <Copy size={12} /> Copy JSON
+                </button>
+                <button
+                  onClick={() => setSelectedRow(null)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 32, height: 32, borderRadius: 8, cursor: 'pointer',
+                    background: 'transparent', border: 'none', color: 'var(--text-tertiary)',
+                  }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+            <div style={{ overflowY: 'auto', padding: '16px 24px 24px' }}>
+              {Object.entries(selectedRow).map(([key, value]) => (
+                <div key={key} style={{
+                  display: 'flex', gap: 16, padding: '10px 0',
+                  borderBottom: '1px solid var(--border)',
+                }}>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                    letterSpacing: '0.05em', color: 'var(--text-tertiary)',
+                    minWidth: 160, flexShrink: 0, paddingTop: 2,
+                  }}>
+                    {String(key).replace(/_/g, ' ')}
+                  </span>
+                  <span style={{
+                    fontSize: 13, color: value === null || value === undefined ? 'var(--text-tertiary)' : 'var(--text-primary)',
+                    fontStyle: value === null || value === undefined ? 'italic' : 'normal',
+                    wordBreak: 'break-all', lineHeight: 1.5,
+                  }}>
+                    {value === null || value === undefined ? '—' : String(value)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
