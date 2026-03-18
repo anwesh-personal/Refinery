@@ -333,8 +333,14 @@ cd /root/refinery/axiom-data-hub
 npm install
 npm run build
 
-# Copy built output to web root (served by Nginx)
-sudo cp -r dist/* /home/anweshrath/htdocs/iiiemail.email/
+# Clean old assets and copy fresh build to web root
+rm -rf /home/anweshrath/htdocs/iiiemail.email/assets
+cp -r dist/* /home/anweshrath/htdocs/iiiemail.email/
+
+# CRITICAL: Purge Varnish cache (CloudPanel uses Varnish as reverse proxy)
+# Without this, users will see the old cached version!
+varnishadm "ban req.url ~ /"
+systemctl restart varnish
 ```
 
 ## 11. Supabase Config
