@@ -38,7 +38,7 @@ export async function exportTargetList(id: string): Promise<{ csv: string; count
   const lists = await query<{
     segment_id: string;
     export_format: string;
-  }>(`SELECT segment_id, export_format FROM target_lists FINAL WHERE id = '${id}' LIMIT 1`);
+  }>(`SELECT segment_id, export_format FROM target_lists WHERE id = '${id}' LIMIT 1`);
 
   const list = lists[0];
   if (!list) throw new Error(`Target list ${id} not found`);
@@ -81,7 +81,7 @@ export async function exportTargetList(id: string): Promise<{ csv: string; count
 
 /** List all target lists */
 export async function listTargetLists() {
-  return query('SELECT * FROM target_lists FINAL ORDER BY created_at DESC LIMIT 50');
+  return query('SELECT * FROM target_lists ORDER BY created_at DESC LIMIT 50');
 }
 
 /** Get target stats */
@@ -95,7 +95,7 @@ export async function getTargetStats() {
       count() as total_lists,
       sum(email_count) as total_emails,
       countIf(status = 'ready' OR status = 'pushed') as exported
-    FROM target_lists FINAL
+    FROM target_lists
   `);
   return stats;
 }

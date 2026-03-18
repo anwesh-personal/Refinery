@@ -7,7 +7,7 @@ export async function startQueueJob(targetListId: string): Promise<string> {
   const jobId = genId();
 
   const lists = await query<{ email_count: string }>(`
-    SELECT email_count FROM target_lists FINAL WHERE id = '${targetListId}' LIMIT 1
+    SELECT email_count FROM target_lists WHERE id = '${targetListId}' LIMIT 1
   `);
   const list = lists[0];
   if (!list) throw new Error(`Target list ${targetListId} not found`);
@@ -34,7 +34,7 @@ export async function startQueueJob(targetListId: string): Promise<string> {
 
 async function runMailDispatch(jobId: string, targetListId: string) {
   const lists = await query<{ segment_id: string }>(`
-    SELECT segment_id FROM target_lists FINAL WHERE id = '${targetListId}' LIMIT 1
+    SELECT segment_id FROM target_lists WHERE id = '${targetListId}' LIMIT 1
   `);
   if (!lists[0]) throw new Error('Target list not found');
 

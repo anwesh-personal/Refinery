@@ -23,6 +23,7 @@ import s3sourcesRoutes from './routes/s3sources.js';
 import ingestionRulesRoutes from './routes/ingestion-rules.js';
 import janitorRoutes from './routes/janitor.js';
 import { setupScheduler } from './services/ingestion-rules.js';
+import { ensureEnvServersRegistered } from './services/servers.js';
 
 const app = express();
 
@@ -109,6 +110,10 @@ async function start() {
     // Initialize auto-ingestion scheduler
     await setupScheduler();
     console.log('[Server] ✓ Auto-ingestion scheduler initialized');
+
+    // Register env-configured servers into Supabase
+    await ensureEnvServersRegistered();
+    console.log('[Server] ✓ Server registry synchronized');
   } catch (e: any) {
     console.warn(`[Server] ⚠ Database init skipped (ClickHouse unavailable): ${e.message}`);
     console.warn('[Server] ⚠ The API will start but database operations will fail until ClickHouse is available.');

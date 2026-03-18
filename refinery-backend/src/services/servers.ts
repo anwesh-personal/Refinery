@@ -15,7 +15,7 @@ import { supabaseAdmin } from './supabaseAdmin.js';
 export interface ServerRecord {
   id: string;
   name: string;
-  type: 'clickhouse' | 's3' | 'linode';
+  type: 'clickhouse' | 's3' | 'minio' | 'linode';
   host: string;
   port: number;
   username: string;
@@ -39,7 +39,7 @@ export interface ServerRecord {
 export interface ServerSafe {
   id: string;
   name: string;
-  type: 'clickhouse' | 's3' | 'linode';
+  type: 'clickhouse' | 's3' | 'minio' | 'linode';
   host: string;
   port: number;
   database_name: string;
@@ -96,6 +96,83 @@ export async function listServers(): Promise<ServerSafe[]> {
     .order('name');
   if (error) throw new Error(`Failed to list servers: ${error.message}`);
   return (data || []) as ServerSafe[];
+}
+
+/**
+ * Auto-register servers from environment variables into Supabase
+ * so the Server Config page always shows the active infrastructure.
+ * Only inserts if no server with the same host+type combo exists.
+ */
+export async function ensureEnvServersRegistered(): Promise<void> {
+  const registrations: { name: string; type: string; host: string; port: number; username?: string; password?: string; database_name?: string; bucket?: string; region?: string; access_key?: string; secret_key?: string; endpoint_url?: string }[] = [];
+
+  // ClickHouse from env
+  if (env.clickhouse.host) {
+    const url = new URL(env.clickhouse.host);
+    registrations.push({
+      name: 'Primary ClickHouse',
+      type: 'clickhouse',
+      host: `${url.protocol}//${url.hostname}`,
+      port: Number(url.port) || 8123,
+      username: env.clickhouse.user,
+      password: env.clickhouse.password,
+      database_name: env.clickhouse.database,
+    });
+  }
+
+  // S3 Source from env
+  if (env.s3Source.bucket && env.s3Source.accessKey) {
+    registrations.push({
+      name: 'S3 Data Source',
+      type: 's3',
+      host: `https://s3.${env.s3Source.region}.amazonaws.com`,
+      port: 443,
+      bucket: env.s3Source.bucket,
+      region: env.s3Source.region,
+      access_key: env.s3Source.accessKey,
+      secret_key: env.s3Source.secretKey,
+    });
+  }
+
+  // Object Storage (MinIO / Linode) from env
+  if (env.objectStorage.endpoint && env.objectStorage.accessKey) {
+    registrations.push({
+      name: 'Object Storage (MinIO)',
+      type: 'minio',
+      host: env.objectStorage.endpoint,
+      port: 443,
+      bucket: env.objectStorage.bucket,
+      endpoint_url: env.objectStorage.endpoint,
+      access_key: env.objectStorage.accessKey,
+      secret_key: env.objectStorage.secretKey,
+    });
+  }
+
+  for (const reg of registrations) {
+    // Check if already registered
+    const { data: existing } = await supabaseAdmin
+      .from('servers')
+      .select('id')
+      .eq('host', reg.host)
+      .eq('type', reg.type)
+      .limit(1);
+
+    if (existing && existing.length > 0) continue; // Already exists
+
+    const { error } = await supabaseAdmin
+      .from('servers')
+      .insert({
+        ...reg,
+        is_default: true,
+        is_active: true,
+      });
+
+    if (error) {
+      console.warn(`[Servers] Failed to auto-register ${reg.name}: ${error.message}`);
+    } else {
+      console.log(`[Servers] Auto-registered: ${reg.name} (${reg.type})`);
+    }
+  }
 }
 
 /** Internal only — returns full record with credentials. NEVER return to client. */
