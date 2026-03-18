@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { supabase } from '../lib/supabase';
 import { PageHeader } from '../components/UI';
 import {
-  User, Lock, Camera, Mail, Shield, Save, Check, AlertCircle, Eye, EyeOff,
+  User, Lock, Camera, Mail, Shield, Save, Check, AlertCircle, Eye, EyeOff, Key,
 } from 'lucide-react';
 
 /** Compress an image file to fit within maxDim×maxDim and maxBytes using Canvas API */
@@ -60,6 +60,7 @@ export default function SettingsPage() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 28, maxWidth: 680 }}>
         <ProfileSection user={user} refreshProfile={refreshProfile} />
+        <Verify550Section user={user} />
         <PasswordSection />
       </div>
     </>
@@ -406,6 +407,216 @@ function PasswordSection() {
           <Lock size={14} />
           {saving ? 'Changing...' : 'Change Password'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// VERIFY550 API KEY SECTION
+// ═══════════════════════════════════════
+
+function Verify550Section({ user }: { user: any }) {
+  const [apiKey, setApiKey] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [credits, setCredits] = useState<number | null>(null);
+  const [hasOrgKey, setHasOrgKey] = useState(false);
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  // Load existing key from profile on mount
+  useEffect(() => {
+    (async () => {
+      // Check if user has a personal key (use raw REST to avoid generated-type issues)
+      try {
+        const resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?id=eq.${user.id}&select=verify550_api_key`,
+          {
+            headers: {
+              'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+              'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+            },
+          },
+        );
+        const rows = await resp.json();
+        if (rows?.[0]?.verify550_api_key) {
+          setApiKey(rows[0].verify550_api_key);
+        }
+      } catch { /* column might not exist yet */ }
+
+      // Check if org-wide key exists via verification config API
+      try {
+        const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/system_config?config_key=eq.verify550_api_key&select=config_value`, {
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          },
+        });
+        const rows = await resp.json();
+        if (rows?.[0]?.config_value) setHasOrgKey(true);
+      } catch { /* ignore */ }
+      setLoaded(true);
+    })();
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage(null);
+
+    const resp = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/profiles?id=eq.${user.id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify({ verify550_api_key: apiKey || null }),
+      },
+    );
+
+    if (resp.ok) {
+      setMessage({ text: apiKey ? 'Personal API key saved' : 'Personal key removed — org-wide key will be used', type: 'success' });
+    } else {
+      setMessage({ text: `Save failed: HTTP ${resp.status}`, type: 'error' });
+    }
+    setSaving(false);
+  };
+
+  const handleTest = async () => {
+    const keyToTest = apiKey.trim();
+    if (!keyToTest) {
+      setMessage({ text: 'Enter an API key first', type: 'error' });
+      return;
+    }
+    setTesting(true);
+    setMessage(null);
+    setCredits(null);
+
+    try {
+      const resp = await fetch(`https://app.verify550.com/api/getCredit?secret=${encodeURIComponent(keyToTest)}`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const text = await resp.text();
+      const count = Number(text);
+      if (isNaN(count)) throw new Error(`Invalid response: ${text}`);
+      setCredits(count);
+      setMessage({ text: `Connected! ${count.toLocaleString()} credits remaining`, type: 'success' });
+    } catch (err: any) {
+      setMessage({ text: `Connection failed: ${err.message}`, type: 'error' });
+    }
+    setTesting(false);
+  };
+
+  if (!loaded) return null;
+
+  return (
+    <div
+      className="animate-fadeIn"
+      style={{
+        background: 'var(--bg-card)', border: '1px solid var(--border)',
+        borderRadius: 16, overflow: 'hidden', animationDelay: '0.05s',
+      }}
+    >
+      <div style={{
+        padding: '20px 24px', borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Key size={16} style={{ color: 'var(--purple, #a855f7)' }} />
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Verify550 API Key</h3>
+        </div>
+        {credits !== null && (
+          <span style={{
+            fontSize: 12, fontWeight: 700, padding: '4px 12px', borderRadius: 20,
+            background: 'var(--green-muted)', color: 'var(--green)',
+          }}>
+            {credits.toLocaleString()} credits
+          </span>
+        )}
+      </div>
+
+      <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Info about org key */}
+        <div style={{
+          padding: '10px 14px', borderRadius: 8, fontSize: 12, lineHeight: 1.6,
+          background: hasOrgKey ? 'var(--green-muted)' : 'var(--yellow-muted)',
+          color: hasOrgKey ? 'var(--green)' : 'var(--yellow)',
+          border: `1px solid ${hasOrgKey ? 'var(--green)' : 'var(--yellow)'}`,
+        }}>
+          {hasOrgKey
+            ? '✓ An organization-wide API key is configured. You can optionally set your own below to override it.'
+            : '⚠ No org-wide key configured. Set your personal key below, or ask a superadmin to configure one in Verification settings.'
+          }
+        </div>
+
+        {/* API Key input */}
+        <div>
+          <label style={labelStyle}>Your Personal API Key</label>
+          <div style={{ position: 'relative' }}>
+            <input
+              type={showKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Enter your Verify550 API secret..."
+              style={{ ...inputStyle, paddingRight: 44, fontFamily: apiKey ? 'monospace' : 'inherit' }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey(!showKey)}
+              style={eyeBtnStyle}
+            >
+              {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+          </div>
+        </div>
+
+        {/* Message */}
+        {message && (
+          <div style={{
+            padding: '10px 14px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: message.type === 'success' ? 'var(--green-muted)' : 'var(--red-muted)',
+            color: message.type === 'success' ? 'var(--green)' : 'var(--red)',
+          }}>
+            {message.type === 'success' ? <Check size={14} /> : <AlertCircle size={14} />}
+            {message.text}
+          </div>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            onClick={handleTest}
+            disabled={testing || !apiKey.trim()}
+            style={{
+              ...btnStyle,
+              background: 'var(--purple, #a855f7)',
+              flex: 1,
+              opacity: (testing || !apiKey.trim()) ? 0.5 : 1,
+              cursor: (testing || !apiKey.trim()) ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <Shield size={14} />
+            {testing ? 'Testing...' : 'Test Connection'}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              ...btnStyle,
+              flex: 1,
+              opacity: saving ? 0.5 : 1,
+              cursor: saving ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <Save size={14} />
+            {saving ? 'Saving...' : 'Save Key'}
+          </button>
+        </div>
       </div>
     </div>
   );

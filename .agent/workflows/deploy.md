@@ -329,13 +329,12 @@ sudo certbot --nginx -d api.your-domain.com -d minio.your-domain.com -d your-dom
 ## 10. Build & Deploy Frontend
 
 ```bash
-cd /home/deploy/refinery/axiom-data-hub
+cd /root/refinery/axiom-data-hub
 npm install
-echo "VITE_API_URL=https://api.your-domain.com" > .env.production
 npm run build
 
-sudo mkdir -p /var/www/refinery
-sudo cp -r dist/* /var/www/refinery/
+# Copy built output to web root (served by Nginx)
+sudo cp -r dist/* /home/anweshrath/htdocs/iiiemail.email/
 ```
 
 ## 11. Supabase Config
