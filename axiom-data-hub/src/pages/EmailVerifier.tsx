@@ -151,6 +151,12 @@ export default function EmailVerifierPage() {
   const [page, setPage] = useState<number>(1);
   const rowsPerPage = 50;
 
+  // Async job tracking
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [jobStatus, setJobStatus] = useState<string>('');
+  const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
   const processedResults = React.useMemo(() => {
     if (!result?.results) return [];
     
@@ -251,9 +257,12 @@ export default function EmailVerifierPage() {
 
     setLoading(true);
     setResult(null);
+    setProgress(0);
+    setJobStatus('Submitting...');
 
     try {
-      const res = await apiCall<PipelineResult>('/api/verify', {
+      // Submit async job
+      const { jobId } = await apiCall<{ jobId: string; totalEmails: number }>('/api/verify/async', {
         method: 'POST',
         body: {
           emails: list,
@@ -263,10 +272,64 @@ export default function EmailVerifierPage() {
           thresholds,
         }
       });
-      setResult(res);
+
+      setActiveJobId(jobId);
+      setJobStatus('Processing...');
+
+      // Start polling for progress
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(async () => {
+        try {
+          const job = await apiCall<any>(`/api/verify/jobs/${jobId}`);
+          const total = Number(job.total_emails) || 1;
+          const processed = Number(job.processed_count) || 0;
+          const pct = Math.min(100, Math.round((processed / total) * 100));
+          setProgress(pct);
+
+          if (job.status === 'complete') {
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
+            setProgress(100);
+            setJobStatus('Complete!');
+
+            // Fetch full results
+            const fullJob = await apiCall<any>(`/api/verify/jobs/${jobId}`);
+            setResult({
+              id: jobId,
+              startedAt: fullJob.started_at,
+              completedAt: fullJob.completed_at,
+              totalInput: Number(fullJob.total_emails),
+              totalProcessed: Number(fullJob.processed_count),
+              duplicatesRemoved: Number(fullJob.duplicates_removed),
+              typosFixed: Number(fullJob.typos_fixed),
+              safe: Number(fullJob.safe_count),
+              uncertain: Number(fullJob.uncertain_count),
+              risky: Number(fullJob.risky_count),
+              rejected: Number(fullJob.rejected_count),
+              results: fullJob.results || [],
+              checksEnabled: checks,
+              severityWeights: weights,
+              thresholds,
+            } as PipelineResult);
+            setLoading(false);
+            setActiveJobId(null);
+          } else if (job.status === 'failed') {
+            clearInterval(pollRef.current!);
+            pollRef.current = null;
+            showToast('error', `Pipeline failed: ${job.error_message || 'Unknown error'}`);
+            setLoading(false);
+            setActiveJobId(null);
+          } else {
+            const statusText = pct < 30 ? 'Analyzing syntax & domains...' : pct < 60 ? 'Running MX & SMTP checks...' : pct < 90 ? 'Verifying remaining emails...' : 'Finalizing results...';
+            setJobStatus(statusText);
+          }
+        } catch {
+          // Polling error — don't kill job, just skip this tick
+        }
+      }, 2000);
+
     } catch (err: any) {
-      showToast('error', `Pipeline failed: ${err.message}`);
-    } finally {
+      showToast('error', `Failed to submit job: ${err.message}`);
       setLoading(false);
     }
   };
@@ -495,6 +558,64 @@ export default function EmailVerifierPage() {
               </Button>
             </div>
           </div>
+
+          {/* Progress Ring Overlay — shown while job is processing */}
+          {loading && activeJobId && (
+            <div className="animate-fadeIn" style={{
+              background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--accent)',
+              padding: 40, textAlign: 'center', marginTop: 0,
+              boxShadow: '0 0 40px rgba(99,102,241,0.08)',
+            }}>
+              {/* SVG Progress Ring */}
+              <div style={{ position: 'relative', width: 160, height: 160, margin: '0 auto 24px' }}>
+                <svg width="160" height="160" viewBox="0 0 160 160" style={{ transform: 'rotate(-90deg)' }}>
+                  {/* Background circle */}
+                  <circle cx="80" cy="80" r="68" fill="none" stroke="var(--border)" strokeWidth="8" />
+                  {/* Progress arc */}
+                  <circle cx="80" cy="80" r="68" fill="none"
+                    stroke="url(#progressGrad)" strokeWidth="8"
+                    strokeLinecap="round"
+                    strokeDasharray={2 * Math.PI * 68}
+                    strokeDashoffset={2 * Math.PI * 68 * (1 - progress / 100)}
+                    style={{ transition: 'stroke-dashoffset 1s ease-out' }}
+                  />
+                  <defs>
+                    <linearGradient id="progressGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="var(--accent)" />
+                      <stop offset="100%" stopColor="var(--blue)" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                {/* Center percentage */}
+                <div style={{
+                  position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(0deg)',
+                  fontSize: 36, fontWeight: 800, color: 'var(--text-primary)',
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  {progress}%
+                </div>
+              </div>
+
+              {/* Status text */}
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+                {jobStatus}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 20 }}>
+                Job ID: <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{activeJobId.slice(0, 12)}...</span>
+              </div>
+
+              {/* Safe to leave banner */}
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+                padding: '10px 20px', borderRadius: 10,
+                background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
+                fontSize: 13, fontWeight: 600, color: '#22c55e',
+              }}>
+                <CheckCircle size={16} />
+                Safe to navigate away — processing continues on server
+              </div>
+            </div>
+          )}
 
           {/* Results Unit */}
           {result && (
