@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   CloudDownload, Database, Filter, ShieldCheck, 
-  Send, Zap, ChevronRight, CheckCircle2, 
-  MousePointer2, Network, Sparkles, Server, Mail
+  Send, ChevronRight, CheckCircle2, Sparkles
 } from 'lucide-react';
 
 const TUTORIAL_STEPS = [
