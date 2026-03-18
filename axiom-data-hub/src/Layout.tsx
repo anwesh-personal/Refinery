@@ -6,7 +6,7 @@ import type { PermissionKey } from './auth/AuthContext';
 import {
   LayoutDashboard, CloudDownload, Database, Filter, ShieldCheck,
   Send, ListOrdered, Server, ScrollText, Users, Settings2,
-  Moon, Sun, LogOut, Menu, X, Zap, ChevronRight,
+  Moon, Sun, LogOut, Menu, X, Zap, ChevronRight, Beaker,
 } from 'lucide-react';
 
 interface LayoutProps { children: ReactNode; }
@@ -24,7 +24,8 @@ const NAV = [
     label: 'PROCESSING',
     items: [
       { name: 'Segments', icon: Filter, path: '/segments', requires: 'canViewSegments' as PermissionKey },
-      { name: 'Verification', icon: ShieldCheck, path: '/verification', requires: 'canViewVerification' as PermissionKey },
+      { name: 'Verification Engine', icon: ShieldCheck, path: '/verification', requires: 'canViewVerification' as PermissionKey },
+      { name: 'Pipeline Studio', icon: Beaker, path: '/email-verifier', requires: 'canViewVerification' as PermissionKey },
     ],
   },
   {

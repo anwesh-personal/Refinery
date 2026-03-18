@@ -11,7 +11,7 @@ const LOG_LEVELS = [
 export default function LogsPage() {
   return (
     <>
-      <PageHeader title="Daemon Logs" sub="Real-time logs from the background pipeline daemon on your Linode server." />
+      <PageHeader title="Daemon Logs" sub="Real-time logs from the background pipeline daemon on your dedicated server." />
 
       {/* Filters */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>

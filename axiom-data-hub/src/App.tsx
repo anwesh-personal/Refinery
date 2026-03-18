@@ -14,6 +14,7 @@ import LogsPage from './pages/Logs';
 import TeamPage from './pages/Team';
 import SettingsPage from './pages/Settings';
 import NotFoundPage from './pages/NotFound';
+import EmailVerifierPage from './pages/EmailVerifier';
 import ImpersonationBanner from './components/ImpersonationBanner';
 import { ServerProvider } from './components/ServerSelector';
 
@@ -38,6 +39,7 @@ export default function App() {
                     <Route path="/database" element={<ProtectedRoute requires="canViewDatabase"><DatabasePage /></ProtectedRoute>} />
                     <Route path="/segments" element={<ProtectedRoute requires="canViewSegments"><SegmentsPage /></ProtectedRoute>} />
                     <Route path="/verification" element={<ProtectedRoute requires="canViewVerification"><VerificationPage /></ProtectedRoute>} />
+                    <Route path="/email-verifier" element={<ProtectedRoute requires="canViewVerification"><EmailVerifierPage /></ProtectedRoute>} />
                     <Route path="/targets" element={<ProtectedRoute requires="canViewTargets"><TargetsPage /></ProtectedRoute>} />
                     <Route path="/queue" element={<ProtectedRoute requires="canViewQueue"><QueuePage /></ProtectedRoute>} />
                     <Route path="/config" element={<ProtectedRoute requires="canViewConfig"><ConfigPage /></ProtectedRoute>} />

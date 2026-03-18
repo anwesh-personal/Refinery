@@ -39,6 +39,15 @@ const SaveConfigSchema = z.object({
   message: 'At least one configuration field must be provided',
 });
 
+// ─── Helpers ───
+
+/** Detect if an error is a ClickHouse connection failure (ECONNREFUSED, ETIMEDOUT, etc.) */
+function isClickHouseDown(e: any): boolean {
+  const msg = String(e?.message || e || '');
+  return msg.includes('ECONNREFUSED') || msg.includes('ETIMEDOUT') || msg.includes('ENOTFOUND')
+    || e?.code === 'ECONNREFUSED' || e?.code === 'ETIMEDOUT';
+}
+
 // GET /api/verification/stats
 // Returns aggregate verification statistics across all leads
 router.get('/stats', async (_req, res) => {
@@ -46,6 +55,9 @@ router.get('/stats', async (_req, res) => {
     const stats = await verifyService.getVerificationStats();
     res.json(stats);
   } catch (e: any) {
+    if (isClickHouseDown(e)) {
+      return res.status(503).json({ error: 'Database unavailable' });
+    }
     res.status(500).json({ error: e.message });
   }
 });
@@ -58,6 +70,9 @@ router.get('/batches', async (req, res) => {
     const batches = await verifyService.listBatches(Math.min(limit, 200));
     res.json(batches);
   } catch (e: any) {
+    if (isClickHouseDown(e)) {
+      return res.status(503).json({ error: 'Database unavailable' });
+    }
     res.status(500).json({ error: e.message });
   }
 });

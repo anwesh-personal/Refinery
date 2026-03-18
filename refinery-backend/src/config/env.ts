@@ -25,11 +25,11 @@ export const env = {
     secretKey: process.env.S3_SOURCE_SECRET_KEY || '',
   },
 
-  linodeObj: {
-    endpoint: process.env.LINODE_OBJ_ENDPOINT || 'https://us-east-1.linodeobjects.com',
-    bucket: process.env.LINODE_OBJ_BUCKET || 'refinery-data',
-    accessKey: process.env.LINODE_OBJ_ACCESS_KEY || '',
-    secretKey: process.env.LINODE_OBJ_SECRET_KEY || '',
+  objectStorage: {
+    endpoint: process.env.OBJ_STORAGE_ENDPOINT || process.env.LINODE_OBJ_ENDPOINT || 'http://localhost:9000',
+    bucket: process.env.OBJ_STORAGE_BUCKET || process.env.LINODE_OBJ_BUCKET || 'refinery-data',
+    accessKey: process.env.OBJ_STORAGE_ACCESS_KEY || process.env.LINODE_OBJ_ACCESS_KEY || '',
+    secretKey: process.env.OBJ_STORAGE_SECRET_KEY || process.env.LINODE_OBJ_SECRET_KEY || '',
   },
 
   verify550: {

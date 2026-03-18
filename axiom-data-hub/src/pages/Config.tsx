@@ -8,7 +8,7 @@ import { Can } from '../auth/ProtectedRoute';
 interface ServerData {
   id: string;
   name: string;
-  type: 'clickhouse' | 's3' | 'linode';
+  type: 'clickhouse' | 's3' | 'minio';
   host: string;
   port: number;
   database_name: string;
@@ -27,7 +27,7 @@ interface ServerData {
 }
 
 export type ServerFormData = Partial<ServerData> & { 
-  type: 'clickhouse' | 's3' | 'linode';
+  type: 'clickhouse' | 's3' | 'minio';
 };
 
 export default function ConfigPage() {
@@ -153,7 +153,7 @@ export default function ConfigPage() {
 
   const renderIcon = (type: string) => {
     if (type === 'clickhouse') return <Database size={16} />;
-    if (type === 's3' || type === 'linode') return <Cloud size={16} />;
+    if (type === 's3' || type === 'minio') return <Cloud size={16} />;
     return <Server size={16} />;
   };
 
@@ -206,7 +206,7 @@ export default function ConfigPage() {
               <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.6 }}>
                 <div><strong>Host:</strong> {s.host}:{s.port || (s.type === 'clickhouse' ? 8123 : 443)}</div>
                 {s.type === 'clickhouse' && <div><strong>DB:</strong> {s.database_name}</div>}
-                {(s.type === 's3' || s.type === 'linode') && (
+                {(s.type === 's3' || s.type === 'minio') && (
                   <>
                     <div><strong>Bucket:</strong> {s.bucket || '(none)'}</div>
                     {s.endpoint_url && <div><strong>Endpoint:</strong> {s.endpoint_url}</div>}
@@ -268,7 +268,7 @@ export default function ConfigPage() {
                   >
                     <option value="clickhouse">ClickHouse DB</option>
                     <option value="s3">AWS Object Storage (S3)</option>
-                    <option value="linode">Linode Object Storage</option>
+                    <option value="minio">MinIO / S3-Compatible</option>
                   </select>
                 </div>
 
@@ -314,7 +314,7 @@ export default function ConfigPage() {
                   )}
                 </div>
 
-                {(formData.type === 's3' || formData.type === 'linode') && (
+                {(formData.type === 's3' || formData.type === 'minio') && (
                   <>
                     <div style={{ display: 'flex', gap: 16 }}>
                       <div style={{ flex: 2 }}>
@@ -338,7 +338,7 @@ export default function ConfigPage() {
                       <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Custom Endpoint URL (Optional)</label>
                       <input
                         value={formData.endpoint_url || ''} onChange={(e) => setFormData({ ...formData, endpoint_url: e.target.value })}
-                        placeholder="https://us-east-1.linodeobjects.com"
+                        placeholder="http://localhost:9000"
                         style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
                       />
                     </div>

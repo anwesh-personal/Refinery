@@ -31,8 +31,8 @@ router.post('/', requireSuperadmin, async (req, res) => {
     if (!name || !type || !host) {
       return res.status(400).json({ error: 'name, type, and host are required' });
     }
-    if (!['clickhouse', 's3', 'linode'].includes(type)) {
-      return res.status(400).json({ error: 'type must be clickhouse, s3, or linode' });
+    if (!['clickhouse', 's3', 'minio', 'linode'].includes(type)) {
+      return res.status(400).json({ error: 'type must be clickhouse, s3, or minio' });
     }
 
     // Explicitly construct the payload — no raw req.body passthrough

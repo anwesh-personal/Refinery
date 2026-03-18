@@ -9,7 +9,7 @@ import { Server, ChevronDown, Check, Wifi, WifiOff } from 'lucide-react';
 interface ServerInfo {
   id: string;
   name: string;
-  type: 'clickhouse' | 's3' | 'linode';
+  type: 'clickhouse' | 's3' | 'minio';
   host: string;
   is_default: boolean;
   last_ping_ok: boolean | null;
@@ -76,7 +76,7 @@ export function useServers() {
 // Server Selector Widget — Dropdown for page headers
 // ═══════════════════════════════════════════════════════════════
 
-export function ServerSelector({ type = 'clickhouse' }: { type?: 'clickhouse' | 's3' | 'linode' }) {
+export function ServerSelector({ type = 'clickhouse' }: { type?: 'clickhouse' | 's3' | 'minio' }) {
   const { servers, selectedServerId, selectServer } = useServers();
   const [open, setOpen] = useState(false);
 

@@ -14,7 +14,7 @@ export default function IngestionPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20, marginBottom: 36 }}>
         <StatCard label="Pending Files" value="0" sub="Awaiting download" icon={<Clock size={18} />} color="var(--yellow)" colorMuted="var(--yellow-muted)" delay={0.06} />
         <StatCard label="Downloaded" value="0" sub="Total files ingested" icon={<CloudDownload size={18} />} color="var(--green)" colorMuted="var(--green-muted)" delay={0.12} />
-        <StatCard label="Storage Used" value="0 GB" sub="of 1 TB on Linode" icon={<HardDrive size={18} />} color="var(--blue)" colorMuted="var(--blue-muted)" delay={0.18} />
+        <StatCard label="Storage Used" value="0 GB" sub="on Object Storage" icon={<HardDrive size={18} />} color="var(--blue)" colorMuted="var(--blue-muted)" delay={0.18} />
         <StatCard label="Last Sync" value="Never" sub="No sync yet" icon={<FolderSync size={18} />} color="var(--purple)" colorMuted="var(--purple-muted)" delay={0.24} />
       </div>
 

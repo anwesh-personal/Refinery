@@ -4,11 +4,12 @@ description: How to deploy Refinery Nexus on a dedicated Ubuntu server
 
 # Deploying Refinery Nexus — Full Stack on Ubuntu 24.04
 
-**Server spec:** 16GB RAM, 300-400GB SSD, Ubuntu 24.04
-**Stack on this server:** ClickHouse + Node.js Backend + Nginx Reverse Proxy
+**Server:** RackNerd Dedicated
+**Specs:** 32GB RAM · 500GB SSD · 2TB SATA (500GB partitioned for MinIO)
+**Stack:** ClickHouse + MinIO + Node.js Backend + Nginx
 
-> Supabase stays as a managed cloud service (auth, profiles, teams, servers tables).
-> The frontend can be deployed to Vercel/Netlify or self-hosted behind Nginx.
+> Supabase stays as a managed cloud service (auth, profiles, teams, roles, servers tables).
+> Frontend can be self-hosted on same box behind Nginx, or deployed to Vercel.
 
 ---
 
@@ -37,22 +38,43 @@ sudo ufw default allow outgoing
 sudo ufw allow OpenSSH
 sudo ufw allow 80/tcp    # HTTP
 sudo ufw allow 443/tcp   # HTTPS
-# DO NOT expose ClickHouse ports (8123, 9000) to the internet
+# DO NOT expose ClickHouse (8123, 9000) or MinIO (9000/9001) directly
 sudo ufw enable
 ```
 
-## 3. Install ClickHouse
+## 3. Mount & Format the SATA Disk
 
 ```bash
-# Official ClickHouse install (always latest stable)
+# Identify the SATA disk and the MinIO partition
+lsblk
+
+# Example: /dev/sdb1 is your 500GB MinIO partition
+# Format if not already done:
+sudo mkfs.ext4 /dev/sdb1
+
+# Create mount point
+sudo mkdir -p /mnt/minio-data
+
+# Mount it
+sudo mount /dev/sdb1 /mnt/minio-data
+
+# Make it persist on reboot — add to /etc/fstab
+echo "$(sudo blkid -s UUID -o value /dev/sdb1) /mnt/minio-data ext4 defaults 0 2" | sudo tee -a /etc/fstab
+
+# Give deploy user ownership
+sudo chown -R deploy:deploy /mnt/minio-data
+```
+
+## 4. Install ClickHouse
+
+```bash
 sudo apt-get install -y apt-transport-https ca-certificates
 curl -fsSL https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key | sudo gpg --dearmor -o /usr/share/keyrings/clickhouse-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg] https://packages.clickhouse.com/deb stable main" | sudo tee /etc/apt/sources.list.d/clickhouse.list
 sudo apt-get update
 sudo apt-get install -y clickhouse-server clickhouse-client
 
-# It will prompt for a default password — SET ONE (you'll use it in env vars)
-# Start ClickHouse
+# It will prompt for a password — SET ONE
 sudo systemctl enable clickhouse-server
 sudo systemctl start clickhouse-server
 
@@ -60,17 +82,12 @@ sudo systemctl start clickhouse-server
 clickhouse-client --password YOUR_PASSWORD -q "SELECT version()"
 ```
 
-### ClickHouse Config Tuning (16GB server)
+### ClickHouse Config Tuning (32GB server)
 
 Edit `/etc/clickhouse-server/config.xml`:
 ```xml
-<!-- Memory limit: leave ~4GB for OS + Node.js -->
-<max_memory_usage>10000000000</max_memory_usage>  <!-- 10GB -->
-
-<!-- Listen only on localhost (backend connects locally) -->
+<!-- Listen only on localhost -->
 <listen_host>127.0.0.1</listen_host>
-
-<!-- HTTP interface on 8123 (default) — local only -->
 <http_port>8123</http_port>
 ```
 
@@ -78,7 +95,8 @@ Edit `/etc/clickhouse-server/users.xml`:
 ```xml
 <profiles>
     <default>
-        <max_memory_usage>10000000000</max_memory_usage>
+        <!-- Leave ~8GB for OS + Node.js + MinIO -->
+        <max_memory_usage>24000000000</max_memory_usage>  <!-- 24GB -->
         <max_execution_time>300</max_execution_time>
     </default>
 </profiles>
@@ -88,28 +106,99 @@ Edit `/etc/clickhouse-server/users.xml`:
 sudo systemctl restart clickhouse-server
 ```
 
-## 4. Install Node.js 20 LTS
+## 5. Install MinIO
+
+```bash
+# Download MinIO server binary
+wget https://dl.min.io/server/minio/release/linux-amd64/minio
+chmod +x minio
+sudo mv minio /usr/local/bin/
+
+# Download MinIO client (mc) for bucket management
+wget https://dl.min.io/client/mc/release/linux-amd64/mc
+chmod +x mc
+sudo mv mc /usr/local/bin/
+
+# Create a dedicated system user for MinIO
+sudo useradd -r -s /sbin/nologin minio-user
+sudo chown -R minio-user:minio-user /mnt/minio-data
+```
+
+### Create MinIO environment file:
+
+```bash
+sudo tee /etc/default/minio << 'EOF'
+# MinIO root credentials — CHANGE THESE
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=STRONG_PASSWORD_HERE
+
+# Data directory (on your 500GB SATA partition)
+MINIO_VOLUMES="/mnt/minio-data"
+
+# Bind to localhost only (Nginx will proxy)
+MINIO_OPTS="--console-address :9001 --address 127.0.0.1:9000"
+EOF
+```
+
+### Create MinIO systemd service:
+
+```bash
+sudo tee /etc/systemd/system/minio.service << 'EOF'
+[Unit]
+Description=MinIO Object Storage
+After=network.target
+
+[Service]
+User=minio-user
+Group=minio-user
+EnvironmentFile=/etc/default/minio
+ExecStart=/usr/local/bin/minio server $MINIO_OPTS $MINIO_VOLUMES
+Restart=always
+RestartSec=10
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable minio
+sudo systemctl start minio
+
+# Verify
+sudo systemctl status minio
+```
+
+### Create the refinery-data bucket:
+
+```bash
+# Configure mc alias
+mc alias set local http://127.0.0.1:9000 minioadmin STRONG_PASSWORD_HERE
+
+# Create the bucket
+mc mb local/refinery-data
+
+# Verify
+mc ls local
+```
+
+## 6. Install Node.js 20 LTS
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
-
-# Verify
 node --version   # v20.x
-npm --version
 ```
 
-## 5. Install PM2 (Process Manager)
+## 7. Install PM2
 
 ```bash
 sudo npm install -g pm2
-
-# Auto-start PM2 on boot
 pm2 startup systemd
 # Run the command it outputs
 ```
 
-## 6. Clone & Configure Backend
+## 8. Clone & Configure Backend
 
 ```bash
 cd /home/deploy
@@ -128,25 +217,30 @@ PORT=4000
 # ClickHouse (localhost — same machine)
 CLICKHOUSE_HOST=http://127.0.0.1:8123
 CLICKHOUSE_DATABASE=refinery
-CLICKHOUSE_USERNAME=default
+CLICKHOUSE_USER=default
 CLICKHOUSE_PASSWORD=YOUR_CLICKHOUSE_PASSWORD
 
 # Supabase (cloud)
-SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=eyJ...your-service-role-key...
-SUPABASE_ANON_KEY=eyJ...your-anon-key...
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=eyJ...anon-key...
+SUPABASE_SECRET_KEY=eyJ...service-role-key...
 
 # Frontend URL (for CORS)
 FRONTEND_URL=https://your-domain.com
 
-# S3/Linode Object Storage (for CSV ingestion)
-S3_ENDPOINT=https://your-region.linodeobjects.com
-S3_BUCKET=your-bucket
-S3_REGION=us-east-1
-S3_ACCESS_KEY=your-access-key
-S3_SECRET_KEY=your-secret-key
+# MinIO Object Storage (self-hosted)
+OBJ_STORAGE_ENDPOINT=http://127.0.0.1:9000
+OBJ_STORAGE_BUCKET=refinery-data
+OBJ_STORAGE_ACCESS_KEY=minioadmin
+OBJ_STORAGE_SECRET_KEY=STRONG_PASSWORD_HERE
 
-# Verify550 (optional — can also configure via UI)
+# S3 Source bucket (the 5x5 feed — keep if still used)
+# S3_SOURCE_BUCKET=...
+# S3_SOURCE_REGION=us-east-1
+# S3_SOURCE_ACCESS_KEY=...
+# S3_SOURCE_SECRET_KEY=...
+
+# Verify550 (optional)
 # VERIFY550_ENDPOINT=https://api.verify550.com/v1
 # VERIFY550_API_KEY=v550-key-xxx
 EOF
@@ -158,28 +252,22 @@ EOF
 npm run build
 pm2 start dist/index.js --name refinery-api
 pm2 save
-```
 
-### Verify backend is running:
-
-```bash
+# Verify
 curl http://localhost:4000/api/health
-# Should return: {"status":"ok","uptime":...,"env":"production"}
 ```
 
-On first start, the backend auto-creates all ClickHouse tables (universal_person, segments, verification_batches, etc.)
-
-## 7. Install Nginx + SSL
+## 9. Install Nginx + SSL
 
 ```bash
-sudo apt install -y nginx
-sudo apt install -y certbot python3-certbot-nginx
+sudo apt install -y nginx certbot python3-certbot-nginx
 ```
 
-### Create Nginx config:
+### Nginx config (API + MinIO Console + Frontend):
 
 ```bash
 sudo tee /etc/nginx/sites-available/refinery << 'EOF'
+# API
 server {
     listen 80;
     server_name api.your-domain.com;
@@ -193,53 +281,26 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-
-        # Large file uploads for CSV ingestion
-        client_max_body_size 50M;
+        client_max_body_size 200M;
     }
 }
-EOF
 
-sudo ln -s /etc/nginx/sites-available/refinery /etc/nginx/sites-enabled/
-sudo rm /etc/nginx/sites-enabled/default
-sudo nginx -t
-sudo systemctl restart nginx
-```
+# MinIO Console (admin UI — restrict access!)
+server {
+    listen 80;
+    server_name minio.your-domain.com;
 
-### SSL Certificate:
+    location / {
+        proxy_pass http://127.0.0.1:9001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+    }
+}
 
-```bash
-sudo certbot --nginx -d api.your-domain.com
-# Follow prompts, auto-renew is configured automatically
-```
-
-## 8. Frontend Deployment
-
-### Option A: Vercel (Recommended)
-```bash
-# From your local machine
-cd axiom-data-hub
-npm install -g vercel
-vercel
-# Set env var: VITE_API_URL=https://api.your-domain.com
-```
-
-### Option B: Self-hosted on same server
-```bash
-cd /home/deploy/refinery/axiom-data-hub
-npm install
-# Set the API URL
-echo "VITE_API_URL=https://api.your-domain.com" > .env.production
-npm run build
-
-# Serve via Nginx
-sudo mkdir -p /var/www/refinery
-sudo cp -r dist/* /var/www/refinery/
-```
-
-Then add a second Nginx server block for the frontend:
-```nginx
+# Frontend (self-hosted)
 server {
     listen 80;
     server_name your-domain.com;
@@ -248,101 +309,137 @@ server {
     index index.html;
 
     location / {
-        try_files $uri $uri/ /index.html;  # SPA routing
+        try_files $uri $uri/ /index.html;
     }
 }
+EOF
+
+sudo ln -s /etc/nginx/sites-available/refinery /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl restart nginx
 ```
 
-## 9. Supabase Config
-
-In your Supabase dashboard, make sure these are set:
-- **Auth → URL Configuration → Site URL:** `https://your-domain.com`
-- **Auth → URL Configuration → Redirect URLs:** `https://your-domain.com/**`
-- **SQL Editor:** Run `NOTIFY pgrst, 'reload schema';` to refresh PostgREST cache
-
-## 10. Verify Everything
+### SSL Certificates:
 
 ```bash
-# ClickHouse running
+sudo certbot --nginx -d api.your-domain.com -d minio.your-domain.com -d your-domain.com
+```
+
+## 10. Build & Deploy Frontend
+
+```bash
+cd /home/deploy/refinery/axiom-data-hub
+npm install
+echo "VITE_API_URL=https://api.your-domain.com" > .env.production
+npm run build
+
+sudo mkdir -p /var/www/refinery
+sudo cp -r dist/* /var/www/refinery/
+```
+
+## 11. Supabase Config
+
+In your Supabase dashboard:
+- **Auth → Site URL:** `https://your-domain.com`
+- **Auth → Redirect URLs:** `https://your-domain.com/**`
+- Run pending migration in SQL Editor:
+  ```sql
+  -- Migration 009: Add minio server type
+  ALTER TABLE servers DROP CONSTRAINT IF EXISTS servers_type_check;
+  ALTER TABLE servers ADD CONSTRAINT servers_type_check
+    CHECK (type IN ('clickhouse', 's3', 'linode', 'minio'));
+  UPDATE servers SET type = 'minio' WHERE type = 'linode';
+  ```
+
+## 12. Verify Everything
+
+```bash
+# ClickHouse
 sudo systemctl status clickhouse-server
+clickhouse-client --password YOUR_PASSWORD -q "SHOW DATABASES"
 
-# Backend running
+# MinIO
+sudo systemctl status minio
+mc ls local/refinery-data
+
+# Backend
 pm2 status
-curl -s https://api.your-domain.com/api/health | jq .
+curl -s http://localhost:4000/api/health
 
-# Nginx running
+# Nginx
 sudo systemctl status nginx
-
-# SSL valid
-curl -I https://api.your-domain.com
 ```
 
-## 11. Monitoring & Logs
+## 13. Monitoring & Logs
 
 ```bash
-# Backend logs
-pm2 logs refinery-api
-
-# ClickHouse logs
+pm2 logs refinery-api          # Backend logs
+sudo journalctl -u minio -f    # MinIO logs
 sudo journalctl -u clickhouse-server -f
-
-# Nginx access/error logs
-sudo tail -f /var/log/nginx/access.log
 sudo tail -f /var/log/nginx/error.log
 ```
 
-## 12. Backup (ClickHouse)
+## 14. Backup
 
 ```bash
-# Create a backup script
-cat > /home/deploy/backup-clickhouse.sh << 'SCRIPT'
+cat > /home/deploy/backup.sh << 'SCRIPT'
 #!/bin/bash
-BACKUP_DIR="/home/deploy/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
+BACKUP_DIR="/mnt/minio-data/backups"
 mkdir -p $BACKUP_DIR
 
+# ClickHouse backup
 clickhouse-client --password YOUR_PASSWORD -q \
-  "BACKUP DATABASE refinery TO Disk('backups', 'refinery_${DATE}')"
+  "BACKUP DATABASE refinery TO Disk('default', 'backup_${DATE}')"
 
-echo "[Backup] Completed: refinery_${DATE}"
+# MinIO data is already on the SATA disk — just sync to a second location if needed
+echo "[Backup] Done: $DATE"
 SCRIPT
 
-chmod +x /home/deploy/backup-clickhouse.sh
-
-# Cron: daily backup at 3 AM
-(crontab -l 2>/dev/null; echo "0 3 * * * /home/deploy/backup-clickhouse.sh") | crontab -
+chmod +x /home/deploy/backup.sh
+# Cron: daily at 3 AM
+(crontab -l 2>/dev/null; echo "0 3 * * * /home/deploy/backup.sh") | crontab -
 ```
 
 ---
 
-## Architecture Diagram
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│              Your Dedicated Server              │
-│                 Ubuntu 24.04                     │
-│                                                  │
-│  ┌──────────┐    ┌───────────────┐              │
-│  │  Nginx   │───→│ Node.js API   │              │
-│  │ :80/:443 │    │ (PM2) :4000   │              │
-│  └──────────┘    └───────┬───────┘              │
-│       │                  │                       │
-│       │           ┌──────┴──────┐               │
-│       │           │ ClickHouse  │               │
-│       │           │   :8123     │               │
-│       │           │  (local)    │               │
-│       │           └─────────────┘               │
-│       │                                          │
-│  ┌────┴────┐                                    │
-│  │Frontend │  (or Vercel/Netlify)               │
-│  │ static  │                                    │
-│  └─────────┘                                    │
-└─────────────────────────────────────────────────┘
-         │
-         │ HTTPS
-         ▼
-┌─────────────────┐
-│  Supabase Cloud │
-│  (Auth, Postgres)│
-└─────────────────┘
+                 ┌─────────────────────────────────────────────┐
+                 │         RackNerd Dedicated Server           │
+                 │  Ubuntu 24.04 · 32GB RAM                    │
+                 │                                              │
+                 │  ┌──────────┐    ┌──────────────────────┐   │
+Internet ───────►│  │  Nginx   │───►│  Node.js API (PM2)   │   │
+HTTPS            │  │ :80/:443 │    │  :4000               │   │
+                 │  └──────────┘    └──────┬───────────────┘   │
+                 │       │                 │                    │
+                 │       │         ┌───────┴────────┐          │
+                 │       │         │  ClickHouse    │          │
+                 │       │         │  :8123 (local) │          │
+                 │       │         │  (500GB SSD)   │          │
+                 │       │         └────────────────┘          │
+                 │       │                 │                    │
+                 │       │         ┌───────┴────────┐          │
+                 │       │         │     MinIO      │          │
+                 │       │         │  :9000 (local) │          │
+                 │       │         │  (500GB SATA)  │          │
+                 │       │         └────────────────┘          │
+                 │       │                                      │
+                 │  ┌────┴────────┐                            │
+                 │  │  Frontend   │                            │
+                 │  │  (static)   │                            │
+                 │  └─────────────┘                            │
+                 └─────────────────────────────────────────────┘
+                              │
+                              │ HTTPS
+                              ▼
+                 ┌────────────────────────┐
+                 │     Supabase Cloud     │
+                 │  Auth · Postgres       │
+                 │  Profiles · Teams      │
+                 │  Roles · Servers       │
+                 └────────────────────────┘
 ```

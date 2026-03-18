@@ -55,10 +55,10 @@ router.post('/test-source', async (_req, res) => {
   }
 });
 
-// POST /api/ingestion/test-linode
-router.post('/test-linode', async (_req, res) => {
+// POST /api/ingestion/test-storage
+router.post('/test-storage', async (_req, res) => {
   try {
-    const result = await ingestionService.testLinodeConnection();
+    const result = await ingestionService.testStorageConnection();
     res.json(result);
   } catch (e: any) {
     res.status(500).json({ error: e.message });

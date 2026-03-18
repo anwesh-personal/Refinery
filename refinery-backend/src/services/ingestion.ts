@@ -22,14 +22,14 @@ function getSourceClient(): S3Client {
   });
 }
 
-/** Build an S3-compatible client for Linode Object Storage */
-function getLinodeClient(): S3Client {
+/** Build an S3-compatible client for Object Storage (MinIO / any S3-compatible) */
+function getStorageClient(): S3Client {
   return new S3Client({
     region: 'us-east-1',
-    endpoint: env.linodeObj.endpoint,
+    endpoint: env.objectStorage.endpoint,
     credentials: {
-      accessKeyId: env.linodeObj.accessKey,
-      secretAccessKey: env.linodeObj.secretKey,
+      accessKeyId: env.objectStorage.accessKey,
+      secretAccessKey: env.objectStorage.secretKey,
     },
     forcePathStyle: true,
   });
@@ -46,11 +46,11 @@ export async function testSourceConnection(): Promise<{ ok: boolean; error?: str
   }
 }
 
-/** Test connection to Linode Object Storage */
-export async function testLinodeConnection(): Promise<{ ok: boolean; error?: string }> {
+/** Test connection to Object Storage (MinIO) */
+export async function testStorageConnection(): Promise<{ ok: boolean; error?: string }> {
   try {
-    const client = getLinodeClient();
-    await client.send(new HeadBucketCommand({ Bucket: env.linodeObj.bucket }));
+    const client = getStorageClient();
+    await client.send(new HeadBucketCommand({ Bucket: env.objectStorage.bucket }));
     return { ok: true };
   } catch (e: any) {
     return { ok: false, error: e.message };
@@ -130,7 +130,7 @@ export async function startIngestionJob(sourceKey: string): Promise<string> {
 
 async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: string) {
   const sourceClient = getSourceClient();
-  const linodeClient = getLinodeClient();
+  const storageClient = getStorageClient();
 
   // Step 1: Download from S3
   console.log(`[Ingestion] ${jobId}: Downloading ${sourceKey}...`);
@@ -142,16 +142,16 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
   const bodyStream = getResp.Body as Readable;
   const fileSize = getResp.ContentLength || 0;
 
-  // Step 2: Upload to Linode (streaming tee — simultaneous upload)
-  console.log(`[Ingestion] ${jobId}: Uploading to Linode...`);
+  // Step 2: Upload to Object Storage (MinIO)
+  console.log(`[Ingestion] ${jobId}: Uploading to Object Storage...`);
   await command(`ALTER TABLE ingestion_jobs UPDATE status = 'uploading', file_size_bytes = ${fileSize} WHERE id = '${jobId}'`);
 
-  const linodeKey = `ingestion/${jobId}/${fileName}`;
+  const storageKey = `ingestion/${jobId}/${fileName}`;
   const upload = new Upload({
-    client: linodeClient,
+    client: storageClient,
     params: {
-      Bucket: env.linodeObj.bucket,
-      Key: linodeKey,
+      Bucket: env.objectStorage.bucket,
+      Key: storageKey,
       Body: bodyStream,
     },
     queueSize: 4,
@@ -159,16 +159,16 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
   });
   await upload.done();
 
-  // Step 3: Re-download from Linode and stream into ClickHouse
+  // Step 3: Re-download from Object Storage and stream into ClickHouse
   console.log(`[Ingestion] ${jobId}: Ingesting into ClickHouse...`);
   await command(`ALTER TABLE ingestion_jobs UPDATE status = 'ingesting' WHERE id = '${jobId}'`);
 
-  const linodeResp = await linodeClient.send(new GetObjectCommand({
-    Bucket: env.linodeObj.bucket,
-    Key: linodeKey,
+  const storageResp = await storageClient.send(new GetObjectCommand({
+    Bucket: env.objectStorage.bucket,
+    Key: storageKey,
   }));
 
-  const csvStream = (linodeResp.Body as Readable).pipe(
+  const csvStream = (storageResp.Body as Readable).pipe(
     parse({
       columns: (header: string[]) => header.map((h: string) => h.toLowerCase().trim()),
       skip_empty_lines: true,

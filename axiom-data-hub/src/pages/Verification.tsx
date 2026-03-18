@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ShieldCheck, CheckCircle, XCircle, Clock, Upload, RefreshCw, Activity, StopCircle, Play, Download } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, DataTable, Button, Input, Badge } from '../components/UI';
 import { ServerSelector, useServers } from '../components/ServerSelector';
@@ -67,13 +67,20 @@ export default function VerificationPage() {
   const [startingBatch, setStartingBatch] = useState(false);
   const [engineType, setEngineType] = useState<'verify550' | 'builtin'>('builtin');
 
+  const pollFailures = useRef(0);
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const schedulePoll = useCallback(() => {
+    if (pollTimer.current) clearTimeout(pollTimer.current);
+    // Back off: 10s → 20s → 40s → 60s max based on consecutive failures
+    const delay = Math.min(10000 * Math.pow(2, pollFailures.current), 60000);
+    pollTimer.current = setTimeout(() => fetchData(true), delay);
+  }, [selectedServerId]);
+
   useEffect(() => {
+    pollFailures.current = 0;
     fetchData();
-    const interval = setInterval(() => {
-      // Periodically poll stats & batches if there are pending/running tasks
-      fetchData(true);
-    }, 10000);
-    return () => clearInterval(interval);
+    return () => { if (pollTimer.current) clearTimeout(pollTimer.current); };
   }, [selectedServerId]);
 
   const fetchData = async (background = false) => {
@@ -109,9 +116,14 @@ export default function VerificationPage() {
           setSelectedSegmentId(segs.segments[0].id);
         }
       }
+      // Reset backoff on success
+      pollFailures.current = 0;
     } catch (e) {
+      pollFailures.current++;
       if (!background) console.error('Failed to load verification data', e);
     }
+    // Schedule next poll regardless
+    schedulePoll();
   };
 
   const handleSaveConfig = async () => {
