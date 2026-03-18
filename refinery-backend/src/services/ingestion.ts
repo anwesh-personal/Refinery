@@ -10,8 +10,9 @@ import { query, command, insertRows } from '../db/clickhouse.js';
 import { genId } from '../utils/helpers.js';
 import { Readable } from 'stream';
 import { parse } from 'csv-parse';
+import * as s3Sources from './s3sources.js';
 
-/** Build an S3 client for the 5x5 Co-Op source bucket */
+/** Build an S3 client for the env-based source bucket (legacy fallback) */
 function getSourceClient(): S3Client {
   return new S3Client({
     region: env.s3Source.region,
@@ -35,7 +36,7 @@ function getStorageClient(): S3Client {
   });
 }
 
-/** Test connection to 5x5 source bucket */
+/** Test connection to env-based source bucket (legacy) */
 export async function testSourceConnection(): Promise<{ ok: boolean; error?: string }> {
   try {
     const client = getSourceClient();
@@ -57,11 +58,24 @@ export async function testStorageConnection(): Promise<{ ok: boolean; error?: st
   }
 }
 
-/** List files in the 5x5 source bucket */
-export async function listSourceFiles(prefix?: string): Promise<{ key: string; size: number; modified: string }[]> {
-  const client = getSourceClient();
+/** List files in a source bucket — uses dynamic source if sourceId given, else env */
+export async function listSourceFiles(prefix?: string, sourceId?: string): Promise<{ key: string; size: number; modified: string }[]> {
+  let client: S3Client;
+  let bucket: string;
+
+  if (sourceId) {
+    const src = await s3Sources.getSource(sourceId);
+    if (!src) throw new Error(`S3 source '${sourceId}' not found`);
+    client = s3Sources.buildClient(src);
+    bucket = src.bucket;
+    prefix = prefix || src.prefix || undefined;
+  } else {
+    client = getSourceClient();
+    bucket = env.s3Source.bucket;
+  }
+
   const resp = await client.send(new ListObjectsV2Command({
-    Bucket: env.s3Source.bucket,
+    Bucket: bucket,
     Prefix: prefix,
     MaxKeys: 100,
   }));
@@ -98,29 +112,43 @@ export async function getIngestionStats() {
 
 /**
  * Start an ingestion job:
- * 1. Download from 5x5 S3
+ * 1. Download from source S3 (dynamic or env-based)
  * 2. Upload to Linode Object Storage
  * 3. Stream-parse CSV and insert into ClickHouse
  */
-export async function startIngestionJob(sourceKey: string): Promise<string> {
+export async function startIngestionJob(sourceKey: string, sourceId?: string): Promise<string> {
   const jobId = genId();
   const fileName = sourceKey.split('/').pop() || sourceKey;
+
+  // Resolve S3 source — dynamic if sourceId provided, else env fallback
+  let sourceBucket: string;
+  let sourceClient: S3Client;
+
+  if (sourceId) {
+    const src = await s3Sources.getSource(sourceId);
+    if (!src) throw new Error(`S3 source '${sourceId}' not found`);
+    sourceBucket = src.bucket;
+    sourceClient = s3Sources.buildClient(src);
+  } else {
+    sourceBucket = env.s3Source.bucket;
+    sourceClient = getSourceClient();
+  }
 
   // Create job record
   await insertRows('ingestion_jobs', [{
     id: jobId,
-    source_bucket: env.s3Source.bucket,
+    source_bucket: sourceBucket,
     source_key: sourceKey,
     file_name: fileName,
     status: 'downloading',
   }]);
 
   // Run the actual pipeline in the background (non-blocking)
-  runIngestionPipeline(jobId, sourceKey, fileName).catch(async (err) => {
+  runIngestionPipeline(jobId, sourceKey, fileName, sourceClient, sourceBucket).catch(async (err) => {
     console.error(`[Ingestion] Job ${jobId} failed:`, err.message);
     await command(`
       ALTER TABLE ingestion_jobs UPDATE 
-        status = 'failed', error_message = '${err.message.replace(/'/g, "\\'")}'
+        status = 'failed', error_message = '${err.message.replace(/'/g, "\\\\'")}'
       WHERE id = '${jobId}'
     `);
   });
@@ -128,14 +156,13 @@ export async function startIngestionJob(sourceKey: string): Promise<string> {
   return jobId;
 }
 
-async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: string) {
-  const sourceClient = getSourceClient();
+async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: string, sourceClient: S3Client, sourceBucket: string) {
   const storageClient = getStorageClient();
 
   // Step 1: Download from S3
-  console.log(`[Ingestion] ${jobId}: Downloading ${sourceKey}...`);
+  console.log(`[Ingestion] ${jobId}: Downloading ${sourceKey} from ${sourceBucket}...`);
   const getResp = await sourceClient.send(new GetObjectCommand({
-    Bucket: env.s3Source.bucket,
+    Bucket: sourceBucket,
     Key: sourceKey,
   }));
 

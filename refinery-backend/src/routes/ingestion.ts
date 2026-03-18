@@ -26,7 +26,7 @@ router.get('/jobs', async (_req, res) => {
 // GET /api/ingestion/source-files?prefix=...
 router.get('/source-files', async (req, res) => {
   try {
-    const files = await ingestionService.listSourceFiles(req.query.prefix as string);
+    const files = await ingestionService.listSourceFiles(req.query.prefix as string, req.query.sourceId as string);
     res.json(files);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -36,9 +36,9 @@ router.get('/source-files', async (req, res) => {
 // POST /api/ingestion/start  { sourceKey: "..." }
 router.post('/start', async (req, res) => {
   try {
-    const { sourceKey } = req.body;
+    const { sourceKey, sourceId } = req.body;
     if (!sourceKey) return res.status(400).json({ error: 'sourceKey is required' });
-    const jobId = await ingestionService.startIngestionJob(sourceKey);
+    const jobId = await ingestionService.startIngestionJob(sourceKey, sourceId);
     res.json({ jobId });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

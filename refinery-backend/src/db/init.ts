@@ -161,6 +161,23 @@ const SCHEMAS = [
     updated_at        DateTime DEFAULT now()
   ) ENGINE = ReplacingMergeTree(updated_at)
     ORDER BY config_key`,
+
+  // ── S3 Sources (dynamic, UI-managed) ──
+  `CREATE TABLE IF NOT EXISTS s3_sources (
+    id                String,
+    label             String,
+    bucket            String,
+    region            String DEFAULT 'us-east-1',
+    access_key        String,
+    secret_key        String,
+    prefix            String DEFAULT '',
+    is_active         UInt8 DEFAULT 1,
+    last_tested_at    Nullable(DateTime),
+    last_test_ok      UInt8 DEFAULT 0,
+    created_at        DateTime DEFAULT now(),
+    updated_at        DateTime DEFAULT now()
+  ) ENGINE = ReplacingMergeTree(updated_at)
+    ORDER BY id`,
 ];
 
 export async function initDatabase(): Promise<void> {

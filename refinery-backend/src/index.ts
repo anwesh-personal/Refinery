@@ -19,6 +19,7 @@ import serverRoutes from './routes/servers.js';
 import customRolesRoutes from './routes/customRoles.js';
 import teamsRoutes from './routes/teams.js';
 import verifyRoutes from './routes/verify.js';
+import s3sourcesRoutes from './routes/s3sources.js';
 
 const app = express();
 
@@ -63,6 +64,7 @@ app.use('/api/servers', serverRoutes);
 app.use('/api/custom-roles', customRolesRoutes);
 app.use('/api/teams', teamsRoutes);
 app.use('/api/verify', verifyRoutes);
+app.use('/api/s3-sources', s3sourcesRoutes);
 
 // ── Health ──
 app.get('/api/health', (_req, res) => {
