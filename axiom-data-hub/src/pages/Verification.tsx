@@ -235,17 +235,10 @@ export default function VerificationPage() {
 
   const handleExportCSV = async (batchId: string) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const resp = await fetch(`${apiUrl}/api/verification/batches/${batchId}/export`, {
-        headers: {
-          'Authorization': `Bearer ${(await (await import('../lib/supabase')).supabase.auth.getSession()).data.session?.access_token}`,
-        },
+      const blob = await apiCall<Blob>(`/api/verification/batches/${batchId}/export`, {
+        method: 'GET',
+        responseType: 'blob',
       });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
-        throw new Error(err.error || `Export failed: ${resp.status}`);
-      }
-      const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -280,17 +273,12 @@ export default function VerificationPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const token = (await import('../lib/supabase').then(m => m.supabase.auth.getSession())).data.session?.access_token;
-      const resp = await fetch(`${apiUrl}/api/v550/upload`, {
+      
+      await apiCall('/api/v550/upload', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData
+        body: formData,
       });
-      if (!resp.ok) {
-         const err = await resp.json().catch(() => ({}));
-         throw new Error(err.error || `HTTP ${resp.status}`);
-      }
+      
       alert('File uploaded to Verify550 successfully!');
       fetchData(false);
     } catch (err: any) {
@@ -303,17 +291,10 @@ export default function VerificationPage() {
 
   const handleV550Export = async (jobId: string) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const resp = await fetch(`${apiUrl}/api/v550/export/${jobId}?format=csv`, {
-        headers: {
-          'Authorization': `Bearer ${(await (await import('../lib/supabase')).supabase.auth.getSession()).data.session?.access_token}`,
-        },
+      const blob = await apiCall<Blob>(`/api/v550/export/${jobId}?format=csv`, {
+        method: 'GET',
+        responseType: 'blob',
       });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
-        throw new Error(err.error || `Export failed: ${resp.status}`);
-      }
-      const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;

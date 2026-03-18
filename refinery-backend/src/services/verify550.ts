@@ -1,6 +1,8 @@
 import { env } from '../config/env.js';
 import { query } from '../db/clickhouse.js';
 import { createClient } from '@supabase/supabase-js';
+import FormData from 'form-data';
+import fs from 'fs';
 
 // ═══════════════════════════════════════════════════════════════
 // Verify550 Proxy Service
@@ -28,13 +30,15 @@ export async function resolveApiKey(userId?: string): Promise<string> {
   // 1. Try user's personal key
   if (userId) {
     try {
-      const { data } = await supabaseAdmin
+      const { data, error } = await supabaseAdmin
         .from('profiles')
         .select('verify550_api_key')
         .eq('id', userId)
         .single();
-      if (data?.verify550_api_key) return data.verify550_api_key;
-    } catch { /* ignore */ }
+      if (!error && data?.verify550_api_key) return data.verify550_api_key;
+    } catch (err: any) {
+      console.warn(`[Verify550] Failed to fetch personal key for user ${userId}: ${err.message}`);
+    }
   }
 
   // 2. Try org-wide key from ClickHouse system_config
@@ -43,12 +47,14 @@ export async function resolveApiKey(userId?: string): Promise<string> {
       `SELECT config_value FROM system_config WHERE config_key = 'verify550_api_key' FINAL LIMIT 1`
     );
     if (rows[0]?.config_value) return rows[0].config_value;
-  } catch { /* ignore */ }
+  } catch (err: any) {
+     console.warn(`[Verify550] Failed to fetch org key from clickhouse: ${err.message}`);
+  }
 
   // 3. Fall back to env var
-  if (env.verify550.apiKey) return env.verify550.apiKey;
+  if (env.verify550?.apiKey) return env.verify550.apiKey;
 
-  throw new Error('No Verify550 API key configured. Set one in Settings or ask a superadmin.');
+  throw new Error('Verify550 configuration missing. Add an API key globally in Verification Config or in your Personal Settings.');
 }
 
 /** Get credit count */
@@ -70,23 +76,34 @@ export async function verifySingle(apiKey: string, email: string): Promise<strin
   return (await resp.text()).trim();
 }
 
-/** Upload a CSV file for bulk verification */
+/** Upload a CSV file for bulk verification from disk to handle massive files safely */
 export async function uploadBulk(
   apiKey: string, 
   filename: string, 
-  fileBuffer: Buffer,
-  contentType: string = 'text/csv'
+  filePath: string
 ): Promise<{ success: boolean; message: string; id: string; job_id: string; filename: string }> {
-  const formData = new FormData();
-  const blob = new Blob([fileBuffer], { type: contentType });
-  formData.append('file_contents', blob, filename);
+  try {
+    const formData = new FormData();
+    formData.append('file_contents', fs.createReadStream(filePath), {
+      filename,
+      contentType: 'text/csv'
+    });
 
-  const resp = await fetch(
-    `${V550_BASE}/bulk?secret=${encodeURIComponent(apiKey)}&filename=${encodeURIComponent(filename)}`,
-    { method: 'POST', body: formData }
-  );
-  if (!resp.ok) throw new Error(`Verify550 bulk upload failed: HTTP ${resp.status}`);
-  return await resp.json() as any;
+    const resp = await fetch(
+      `${V550_BASE}/bulk?secret=${encodeURIComponent(apiKey)}&filename=${encodeURIComponent(filename)}`,
+      { 
+        method: 'POST', 
+        headers: formData.getHeaders(),
+        body: formData as any 
+      }
+    );
+    
+    if (!resp.ok) throw new Error(`Verify550 bulk upload failed: HTTP ${resp.status}`);
+    return await resp.json() as any;
+  } finally {
+    // Always sweep the temp file afterward
+    fs.unlink(filePath, () => {});
+  }
 }
 
 /** Get job details */
@@ -97,17 +114,19 @@ export async function getJob(apiKey: string, jobId: string): Promise<any> {
 }
 
 /** Get all completed jobs */
-export async function getCompletedJobs(apiKey: string): Promise<any> {
+export async function getCompletedJobs(apiKey: string): Promise<any[]> {
   const resp = await fetch(`${V550_BASE}/completedjobs?secret=${encodeURIComponent(apiKey)}`);
   if (!resp.ok) throw new Error(`Verify550 API error: HTTP ${resp.status}`);
-  return await resp.json();
+  const data = await resp.json() as any;
+  return Array.isArray(data) ? data : (data?.data || []);
 }
 
 /** Get all running jobs */
-export async function getRunningJobs(apiKey: string): Promise<any> {
+export async function getRunningJobs(apiKey: string): Promise<any[]> {
   const resp = await fetch(`${V550_BASE}/runningjobs?secret=${encodeURIComponent(apiKey)}`);
   if (!resp.ok) throw new Error(`Verify550 API error: HTTP ${resp.status}`);
-  return await resp.json();
+  const data = await resp.json() as any;
+  return Array.isArray(data) ? data : (data?.data || []);
 }
 
 /** Export job results — returns a binary .zip buffer */
@@ -121,7 +140,8 @@ export async function exportJob(
   if (format) params.set('format', format);
   if (categories && categories.length > 0) params.set('categories', categories.join(','));
 
-  const resp = await fetch(`${V550_BASE}/jobexport/${encodeURIComponent(jobId)}?${params.toString()}`);
+  const exportUrl = `${V550_BASE}/jobexport/${encodeURIComponent(jobId)}?${params.toString()}`;
+  const resp = await fetch(exportUrl);
   if (!resp.ok) throw new Error(`Verify550 export failed: HTTP ${resp.status}`);
 
   const arrayBuffer = await resp.arrayBuffer();

@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import multer from 'multer';
+import os from 'os';
+import { z } from 'zod';
 import * as v550 from '../services/verify550.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } }); // 100MB max
+const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 100 * 1024 * 1024 } }); // 100MB max directly to disk to prevent OOM
 
 // All routes require authentication
 router.use(requireAuth);
@@ -28,9 +30,16 @@ router.get('/credits', async (req, res) => {
 // GET /api/v550/verify?email=xxx — Verify single email
 router.get('/verify', async (req, res) => {
   try {
-    const email = String(req.query.email || '').trim();
-    if (!email) return res.status(400).json({ error: 'email parameter required' });
+    const rawEmail = String(req.query.email || '').trim();
+    if (!rawEmail) return res.status(400).json({ error: 'email parameter required' });
 
+    // Enforce valid payload structure before proxying
+    const parsed = z.string().email('Invalid email syntax').safeParse(rawEmail);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues[0].message });
+    }
+    
+    const email = parsed.data;
     const apiKey = await v550.resolveApiKey((req as any).userId);
     const status = await v550.verifySingle(apiKey, email);
     res.json({ email, status });
@@ -48,8 +57,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     const result = await v550.uploadBulk(
       apiKey,
       req.file.originalname || 'upload.csv',
-      req.file.buffer,
-      req.file.mimetype
+      req.file.path // Streams directly off disk instead of blowing up server memory
     );
     res.json(result);
   } catch (e: any) {
