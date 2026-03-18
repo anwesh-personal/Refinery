@@ -107,9 +107,16 @@ export default function DatabasePage() {
       setAllColumns(cols);
       setAvailableFilters(filterCols.slice(0, 8)); // Show up to 8 filter dropdowns
       // Default visible: first 8 non-internal columns
-      const internalCols = new Set(['_ingestion_job_id', '_ingested_at', '_segment_ids', '_verification_status', '_verified_at']);
+      // Default visible: curated priority list with emails at the top
+      const PRIORITY_COLS = [
+        'first_name', 'last_name', 'business_email', 'personal_emails',
+        'company_name', 'job_title_normalized', 'primary_industry',
+        'personal_state', 'seniority_level', 'mobile_phone',
+        'company_domain', 'linkedin_url',
+      ];
+      const colSet = new Set(cols);
       const defaultVisible: Record<string, boolean> = {};
-      cols.filter(c => !internalCols.has(c)).slice(0, 8).forEach(c => { defaultVisible[c] = true; });
+      PRIORITY_COLS.filter(c => colSet.has(c)).forEach(c => { defaultVisible[c] = true; });
       setVisibleCols(defaultVisible);
       setColumnsLoaded(true);
     } catch { /* ignore */ }
