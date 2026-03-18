@@ -1,4 +1,4 @@
-import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Edit2, Trash2, Folder, CheckSquare, Square, Layers, ArrowUpDown, Filter, ChevronUp, ChevronDown, Zap, Settings, RotateCw } from 'lucide-react';
+import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Edit2, Trash2, Folder, CheckSquare, Square, Layers, ArrowUpDown, Filter, ChevronUp, ChevronDown, Zap, Settings, RotateCw, Calendar, X } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
 import { useState, useEffect, useCallback } from 'react';
@@ -162,6 +162,15 @@ export default function IngestionPage() {
   // Global messages
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Preview modal state
+  const [previewData, setPreviewData] = useState<{ columns: string[]; rows: string[][]; fileName: string } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState<string | null>(null);
+
+  // Date-range ingestion state
+  const [dateRangeStart, setDateRangeStart] = useState('');
+  const [dateRangeEnd, setDateRangeEnd] = useState('');
+  const [dateRangeIngesting, setDateRangeIngesting] = useState(false);
 
   /* --- Fetch --- */
   const fetchData = useCallback(async () => {
@@ -410,6 +419,57 @@ export default function IngestionPage() {
     if (next.has(key)) next.delete(key);
     else next.add(key);
     setSelectedFiles(next);
+  };
+
+  const handlePreview = async (sourceKey: string) => {
+    setPreviewLoading(sourceKey);
+    try {
+      const params = new URLSearchParams({ sourceKey });
+      if (selectedSourceId) params.set('sourceId', selectedSourceId);
+      const data = await apiCall<{ columns: string[]; rows: string[][]; totalPreviewRows: number; format: string }>(
+        `/api/ingestion/preview-file?${params.toString()}`
+      );
+      const fileName = sourceKey.split('/').pop() || sourceKey;
+      setPreviewData({ columns: data.columns, rows: data.rows, fileName });
+    } catch (e: any) {
+      setError(`Preview failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setPreviewLoading(null);
+    }
+  };
+
+  const handleDateRangeIngestion = async () => {
+    if (!dateRangeStart || !dateRangeEnd || !selectedSourceId) {
+      setError('Select a source and specify both start and end dates.');
+      return;
+    }
+    setDateRangeIngesting(true);
+    setError(null);
+    try {
+      const res = await apiCall<{ jobIds: string[]; count: number; filesMatched?: number; message?: string }>(
+        '/api/ingestion/start-bulk-daterange',
+        {
+          method: 'POST',
+          body: {
+            sourceId: selectedSourceId,
+            prefix: prefix || '',
+            startDate: dateRangeStart,
+            endDate: dateRangeEnd,
+          },
+        }
+      );
+      if (res.count === 0) {
+        setError(res.message || 'No files found in the specified date range.');
+      } else {
+        setSuccess(`Started ${res.count} ingestion jobs from ${res.filesMatched || res.count} matching files.`);
+        setTimeout(() => setSuccess(null), 5000);
+        fetchData();
+      }
+    } catch (e: any) {
+      setError(`Date-range ingestion failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setDateRangeIngesting(false);
+    }
   };
 
   const totalRows = Number(stats?.total_rows || 0);
@@ -767,14 +827,27 @@ export default function IngestionPage() {
                     </div>
                   </div>
                 </div>
-                <Button
-                  variant="secondary"
-                  icon={ingesting === f.key ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
-                  onClick={(e: any) => { e.stopPropagation(); startIngestion(f.key); }}
-                  disabled={ingesting !== null || ingestingBulk}
-                >
-                  {ingesting === f.key ? 'Starting...' : 'Ingest'}
-                </Button>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {(getFileFormat(fileName) === 'csv' || getFileFormat(fileName) === 'gz') && (
+                    <Button
+                      variant="secondary"
+                      icon={previewLoading === f.key ? <Loader2 size={14} className="spin" /> : <Eye size={14} />}
+                      onClick={(e: any) => { e.stopPropagation(); handlePreview(f.key); }}
+                      disabled={previewLoading !== null}
+                      style={{ padding: '6px 10px', fontSize: 11 }}
+                    >
+                      {previewLoading === f.key ? '...' : 'Preview'}
+                    </Button>
+                  )}
+                  <Button
+                    variant="secondary"
+                    icon={ingesting === f.key ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
+                    onClick={(e: any) => { e.stopPropagation(); startIngestion(f.key); }}
+                    disabled={ingesting !== null || ingestingBulk}
+                  >
+                    {ingesting === f.key ? 'Starting...' : 'Ingest'}
+                  </Button>
+                </div>
               </div>
             )})}
           </div>
@@ -783,6 +856,40 @@ export default function IngestionPage() {
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13, background: 'var(--bg-hover)', borderRadius: 8 }}>
             {browsing ? 'Loading...' : 'Select a source and click Browse or navigate using breadcrumbs to see available data.'}
           </div>
+        )}
+      </div>
+
+      {/* --- DATE-RANGE BULK INGESTION --- */}
+      <SectionHeader title="Date-Range Bulk Ingestion" />
+      <div className="animate-fadeIn stagger-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, marginBottom: 36 }}>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.6 }}>
+          Ingest all files from the currently selected source that were last modified within a specific date range. Useful for backfilling or re-processing historical data.
+        </p>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>Start Date</label>
+            <input type="date" value={dateRangeStart} onChange={e => setDateRangeStart(e.target.value)} style={{
+              background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 8,
+              color: 'var(--text-primary)', fontSize: 13, padding: '8px 12px', cursor: 'pointer',
+            }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>End Date</label>
+            <input type="date" value={dateRangeEnd} onChange={e => setDateRangeEnd(e.target.value)} style={{
+              background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 8,
+              color: 'var(--text-primary)', fontSize: 13, padding: '8px 12px', cursor: 'pointer',
+            }} />
+          </div>
+          <Button
+            onClick={handleDateRangeIngestion}
+            disabled={dateRangeIngesting || !dateRangeStart || !dateRangeEnd || !selectedSourceId}
+            icon={dateRangeIngesting ? <Loader2 size={14} className="spin" /> : <Calendar size={14} />}
+          >
+            {dateRangeIngesting ? 'Processing...' : 'Ingest Date Range'}
+          </Button>
+        </div>
+        {!selectedSourceId && (
+          <p style={{ fontSize: 11, color: 'var(--red)', marginTop: 8 }}>Select an S3 source above first.</p>
         )}
       </div>
 
@@ -1117,6 +1224,73 @@ export default function IngestionPage() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 28 }}>
               <Button variant="secondary" onClick={() => { setShowRuleModal(false); setEditingRule(null); }}>Cancel</Button>
               <Button onClick={handleSaveRule} disabled={!editingRule.label || !editingRule.source_id}>Save Rule</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- CSV PREVIEW MODAL --- */}
+      {previewData && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setPreviewData(null); }}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+            padding: 24,
+          }}
+        >
+          <div className="animate-scaleIn" style={{
+            background: 'var(--bg-app)', border: '1px solid var(--border)',
+            borderRadius: 20, width: '100%', maxWidth: 960, maxHeight: '85vh',
+            boxShadow: 'var(--shadow-lg)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '20px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0,
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>CSV Preview</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>{previewData.fileName} — {previewData.columns.length} columns, {previewData.rows.length} sample rows</p>
+              </div>
+              <button
+                onClick={() => setPreviewData(null)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 32, height: 32, borderRadius: 8, cursor: 'pointer',
+                  background: 'transparent', border: 'none', color: 'var(--text-tertiary)',
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ overflowX: 'auto', overflowY: 'auto', flex: 1 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-hover)', position: 'sticky', top: 0, zIndex: 1 }}>
+                    <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap' }}>#</th>
+                    {previewData.columns.map((col, ci) => (
+                      <th key={ci} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap' }}>{col}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewData.rows.map((row, ri) => (
+                    <tr key={ri} style={{ borderBottom: '1px solid var(--border)' }}
+                      onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseOut={e => (e.currentTarget.style.background = '')}
+                    >
+                      <td style={{ padding: '8px 14px', color: 'var(--text-tertiary)', fontFamily: 'monospace', fontSize: 10 }}>{ri + 1}</td>
+                      {row.map((cell, ci) => (
+                        <td key={ci} style={{ padding: '8px 14px', color: 'var(--text-primary)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={cell}>{cell || '—'}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
+              <Button variant="secondary" onClick={() => setPreviewData(null)}>Close</Button>
             </div>
           </div>
         </div>

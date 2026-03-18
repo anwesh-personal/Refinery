@@ -118,6 +118,88 @@ export async function listSourceFiles(prefix?: string, sourceId?: string) {
   return { folders, files, prefix: effectivePrefix };
 }
 
+/**
+ * Preview first N rows of a CSV/GZ file from S3 without downloading fully.
+ * Uses HTTP Range / streaming to read only what's needed.
+ */
+export async function previewFile(
+  sourceKey: string,
+  sourceId?: string,
+  maxRows = 20
+): Promise<{ columns: string[]; rows: string[][]; totalPreviewRows: number; format: string }> {
+  let client: S3Client;
+  let bucket: string;
+
+  if (sourceId) {
+    const src = await s3Sources.getSource(sourceId);
+    if (!src) throw new Error(`S3 source '${sourceId}' not found`);
+    client = s3Sources.buildClient(src);
+    bucket = src.bucket;
+  } else {
+    client = getSourceClient();
+    bucket = env.s3Source.bucket;
+  }
+
+  const format = detectFormat(sourceKey);
+  if (format === 'unknown' || format === 'parquet') {
+    throw new Error(`Preview not supported for ${format} files. Only CSV and gzipped CSV are previewable.`);
+  }
+
+  const getResp = await client.send(new GetObjectCommand({
+    Bucket: bucket,
+    Key: sourceKey,
+  }));
+
+  const bodyStream = getResp.Body as Readable;
+
+  return new Promise((resolve, reject) => {
+    const columns: string[] = [];
+    const rows: string[][] = [];
+    let headerSeen = false;
+
+    let inputStream: Readable = bodyStream;
+    if (format === 'csv.gz') {
+      const gunzip = createGunzip();
+      inputStream = bodyStream.pipe(gunzip);
+    }
+
+    const parser = inputStream.pipe(parse({
+      skip_empty_lines: true,
+      relax_column_count: true,
+    }));
+
+    parser.on('data', (row: string[]) => {
+      if (!headerSeen) {
+        columns.push(...row);
+        headerSeen = true;
+        return;
+      }
+      rows.push(row);
+      if (rows.length >= maxRows) {
+        parser.destroy(); // Stop reading — we have enough
+      }
+    });
+
+    parser.on('end', () => {
+      resolve({ columns, rows, totalPreviewRows: rows.length, format });
+    });
+
+    parser.on('close', () => {
+      // Also fire on destroy()
+      resolve({ columns, rows, totalPreviewRows: rows.length, format });
+    });
+
+    parser.on('error', (err) => {
+      // If we destroyed intentionally, it's fine
+      if (rows.length > 0) {
+        resolve({ columns, rows, totalPreviewRows: rows.length, format });
+      } else {
+        reject(err);
+      }
+    });
+  });
+}
+
 /** Get list of ingestion jobs */
 export async function getJobs(limit = 50) {
   return query(`SELECT * FROM ingestion_jobs ORDER BY started_at DESC LIMIT ${limit}`);
