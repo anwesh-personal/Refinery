@@ -44,7 +44,7 @@ export async function resolveApiKey(userId?: string): Promise<string> {
   // 2. Try org-wide key from ClickHouse system_config
   try {
     const rows = await query<{ config_value: string }>(
-      `SELECT config_value FROM system_config WHERE config_key = 'verify550_api_key' FINAL LIMIT 1`
+      `SELECT config_value FROM system_config FINAL WHERE config_key = 'verify550_api_key' LIMIT 1`
     );
     if (rows[0]?.config_value) return rows[0].config_value;
   } catch (err: any) {
