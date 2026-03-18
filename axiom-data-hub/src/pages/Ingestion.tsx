@@ -1,4 +1,4 @@
-import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Edit2, Trash2 } from 'lucide-react';
+import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Edit2, Trash2, Folder, CheckSquare, Square, Layers } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
 import { useState, useEffect, useCallback } from 'react';
@@ -81,14 +81,17 @@ export default function IngestionPage() {
   const [sources, setSources] = useState<S3Source[]>([]);
   
   // Browsing state
+  const [folders, setFolders] = useState<string[]>([]);
   const [sourceFiles, setSourceFiles] = useState<SourceFile[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string>(''); // empty means use legacy env
   const [prefix, setPrefix] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   
   // Loading states
   const [loading, setLoading] = useState(true);
   const [browsing, setBrowsing] = useState(false);
   const [ingesting, setIngesting] = useState<string | null>(null);
+  const [ingestingBulk, setIngestingBulk] = useState(false);
   
   // Source Modal state
   const [showSourceModal, setShowSourceModal] = useState(false);
@@ -198,21 +201,25 @@ export default function IngestionPage() {
   };
 
   /* --- Browsing & Ingestion --- */
-  const browseFiles = async () => {
+  const browseFiles = async (overridePrefix?: string) => {
     if (!selectedSourceId) {
       setError('Please select an S3 source first, or add one using the + button.');
       return;
     }
+    const currentPrefix = overridePrefix !== undefined ? overridePrefix : prefix;
     setBrowsing(true);
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (prefix) params.set('prefix', prefix);
+      if (currentPrefix) params.set('prefix', currentPrefix);
       params.set('sourceId', selectedSourceId);
       const url = `/api/ingestion/source-files?${params.toString()}`;
       
-      const files = await apiCall<SourceFile[]>(url);
-      setSourceFiles(files);
+      const res = await apiCall<{folders: string[], files: SourceFile[], prefix: string}>(url);
+      setFolders(res.folders || []);
+      setSourceFiles(res.files || []);
+      setPrefix(res.prefix || '');
+      setSelectedFiles(new Set());
     } catch (e: any) {
       setError(`Failed to browse: ${e.message}`);
     }
@@ -237,6 +244,43 @@ export default function IngestionPage() {
       setError(`Ingestion failed: ${e.message}`);
     }
     setIngesting(null);
+  };
+
+  const startBulkIngestion = async () => {
+    if (selectedFiles.size === 0) return;
+    setIngestingBulk(true);
+    setError(null);
+    try {
+      const res = await apiCall<{ jobIds: string[], count: number }>('/api/ingestion/start-bulk', {
+        method: 'POST',
+        body: {
+          sourceKeys: Array.from(selectedFiles),
+          sourceId: selectedSourceId
+        },
+      });
+      setSuccess(`Started ${res.count} bulk ingestion jobs.`);
+      setTimeout(() => setSuccess(null), 3000);
+      setSelectedFiles(new Set());
+      fetchData();
+    } catch (e: any) {
+      setError(`Bulk ingestion failed: ${e.message}`);
+    }
+    setIngestingBulk(false);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedFiles.size === sourceFiles.length) {
+      setSelectedFiles(new Set());
+    } else {
+      setSelectedFiles(new Set(sourceFiles.map(f => f.key)));
+    }
+  };
+
+  const toggleFile = (key: string) => {
+    const next = new Set(selectedFiles);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setSelectedFiles(next);
   };
 
   const totalRows = Number(stats?.total_rows || 0);
@@ -347,31 +391,98 @@ export default function IngestionPage() {
       <div className="animate-fadeIn stagger-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 28, marginBottom: 36 }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap', marginBottom: 16 }}>
           <div style={{ flex: 1, minWidth: 200 }}>
-            <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>Prefix Filter</label>
-            <Input placeholder="e.g. 2026/ or outgoing/" value={prefix} onChange={(v: string) => setPrefix(v)} />
+            <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>Path Options</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Input placeholder="e.g. 2026/...  (Hit Enter to browse)" value={prefix} onChange={(v: string) => setPrefix(v)} onKeyDown={(e: any) => e.key === 'Enter' && browseFiles()} />
+              <Button icon={browsing ? <Loader2 size={14} className="spin" /> : <Eye size={14} />} onClick={() => browseFiles()} disabled={browsing}>
+                {browsing ? 'Loading...' : 'Browse'}
+              </Button>
+            </div>
           </div>
-          <Button icon={browsing ? <Loader2 size={14} className="spin" /> : <Eye size={14} />} onClick={browseFiles} disabled={browsing}>
-            {browsing ? 'Loading...' : 'Browse Files'}
-          </Button>
+          {selectedFiles.size > 0 && (
+            <Button variant="primary" icon={ingestingBulk ? <Loader2 size={14} className="spin" /> : <Layers size={14} />} onClick={startBulkIngestion} disabled={ingestingBulk}>
+              Ingest {selectedFiles.size} Files
+            </Button>
+          )}
         </div>
 
-        {sourceFiles.length > 0 ? (
+        {/* Breadcrumbs */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 16, padding: '8px 12px', background: 'var(--bg-hover)', borderRadius: 8 }}>
+          <button onClick={() => { setPrefix(''); browseFiles(''); }} style={{ background:'none', border:'none', color: !prefix ? 'var(--text-primary)' : 'var(--text-tertiary)', fontWeight: !prefix ? 600 : 400, cursor:'pointer' }}>Root</button>
+          {prefix.split('/').filter(Boolean).map((p, i, arr) => {
+            const currentPath = arr.slice(0, i+1).join('/') + '/';
+            const isLast = i === arr.length - 1;
+            return (
+              <span key={currentPath} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: 'var(--text-tertiary)' }}>/</span>
+                <button 
+                  onClick={() => { setPrefix(currentPath); browseFiles(currentPath); }}
+                  style={{ background:'none', border:'none', color: isLast ? 'var(--text-primary)' : 'var(--text-tertiary)', fontWeight: isLast ? 600 : 400, cursor:'pointer', padding: '2px 4px', borderRadius: 4 }}
+                  onMouseOver={e => e.currentTarget.style.background = 'var(--bg-card)'}
+                  onMouseOut={e => e.currentTarget.style.background = 'none'}
+                >
+                  {p}
+                </button>
+              </span>
+            );
+          })}
+        </div>
+
+        {(folders.length > 0 || sourceFiles.length > 0) ? (
           <div style={{ borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-            {sourceFiles.map((f) => (
+            {/* Header Row for Select All */}
+            {sourceFiles.length > 0 && (
+              <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button onClick={toggleSelectAll} style={{ background:'none', border:'none', cursor:'pointer', padding: 0, color: selectedFiles.size === sourceFiles.length ? 'var(--accent)' : 'var(--text-tertiary)' }}>
+                  {selectedFiles.size > 0 && selectedFiles.size === sourceFiles.length ? <CheckSquare size={16} /> : <Square size={16} />}
+                </button>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)' }}>Select All {sourceFiles.length} Files</span>
+              </div>
+            )}
+
+            {folders.map((f) => {
+              const folderName = f.endsWith('/') ? f.slice(0, -1).split('/').pop() : f.split('/').pop();
+              return (
+              <div
+                key={f}
+                style={{
+                  display: 'flex', alignItems: 'center', padding: '12px 18px', borderBottom: '1px solid var(--border)',
+                  cursor: 'pointer', transition: 'background 0.15s',
+                }}
+                onClick={() => { setPrefix(f); browseFiles(f); }}
+                onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                onMouseOut={e => (e.currentTarget.style.background = '')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Folder size={16} color="var(--accent)" fill="var(--accent)" fillOpacity={0.2} />
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{folderName}/</div>
+                </div>
+              </div>
+            )})}
+            
+            {sourceFiles.map((f) => {
+              const fileName = f.key.split('/').pop();
+              const isSelected = selectedFiles.has(f.key);
+              return (
               <div
                 key={f.key}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '12px 18px', borderBottom: '1px solid var(--border)',
-                  transition: 'background 0.15s',
+                  transition: 'background 0.15s', cursor: 'pointer',
+                  background: isSelected ? 'var(--bg-hover)' : 'transparent'
                 }}
-                onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                onMouseOut={e => (e.currentTarget.style.background = '')}
+                onMouseOver={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                onMouseOut={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                onClick={() => toggleFile(f.key)}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button onClick={(e) => { e.stopPropagation(); toggleFile(f.key); }} style={{ background:'none', border:'none', cursor:'pointer', padding: 0, color: isSelected ? 'var(--accent)' : 'var(--text-tertiary)' }}>
+                    {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                  </button>
                   <FileText size={16} color="var(--text-tertiary)" />
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{f.key}</div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{fileName}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
                       {formatBytes(f.size)} · {new Date(f.modified).toLocaleDateString()}
                     </div>
@@ -380,17 +491,17 @@ export default function IngestionPage() {
                 <Button
                   variant="secondary"
                   icon={ingesting === f.key ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
-                  onClick={() => startIngestion(f.key)}
-                  disabled={ingesting !== null}
+                  onClick={(e: any) => { e.stopPropagation(); startIngestion(f.key); }}
+                  disabled={ingesting !== null || ingestingBulk}
                 >
                   {ingesting === f.key ? 'Starting...' : 'Ingest'}
                 </Button>
               </div>
-            ))}
+            )})}
           </div>
         ) : (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13, background: 'var(--bg-hover)', borderRadius: 8 }}>
-            Select a source and click Browse Files to see available data.
+            {browsing ? 'Loading...' : 'Select a source and click Browse or navigate using breadcrumbs to see available data.'}
           </div>
         )}
       </div>

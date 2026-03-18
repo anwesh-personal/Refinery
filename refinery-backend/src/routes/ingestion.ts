@@ -45,6 +45,24 @@ router.post('/start', async (req, res) => {
   }
 });
 
+// POST /api/ingestion/start-bulk  { sourceKeys: ["..."], sourceId: "..." }
+router.post('/start-bulk', async (req, res) => {
+  try {
+    const { sourceKeys, sourceId } = req.body;
+    if (!sourceKeys || !Array.isArray(sourceKeys) || sourceKeys.length === 0) {
+      return res.status(400).json({ error: 'sourceKeys array is required' });
+    }
+    const jobIds: string[] = [];
+    for (const key of sourceKeys) {
+      const jobId = await ingestionService.startIngestionJob(key, sourceId);
+      jobIds.push(jobId);
+    }
+    res.json({ jobIds, count: jobIds.length });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/ingestion/test-source
 router.post('/test-source', async (_req, res) => {
   try {

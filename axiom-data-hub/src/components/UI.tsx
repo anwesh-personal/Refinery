@@ -357,8 +357,8 @@ export function ConfigRow({ label, description, children }: { label: string; des
 /* ═══════════════════════════════════════
    INPUT
    ═══════════════════════════════════════ */
-export function Input({ placeholder, value, onChange, type = 'text' }: {
-  placeholder?: string; value?: string; onChange?: (v: string) => void; type?: string;
+export function Input({ placeholder, value, onChange, onKeyDown, type = 'text', style }: {
+  placeholder?: string; value?: string; onChange?: (v: string) => void; onKeyDown?: (e: any) => void; type?: string; style?: React.CSSProperties;
 }) {
   return (
     <input
@@ -366,12 +366,14 @@ export function Input({ placeholder, value, onChange, type = 'text' }: {
       placeholder={placeholder}
       value={value}
       onChange={(e) => onChange?.(e.target.value)}
+      onKeyDown={onKeyDown}
       style={{
         width: '100%', padding: '10px 16px', borderRadius: 12,
         fontSize: 13, fontWeight: 500, outline: 'none',
         background: 'var(--bg-input)', border: '1px solid var(--border)',
         color: 'var(--text-primary)',
         transition: 'border-color 0.2s, box-shadow 0.2s',
+        ...style
       }}
       onFocus={(e) => {
         e.currentTarget.style.borderColor = 'var(--accent)';

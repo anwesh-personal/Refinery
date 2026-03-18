@@ -63,8 +63,11 @@ export async function testStorageConnection(): Promise<{ ok: boolean; error?: st
   }
 }
 
-/** List files in a source bucket — uses dynamic source if sourceId given, else env */
-export async function listSourceFiles(prefix?: string, sourceId?: string): Promise<{ key: string; size: number; modified: string }[]> {
+/** Browse a source bucket — returns folders and files using S3 delimiter */
+export async function listSourceFiles(
+  prefix?: string,
+  sourceId?: string
+): Promise<{ folders: string[]; files: { key: string; size: number; modified: string }[]; prefix: string }> {
   let client: S3Client;
   let bucket: string;
 
@@ -73,23 +76,32 @@ export async function listSourceFiles(prefix?: string, sourceId?: string): Promi
     if (!src) throw new Error(`S3 source '${sourceId}' not found`);
     client = s3Sources.buildClient(src);
     bucket = src.bucket;
-    prefix = prefix || src.prefix || undefined;
+    // Use source prefix as default root if no explicit prefix provided
+    if (!prefix && src.prefix) prefix = src.prefix;
   } else {
     client = getSourceClient();
     bucket = env.s3Source.bucket;
   }
 
+  const effectivePrefix = prefix || '';
+
   const resp = await client.send(new ListObjectsV2Command({
     Bucket: bucket,
-    Prefix: prefix,
-    MaxKeys: 100,
+    Prefix: effectivePrefix,
+    Delimiter: '/',
+    MaxKeys: 1000,
   }));
 
-  return (resp.Contents || []).map((obj) => ({
-    key: obj.Key || '',
-    size: obj.Size || 0,
-    modified: obj.LastModified?.toISOString() || '',
-  }));
+  const folders = (resp.CommonPrefixes || []).map(p => p.Prefix || '');
+  const files = (resp.Contents || [])
+    .filter(obj => obj.Key !== effectivePrefix) // exclude the folder itself
+    .map(obj => ({
+      key: obj.Key || '',
+      size: obj.Size || 0,
+      modified: obj.LastModified?.toISOString() || '',
+    }));
+
+  return { folders, files, prefix: effectivePrefix };
 }
 
 /** Get all ingestion jobs */
