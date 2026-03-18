@@ -70,8 +70,8 @@ function timeAgo(dateStr: string): string {
 }
 
 const statusColors: Record<string, string> = {
-  complete: '#22c55e', ingesting: '#3b82f6', downloading: '#f59e0b',
-  uploading: '#8b5cf6', pending: '#6b7280', failed: '#ef4444',
+  complete: 'var(--green)', ingesting: 'var(--blue)', downloading: 'var(--yellow)',
+  uploading: 'var(--purple)', pending: 'var(--text-secondary)', failed: 'var(--red)',
 };
 
 /* ---------------- Component ---------------- */
@@ -156,8 +156,8 @@ export default function IngestionPage() {
       setShowSourceModal(false);
       fetchData();
       setTimeout(() => setSuccess(null), 3000);
-    } catch (e: any) {
-      setError(`Failed to save source: ${e.message}`);
+    } catch (e) {
+      setError(`Failed to save source: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -169,8 +169,8 @@ export default function IngestionPage() {
       if (selectedSourceId === id) setSelectedSourceId('');
       fetchData();
       setTimeout(() => setSuccess(null), 3000);
-    } catch (e: any) {
-      setError(`Delete failed: ${e.message}`);
+    } catch (e) {
+      setError(`Delete failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -194,8 +194,8 @@ export default function IngestionPage() {
       } else {
         setTestCredsResult({ ok: false, msg: `Failed: ${res.error}`});
       }
-    } catch (e: any) {
-      setTestCredsResult({ ok: false, msg: `Error: ${e.message}`});
+    } catch (e) {
+      setTestCredsResult({ ok: false, msg: `Error: ${e instanceof Error ? e.message : String(e)}`});
     }
     setTestingCreds(false);
   };
@@ -220,8 +220,8 @@ export default function IngestionPage() {
       setSourceFiles(res.files || []);
       setPrefix(res.prefix || '');
       setSelectedFiles(new Set());
-    } catch (e: any) {
-      setError(`Failed to browse: ${e.message}`);
+    } catch (e) {
+      setError(`Failed to browse: ${e instanceof Error ? e.message : String(e)}`);
     }
     setBrowsing(false);
   };
@@ -240,8 +240,8 @@ export default function IngestionPage() {
       setSuccess(`Job started: ${res.jobId}`);
       setTimeout(() => setSuccess(null), 3000);
       fetchData();
-    } catch (e: any) {
-      setError(`Ingestion failed: ${e.message}`);
+    } catch (e) {
+      setError(`Ingestion failed: ${e instanceof Error ? e.message : String(e)}`);
     }
     setIngesting(null);
   };
@@ -262,8 +262,8 @@ export default function IngestionPage() {
       setTimeout(() => setSuccess(null), 3000);
       setSelectedFiles(new Set());
       fetchData();
-    } catch (e: any) {
-      setError(`Bulk ingestion failed: ${e.message}`);
+    } catch (e) {
+      setError(`Bulk ingestion failed: ${e instanceof Error ? e.message : String(e)}`);
     }
     setIngestingBulk(false);
   };
@@ -298,12 +298,12 @@ export default function IngestionPage() {
 
       {/* Global Alerts */}
       {error && (
-        <div className="animate-fadeIn" style={{ marginBottom: 24, padding: '12px 18px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#ef4444' }}>
+        <div className="animate-fadeIn" style={{ marginBottom: 24, padding: '12px 18px', borderRadius: 10, background: 'var(--red-muted)', border: '1px solid var(--red)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--red)' }}>
           <AlertCircle size={16} /> {error}
         </div>
       )}
       {success && (
-        <div className="animate-fadeIn" style={{ marginBottom: 24, padding: '12px 18px', borderRadius: 10, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#22c55e' }}>
+        <div className="animate-fadeIn" style={{ marginBottom: 24, padding: '12px 18px', borderRadius: 10, background: 'var(--green-muted)', border: '1px solid var(--green)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--green)' }}>
           <CheckCircle2 size={16} /> {success}
         </div>
       )}
@@ -349,7 +349,7 @@ export default function IngestionPage() {
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleDeleteSource(src.id); }}
                   style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 4, borderRadius: 6, transition: 'color 0.2s' }}
-                  onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--red)')}
                   onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-tertiary)')}
                 >
                   <Trash2 size={14} />
@@ -393,7 +393,7 @@ export default function IngestionPage() {
           <div style={{ flex: 1, minWidth: 200 }}>
             <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>Path Options</label>
             <div style={{ display: 'flex', gap: 8 }}>
-              <Input placeholder="e.g. 2026/...  (Hit Enter to browse)" value={prefix} onChange={(v: string) => setPrefix(v)} onKeyDown={(e: any) => e.key === 'Enter' && browseFiles()} />
+              <Input placeholder="e.g. 2026/...  (Hit Enter to browse)" value={prefix} onChange={(v: string) => setPrefix(v)} onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => e.key === 'Enter' && browseFiles()} />
               <Button icon={browsing ? <Loader2 size={14} className="spin" /> : <Eye size={14} />} onClick={() => browseFiles()} disabled={browsing}>
                 {browsing ? 'Loading...' : 'Browse'}
               </Button>
@@ -529,7 +529,7 @@ export default function IngestionPage() {
                     <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{formatBytes(Number(job.file_size_bytes))}</td>
                     <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>{formatNumber(job.rows_ingested)}</td>
                     <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', padding: '4px 10px', borderRadius: 6, color: statusColors[job.status] || '#6b7280', background: (statusColors[job.status] || '#6b7280') + '18' }}>{job.status}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', padding: '4px 10px', borderRadius: 6, color: statusColors[job.status] || 'var(--text-secondary)', background: (statusColors[job.status] || 'var(--text-secondary)') + '18' }}>{job.status}</span>
                     </td>
                     <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{timeAgo(job.started_at)}</td>
                   </tr>
@@ -601,8 +601,8 @@ export default function IngestionPage() {
             {testCredsResult && (
               <div style={{
                 marginTop: 16, padding: '10px 14px', borderRadius: 8, fontSize: 13,
-                background: testCredsResult.ok ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-                color: testCredsResult.ok ? '#22c55e' : '#ef4444', border: `1px solid ${testCredsResult.ok ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`
+                background: testCredsResult.ok ? 'var(--green-muted)' : 'var(--red-muted)',
+                color: testCredsResult.ok ? 'var(--green)' : 'var(--red)', border: `1px solid ${testCredsResult.ok ? 'var(--green)' : 'var(--red)'}`
               }}>
                 {testCredsResult.msg}
               </div>
