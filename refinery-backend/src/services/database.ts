@@ -124,8 +124,16 @@ export async function browseData(params: BrowseParams) {
   const allColumns = await getTableColumns();
   const allowedSet = new Set(allColumns);
 
-  // Default columns: show data-bearing columns first, then internal
-  const defaultCols = allColumns.filter(c => !INTERNAL_COLS.has(c)).slice(0, 12);
+  // Default columns: curated priority list with emails up front
+  const PRIORITY_COLS = [
+    'first_name', 'last_name', 'business_email', 'personal_emails',
+    'company_name', 'job_title_normalized', 'primary_industry',
+    'personal_state', 'seniority_level', 'mobile_phone',
+    'company_domain', 'linkedin_url',
+  ];
+  const priorityCols = PRIORITY_COLS.filter(c => allowedSet.has(c));
+  const remaining = allColumns.filter(c => !INTERNAL_COLS.has(c) && !priorityCols.includes(c));
+  const defaultCols = [...priorityCols, ...remaining].slice(0, 14);
 
   // Validate & sanitize requested columns
   const selectCols = (params.columns?.length ? params.columns : defaultCols)
