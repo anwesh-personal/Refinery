@@ -136,11 +136,12 @@ export async function ensureEnvServersRegistered(): Promise<void> {
 
   // Object Storage (MinIO / Linode) from env
   if (env.objectStorage.endpoint && env.objectStorage.accessKey) {
+    const minioUrl = new URL(env.objectStorage.endpoint);
     registrations.push({
       name: 'Object Storage (MinIO)',
       type: 'minio',
-      host: env.objectStorage.endpoint,
-      port: 443,
+      host: `${minioUrl.protocol}//${minioUrl.hostname}`,
+      port: Number(minioUrl.port) || (minioUrl.protocol === 'https:' ? 443 : 80),
       bucket: env.objectStorage.bucket,
       endpoint_url: env.objectStorage.endpoint,
       access_key: env.objectStorage.accessKey,
@@ -393,8 +394,8 @@ export async function testConnection(id: string): Promise<{ ok: boolean; latency
       return { ok: result.success, latencyMs };
     }
 
-    if (server.type === 's3' || server.type === 'linode') {
-      const endpoint = server.endpoint_url || `https://s3.${server.region}.amazonaws.com`;
+    if (server.type === 's3' || server.type === 'linode' || server.type === 'minio') {
+      const endpoint = server.endpoint_url || `https://s3.${server.region || 'us-east-1'}.amazonaws.com`;
       const resp = await fetch(endpoint, { method: 'HEAD', signal: AbortSignal.timeout(PING_TIMEOUT_MS) });
       const latencyMs = Date.now() - start;
       const ok = resp.status < 500;
