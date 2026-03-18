@@ -429,6 +429,96 @@ export default function IngestionPage() {
         </div>
       )}
 
+      {/* --- ACTIVE INGESTION BANNER --- */}
+      {(() => {
+        const activeJobs = jobs.filter(j => ['pending', 'downloading', 'uploading', 'ingesting'].includes(j.status));
+        if (activeJobs.length === 0) return null;
+        return (
+          <div className="animate-fadeIn" style={{
+            marginBottom: 28, borderRadius: 16, overflow: 'hidden',
+            border: '1px solid var(--accent)', position: 'relative',
+            background: 'var(--bg-card)',
+          }}>
+            {/* Animated gradient bar at top */}
+            <div style={{
+              height: 3, width: '100%',
+              background: 'linear-gradient(90deg, var(--accent), var(--purple), var(--blue), var(--accent))',
+              backgroundSize: '300% 100%',
+              animation: 'ingestionShimmer 2s ease infinite',
+            }} />
+
+            <div style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 20 }}>
+              {/* Pulsing icon */}
+              <div style={{
+                width: 48, height: 48, borderRadius: 14,
+                background: 'linear-gradient(135deg, var(--accent), var(--purple))',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                animation: 'ingestionPulse 2s ease-in-out infinite',
+                boxShadow: '0 0 20px var(--accent)',
+                flexShrink: 0,
+              }}>
+                <Loader2 size={22} color="#fff" className="spin" />
+              </div>
+
+              {/* Info */}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+                  {activeJobs.length === 1 ? 'Ingestion in Progress' : `${activeJobs.length} Ingestions in Progress`}
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {activeJobs.map(j => (
+                    <div key={j.id} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                      padding: '6px 12px', borderRadius: 8,
+                      background: 'var(--bg-hover)', border: '1px solid var(--border)',
+                      fontSize: 12, color: 'var(--text-secondary)',
+                    }}>
+                      <span style={{
+                        width: 6, height: 6, borderRadius: '50%',
+                        background: statusColors[j.status] || 'var(--yellow)',
+                        animation: 'ingestionDot 1.4s ease-in-out infinite',
+                        boxShadow: `0 0 6px ${statusColors[j.status] || 'var(--yellow)'}`,
+                      }} />
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.file_name}</span>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+                        padding: '2px 6px', borderRadius: 4,
+                        color: statusColors[j.status] || 'var(--yellow)',
+                        background: (statusColors[j.status] || 'var(--yellow)') + '18',
+                      }}>{j.status}</span>
+                      {Number(j.rows_ingested) > 0 && <span style={{ fontFamily: 'monospace', fontSize: 11 }}>{formatNumber(j.rows_ingested)} rows</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Message */}
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>Processing in background</div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Feel free to navigate away — we'll keep crunching.</div>
+              </div>
+            </div>
+
+            {/* CSS keyframes */}
+            <style>{`
+              @keyframes ingestionShimmer {
+                0% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
+              }
+              @keyframes ingestionPulse {
+                0%, 100% { transform: scale(1); box-shadow: 0 0 20px var(--accent); }
+                50% { transform: scale(1.05); box-shadow: 0 0 30px var(--accent), 0 0 60px var(--purple); }
+              }
+              @keyframes ingestionDot {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.3; }
+              }
+            `}</style>
+          </div>
+        );
+      })()}
+
       {/* --- STATS --- */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20, marginBottom: 36 }}>
         <StatCard label="Pending Jobs" value={loading ? '...' : String(pendingCount)} sub={pendingCount > 0 ? 'In progress' : 'All clear'} icon={<Clock size={18} />} color="var(--yellow)" colorMuted="var(--yellow-muted)" delay={0.06} />
