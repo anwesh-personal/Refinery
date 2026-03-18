@@ -176,6 +176,7 @@ export async function runPipeline(
   smtpConfig: Partial<SmtpConfig> = {},
   weights: Partial<SeverityWeights> = {},
   thresholds: Partial<SeverityThresholds> = {},
+  onProgress?: (processed: number, total: number) => void,
 ): Promise<PipelineResult> {
   const id = genId();
   const startedAt = new Date().toISOString();
@@ -266,6 +267,9 @@ export async function runPipeline(
     results.push(result);
   }
 
+  // Report Phase 1 progress
+  if (onProgress) onProgress(results.length, workingEmails.length);
+
   // ── Phase 2: Domain-level checks (DNS) ──
   if (cfg.mxLookup || cfg.smtpVerify || cfg.catchAll) {
     // Group by domain
@@ -298,6 +302,11 @@ export async function runPipeline(
         const idx = domainIdx++;
         const [domain, indices] = domainEntries[idx];
         await processDomainChecks(domain, indices, results, cfg, smtp, w);
+        // Report progress per domain batch
+        if (onProgress) {
+          const processed = Math.min(domainEntries.slice(0, idx + 1).reduce((s, [, idxs]) => s + idxs.length, 0), workingEmails.length);
+          onProgress(processed, workingEmails.length);
+        }
       }
     });
 

@@ -178,6 +178,26 @@ const SCHEMAS = [
     updated_at        DateTime DEFAULT now()
   ) ENGINE = ReplacingMergeTree(updated_at)
     ORDER BY id`,
+
+  // ── Pipeline Studio Jobs (async verification) ──
+  `CREATE TABLE IF NOT EXISTS pipeline_jobs (
+    id                String,
+    total_emails      UInt64 DEFAULT 0,
+    processed_count   UInt64 DEFAULT 0,
+    safe_count        UInt64 DEFAULT 0,
+    risky_count       UInt64 DEFAULT 0,
+    rejected_count    UInt64 DEFAULT 0,
+    uncertain_count   UInt64 DEFAULT 0,
+    duplicates_removed UInt64 DEFAULT 0,
+    typos_fixed       UInt64 DEFAULT 0,
+    status            String DEFAULT 'queued',
+    error_message     Nullable(String),
+    results_json      Nullable(String),
+    config_json       Nullable(String),
+    started_at        DateTime DEFAULT now(),
+    completed_at      Nullable(DateTime)
+  ) ENGINE = MergeTree()
+    ORDER BY (started_at, id)`,
 ];
 
 export async function initDatabase(): Promise<void> {

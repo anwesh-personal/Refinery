@@ -148,4 +148,138 @@ router.post('/export', requireSuperadmin, async (req, res) => {
   }
 });
 
+// ─── POST /api/verify/async ───
+// Submit a verification job that runs in the background.
+// Returns a jobId immediately. Poll /api/verify/jobs/:id for progress.
+
+import { query as chQuery, command as chCommand, insertRows } from '../db/clickhouse.js';
+import { genId } from '../utils/helpers.js';
+
+router.post('/async', requireSuperadmin, async (req, res) => {
+  try {
+    const parsed = VerifyRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues.map(i => i.message).join('; ') });
+    }
+
+    const { emails, checks, smtp, severityWeights, thresholds } = parsed.data;
+    const jobId = genId();
+
+    // Store job in ClickHouse
+    await insertRows('pipeline_jobs', [{
+      id: jobId,
+      total_emails: emails.length,
+      status: 'processing',
+      config_json: JSON.stringify({ checks, smtp, severityWeights, thresholds }),
+    }]);
+
+    // Run pipeline in background (not awaited)
+    (async () => {
+      try {
+        console.log(`[Pipeline] Job ${jobId}: Starting ${emails.length} emails in background`);
+
+        const result = await runPipeline(
+          emails,
+          checks || {},
+          smtp || {},
+          severityWeights || {},
+          thresholds || {},
+          // Progress callback — update ClickHouse periodically
+          async (processed, total) => {
+            try {
+              await chCommand(`
+                ALTER TABLE pipeline_jobs UPDATE
+                  processed_count = ${processed}
+                WHERE id = '${jobId}'
+              `);
+            } catch { /* ignore progress update failures */ }
+          },
+        );
+
+        // Store results
+        await chCommand(`
+          ALTER TABLE pipeline_jobs UPDATE
+            processed_count = ${result.totalProcessed},
+            safe_count = ${result.safe},
+            risky_count = ${result.risky},
+            rejected_count = ${result.rejected},
+            uncertain_count = ${result.uncertain},
+            duplicates_removed = ${result.duplicatesRemoved},
+            typos_fixed = ${result.typosFixed},
+            status = 'complete',
+            results_json = '${JSON.stringify(result.results).replace(/'/g, "\\'")}',
+            completed_at = now()
+          WHERE id = '${jobId}'
+        `);
+
+        console.log(`[Pipeline] Job ${jobId}: Complete — ${result.safe} safe, ${result.risky} risky, ${result.rejected} rejected`);
+      } catch (err: any) {
+        console.error(`[Pipeline] Job ${jobId} failed:`, err.message);
+        await chCommand(`
+          ALTER TABLE pipeline_jobs UPDATE
+            status = 'failed',
+            error_message = '${(err.message || 'Unknown error').replace(/'/g, "\\'").substring(0, 500)}'
+          WHERE id = '${jobId}'
+        `).catch(() => {});
+      }
+    })();
+
+    // Return immediately
+    res.json({ jobId, totalEmails: emails.length });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── GET /api/verify/jobs ───
+// List recent pipeline jobs.
+
+router.get('/jobs', requireSuperadmin, async (_req, res) => {
+  try {
+    const jobs = await chQuery(`
+      SELECT id, total_emails, processed_count, safe_count, risky_count, rejected_count,
+             uncertain_count, duplicates_removed, typos_fixed, status, error_message,
+             started_at, completed_at
+      FROM pipeline_jobs
+      ORDER BY started_at DESC
+      LIMIT 20
+    `);
+    res.json(jobs);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── GET /api/verify/jobs/:id ───
+// Get job status and progress. Results included when status = 'complete'.
+
+router.get('/jobs/:id', requireSuperadmin, async (req, res) => {
+  try {
+    const [job] = await chQuery<any>(`
+      SELECT id, total_emails, processed_count, safe_count, risky_count, rejected_count,
+             uncertain_count, duplicates_removed, typos_fixed, status, error_message,
+             results_json, started_at, completed_at
+      FROM pipeline_jobs
+      WHERE id = '${req.params.id}'
+      LIMIT 1
+    `);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    // Parse results_json if complete
+    const response: any = { ...job };
+    if (job.status === 'complete' && job.results_json) {
+      try {
+        response.results = JSON.parse(job.results_json);
+      } catch { response.results = []; }
+      delete response.results_json;
+    } else {
+      delete response.results_json;
+    }
+
+    res.json(response);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
