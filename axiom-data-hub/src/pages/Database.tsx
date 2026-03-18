@@ -1,7 +1,7 @@
 import {
   Database, Table2, Rows3, HardDrive, Play, Copy, Download, RefreshCw,
   Loader2, AlertCircle, CheckCircle2, ChevronDown, ChevronUp,
-  Search, Columns, ChevronLeft, ChevronRight, Layers, X
+  Search, Columns, ChevronLeft, ChevronRight, Layers, X, Filter, Plus, Trash2
 } from 'lucide-react';
 import { PageHeader, StatCard, Button } from '../components/UI';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -13,7 +13,25 @@ interface DbStats { totalRows: string; totalBytes: string; tableCount: string; q
 interface TableInfo { table: string; rows: string; bytes_on_disk: string; last_modified: string; }
 interface QueryResult { rows: Record<string, unknown>[]; elapsed: number; total?: number; page?: number; pageSize?: number; }
 
-const PAGE_SIZES = [25, 50, 100, 200];
+const PAGE_SIZES = [25, 50, 100, 200, 500, 1000, 5000];
+
+const FILTER_OPERATORS = [
+  { value: 'equals', label: 'Equals' },
+  { value: 'not_equals', label: 'Not Equals' },
+  { value: 'contains', label: 'Contains' },
+  { value: 'not_contains', label: 'Does Not Contain' },
+  { value: 'starts_with', label: 'Starts With' },
+  { value: 'ends_with', label: 'Ends With' },
+  { value: 'is_null', label: 'Is Empty' },
+  { value: 'is_not_null', label: 'Is Not Empty' },
+];
+
+interface AdvancedFilterUI {
+  id: number;
+  column: string;
+  operator: string;
+  value: string;
+}
 
 // Column grouping for the picker
 const COLUMN_GROUPS: Record<string, string[]> = {
@@ -82,6 +100,11 @@ export default function DatabasePage() {
   const [availableFilters, setAvailableFilters] = useState<string[]>([]);
   const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({});
   const [columnsLoaded, setColumnsLoaded] = useState(false);
+
+  // Advanced Filters
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilterUI[]>([]);
+  const [showAdvFilters, setShowAdvFilters] = useState(false);
+  let filterIdCounter = useRef(0);
 
   // --- Data Fetching ---
   const fetchStats = useCallback(async () => {
@@ -172,11 +195,17 @@ export default function DatabasePage() {
       const activeFilters = Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== ''));
       const activeCols = Object.entries(visibleCols).filter(([_, v]) => v).map(([k]) => k);
       
+      // Build advanced filter payload
+      const afPayload = advancedFilters
+        .filter(f => f.column && f.operator)
+        .map(f => ({ column: f.column, operator: f.operator, value: f.value }));
+
       const res = await apiCall<QueryResult>('/api/database/browse', {
         method: 'POST',
         body: {
           search: currentSearch,
           filters: { ...activeFilters, ...(dataSourceFilter ? { _ingestion_job_id: dataSourceFilter } : {}) },
+          advancedFilters: afPayload.length > 0 ? afPayload : undefined,
           page,
           pageSize,
           sortBy: sortCol || activeCols[0] || 'up_id',
@@ -210,7 +239,7 @@ export default function DatabasePage() {
       if (timer) clearTimeout(timer);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, filters, page, sortCol, sortDir, visibleCols, activeTab]);
+  }, [search, filters, page, sortCol, sortDir, visibleCols, activeTab, advancedFilters]);
 
 
   const executeSQL = async () => {
@@ -457,10 +486,118 @@ export default function DatabasePage() {
                   </select>
                 </div>
               ))}
-              {(Object.keys(filters).some(k => filters[k] !== '') || search) && (
-                <Button variant="ghost" onClick={() => { setFilters({}); setSearch(''); setPage(1); }}>
-                  Clear Filters
+              {(Object.keys(filters).some(k => filters[k] !== '') || search || advancedFilters.length > 0) && (
+                <Button variant="ghost" onClick={() => { setFilters({}); setSearch(''); setAdvancedFilters([]); setPage(1); }}>
+                  Clear All
                 </Button>
+              )}
+            </div>
+
+            {/* Advanced Filter Builder */}
+            <div style={{ marginTop: 16 }}>
+              <button
+                onClick={() => setShowAdvFilters(!showAdvFilters)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  background: 'transparent', border: 'none', color: advancedFilters.length > 0 ? 'var(--accent)' : 'var(--text-tertiary)',
+                  fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: '4px 0',
+                }}
+              >
+                <Filter size={14} />
+                Advanced Filters {advancedFilters.length > 0 && `(${advancedFilters.length} active)`}
+              </button>
+              {showAdvFilters && (
+                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {advancedFilters.map((af, idx) => (
+                    <div key={af.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <select
+                        value={af.column}
+                        onChange={e => {
+                          const updated = [...advancedFilters];
+                          updated[idx] = { ...af, column: e.target.value };
+                          setAdvancedFilters(updated);
+                        }}
+                        style={{
+                          padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                          background: 'var(--bg-input)', border: '1px solid var(--border)',
+                          color: af.column ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                          minWidth: 180, cursor: 'pointer',
+                        }}
+                      >
+                        <option value="">Select Column...</option>
+                        {allColumns.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+                      </select>
+                      <select
+                        value={af.operator}
+                        onChange={e => {
+                          const updated = [...advancedFilters];
+                          updated[idx] = { ...af, operator: e.target.value };
+                          setAdvancedFilters(updated);
+                        }}
+                        style={{
+                          padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                          background: 'var(--bg-input)', border: '1px solid var(--border)',
+                          color: 'var(--text-primary)', minWidth: 150, cursor: 'pointer',
+                        }}
+                      >
+                        {FILTER_OPERATORS.map(op => <option key={op.value} value={op.value}>{op.label}</option>)}
+                      </select>
+                      {!['is_null', 'is_not_null'].includes(af.operator) && (
+                        <input
+                          type="text"
+                          placeholder="Value..."
+                          value={af.value}
+                          onChange={e => {
+                            const updated = [...advancedFilters];
+                            updated[idx] = { ...af, value: e.target.value };
+                            setAdvancedFilters(updated);
+                          }}
+                          onKeyDown={e => { if (e.key === 'Enter') { setPage(1); runBrowse(); } }}
+                          style={{
+                            padding: '8px 12px', borderRadius: 8, fontSize: 12,
+                            background: 'var(--bg-input)', border: '1px solid var(--border)',
+                            color: 'var(--text-primary)', flex: 1, minWidth: 120, outline: 'none',
+                          }}
+                        />
+                      )}
+                      <button
+                        onClick={() => setAdvancedFilters(advancedFilters.filter((_, i) => i !== idx))}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          width: 32, height: 32, borderRadius: 8, cursor: 'pointer',
+                          background: 'transparent', border: '1px solid var(--border)',
+                          color: 'var(--red)',
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                    <button
+                      onClick={() => {
+                        filterIdCounter.current += 1;
+                        setAdvancedFilters([...advancedFilters, { id: filterIdCounter.current, column: '', operator: 'equals', value: '' }]);
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                        background: 'var(--bg-hover)', border: '1px dashed var(--border)',
+                        color: 'var(--text-secondary)', cursor: 'pointer',
+                      }}
+                    >
+                      <Plus size={14} /> Add Filter
+                    </button>
+                    {advancedFilters.length > 0 && (
+                      <Button variant="primary" icon={<Search size={14} />}
+                        onClick={() => { setPage(1); runBrowse(); }}
+                        style={{ fontSize: 12, padding: '8px 16px' }}
+                      >
+                        Apply Filters
+                      </Button>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -597,7 +734,38 @@ export default function DatabasePage() {
             );
           })()}
           {result?.rows.length ? (
-            <Button variant="ghost" icon={<Download size={14} />} onClick={downloadCSV}>Export CSV</Button>
+            <>
+              <Button variant="ghost" icon={<Download size={14} />} onClick={downloadCSV}>Export Page</Button>
+              <Button variant="secondary" icon={<Download size={14} />} onClick={async () => {
+                try {
+                  const activeFilters = Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== ''));
+                  const activeCols = Object.entries(visibleCols).filter(([_, v]) => v).map(([k]) => k);
+                  const afPayload = advancedFilters.filter(f => f.column && f.operator).map(f => ({ column: f.column, operator: f.operator, value: f.value }));
+                  const resp = await fetch((import.meta as any).env?.VITE_API_URL ? `${(import.meta as any).env.VITE_API_URL}/api/database/export` : '/api/database/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      search,
+                      filters: { ...activeFilters, ...(dataSourceFilter ? { _ingestion_job_id: dataSourceFilter } : {}) },
+                      advancedFilters: afPayload.length > 0 ? afPayload : undefined,
+                      sortBy: sortCol, sortDir,
+                      columns: activeCols.length > 0 ? activeCols : undefined,
+                    }),
+                  });
+                  const blob = await resp.blob();
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = `refinery-export-${Date.now()}.csv`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  URL.revokeObjectURL(url);
+                } catch (e: any) {
+                  setError(`Export failed: ${e.message}`);
+                }
+              }}>Export All ({formatNumber(result.total || 0)})</Button>
+            </>
           ) : null}
         </div>
       </div>
