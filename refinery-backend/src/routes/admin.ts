@@ -29,14 +29,14 @@ let rateLimitMax = 20;
   }
 })();
 
-// Use arrow functions so the limiter reads the LATEST values after async load
+// express-rate-limit v7+ requires plain numbers (no functions)
 const adminRateLimit = rateLimit({
-  windowMs: () => rateLimitWindowMs,
-  max: () => rateLimitMax,
+  windowMs: rateLimitWindowMs,
+  max: rateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many admin requests. Please wait before trying again.' },
-} as any);
+});
 
 router.use(adminRateLimit);
 
