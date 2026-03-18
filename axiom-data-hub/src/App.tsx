@@ -16,6 +16,7 @@ import SettingsPage from './pages/Settings';
 import NotFoundPage from './pages/NotFound';
 import EmailVerifierPage from './pages/EmailVerifier';
 import TutorialPage from './pages/Tutorial';
+import JanitorPage from './pages/Janitor';
 import ImpersonationBanner from './components/ImpersonationBanner';
 import { ServerProvider } from './components/ServerSelector';
 
@@ -48,6 +49,7 @@ export default function App() {
                     <Route path="/logs" element={<ProtectedRoute requires="canViewLogs"><LogsPage /></ProtectedRoute>} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="/tutorial" element={<TutorialPage />} />
+                    <Route path="/janitor" element={<JanitorPage />} />
                     {/* Catch-all 404 for protected routes */}
                     <Route path="*" element={<NotFoundPage />} />
                   </Routes>

@@ -21,6 +21,7 @@ import teamsRoutes from './routes/teams.js';
 import verifyRoutes from './routes/verify.js';
 import s3sourcesRoutes from './routes/s3sources.js';
 import ingestionRulesRoutes from './routes/ingestion-rules.js';
+import janitorRoutes from './routes/janitor.js';
 import { setupScheduler } from './services/ingestion-rules.js';
 
 const app = express();
@@ -68,6 +69,7 @@ app.use('/api/teams', teamsRoutes);
 app.use('/api/verify', verifyRoutes);
 app.use('/api/s3-sources', s3sourcesRoutes);
 app.use('/api/ingestion-rules', ingestionRulesRoutes);
+app.use('/api/janitor', janitorRoutes);
 
 // ── Health ──
 app.get('/api/health', (_req, res) => {
