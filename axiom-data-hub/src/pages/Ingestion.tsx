@@ -115,11 +115,23 @@ export default function IngestionPage() {
       setStats(s);
       setJobs(j);
       setSources(src);
+      // Auto-select first source if none selected
+      if (!selectedSourceId && src.length > 0) {
+        setSelectedSourceId(src[0].id);
+      }
     } catch { /* ignore */ }
     setLoading(false);
-  }, []);
+  }, [selectedSourceId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Auto-browse when source changes
+  useEffect(() => {
+    if (selectedSourceId) {
+      browseFilesForSource(selectedSourceId, '');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSourceId]);
 
   // Auto-refresh jobs
   useEffect(() => {
@@ -201,8 +213,8 @@ export default function IngestionPage() {
   };
 
   /* --- Browsing & Ingestion --- */
-  const browseFiles = async (overridePrefix?: string) => {
-    if (!selectedSourceId) {
+  const browseFilesForSource = async (srcId: string, overridePrefix?: string) => {
+    if (!srcId) {
       setError('Please select an S3 source first, or add one using the + button.');
       return;
     }
@@ -212,7 +224,7 @@ export default function IngestionPage() {
     try {
       const params = new URLSearchParams();
       if (currentPrefix) params.set('prefix', currentPrefix);
-      params.set('sourceId', selectedSourceId);
+      params.set('sourceId', srcId);
       const url = `/api/ingestion/source-files?${params.toString()}`;
       
       const res = await apiCall<{folders: string[], files: SourceFile[], prefix: string}>(url);
@@ -225,6 +237,8 @@ export default function IngestionPage() {
     }
     setBrowsing(false);
   };
+
+  const browseFiles = (overridePrefix?: string) => browseFilesForSource(selectedSourceId, overridePrefix);
 
   const startIngestion = async (sourceKey: string) => {
     setIngesting(sourceKey);
@@ -323,7 +337,7 @@ export default function IngestionPage() {
         {sources.map(src => (
           <div 
             key={src.id}
-            onClick={() => setSelectedSourceId(src.id)}
+            onClick={() => { setSelectedSourceId(src.id); setPrefix(''); }}
             style={{ 
               background: selectedSourceId === src.id ? 'var(--bg-hover)' : 'var(--bg-card)', 
               border: `1px solid ${selectedSourceId === src.id ? 'var(--accent)' : 'var(--border)'}`, 
