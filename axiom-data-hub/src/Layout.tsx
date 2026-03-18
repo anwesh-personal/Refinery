@@ -130,9 +130,7 @@ export default function Layout({ children }: LayoutProps) {
               maxWidth: 220,
               height: 'auto', 
               objectFit: 'contain',
-              filter: mode === 'dark'
-                ? 'drop-shadow(0 0 12px rgba(99,102,241,0.4)) drop-shadow(0 0 30px rgba(99,102,241,0.15))'
-                : 'drop-shadow(0 2px 10px rgba(0,0,0,0.1)) drop-shadow(0 0 20px rgba(99,102,241,0.08))',
+              filter: 'var(--logo-glow)',
               transition: 'filter 0.4s ease',
             }}
           />

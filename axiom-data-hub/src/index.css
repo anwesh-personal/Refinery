@@ -47,6 +47,8 @@
 
   --sidebar-accent-bg: var(--accent-muted);
   --sidebar-accent-text: var(--accent);
+
+  --logo-glow: drop-shadow(0 0 10px rgba(249,115,22,0.5)) drop-shadow(0 0 28px rgba(249,115,22,0.25)) drop-shadow(0 0 56px rgba(249,115,22,0.1));
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -95,6 +97,8 @@
 
   --sidebar-accent-bg: var(--accent-muted);
   --sidebar-accent-text: var(--accent);
+
+  --logo-glow: drop-shadow(0 2px 8px rgba(234,88,12,0.15)) drop-shadow(0 0 20px rgba(234,88,12,0.08));
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -143,6 +147,8 @@
 
   --sidebar-accent-bg: var(--accent-muted);
   --sidebar-accent-text: var(--accent);
+
+  --logo-glow: drop-shadow(0 0 10px rgba(0,212,170,0.5)) drop-shadow(0 0 28px rgba(0,212,170,0.25)) drop-shadow(0 0 56px rgba(0,212,170,0.1));
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -191,6 +197,8 @@
 
   --sidebar-accent-bg: var(--accent-muted);
   --sidebar-accent-text: var(--accent);
+
+  --logo-glow: drop-shadow(0 2px 8px rgba(13,148,136,0.15)) drop-shadow(0 0 20px rgba(13,148,136,0.08));
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -239,6 +247,8 @@
 
   --sidebar-accent-bg: rgba(238,238,238,0.08);
   --sidebar-accent-text: #EEEEEE;
+
+  --logo-glow: drop-shadow(0 0 10px rgba(238,238,238,0.3)) drop-shadow(0 0 28px rgba(238,238,238,0.15)) drop-shadow(0 0 56px rgba(238,238,238,0.06));
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -287,6 +297,8 @@
 
   --sidebar-accent-bg: rgba(23,23,23,0.06);
   --sidebar-accent-text: #171717;
+
+  --logo-glow: drop-shadow(0 2px 8px rgba(23,23,23,0.1)) drop-shadow(0 0 20px rgba(23,23,23,0.05));
 }
 
 
