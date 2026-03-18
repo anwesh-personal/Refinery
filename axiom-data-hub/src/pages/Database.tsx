@@ -1,7 +1,7 @@
 import {
   Database, Table2, Rows3, HardDrive, Play, Copy, Download, RefreshCw,
   Loader2, AlertCircle, CheckCircle2, ChevronDown, ChevronUp,
-  Search, Columns, ChevronLeft, ChevronRight
+  Search, Columns, ChevronLeft, ChevronRight, Layers
 } from 'lucide-react';
 import { PageHeader, StatCard, Button } from '../components/UI';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -12,6 +12,18 @@ import { apiCall } from '../lib/api';
 interface DbStats { totalRows: string; totalBytes: string; tableCount: string; queriesToday: string; }
 interface TableInfo { table: string; rows: string; bytes_on_disk: string; last_modified: string; }
 interface QueryResult { rows: Record<string, unknown>[]; elapsed: number; total?: number; page?: number; pageSize?: number; }
+
+const PAGE_SIZES = [25, 50, 100, 200];
+
+// Column grouping for the picker
+const COLUMN_GROUPS: Record<string, string[]> = {
+  'Person': ['up_id', 'first_name', 'middle_name', 'last_name', 'full_name', 'gender', 'birth_year', 'birth_date', 'linkedin_url'],
+  'Contact': ['business_email', 'personal_emails', 'mobile_phone', 'direct_phone', 'personal_phone_1', 'personal_phone_2', 'personal_phone_3'],
+  'Company': ['company_name', 'company_domain', 'company_phone', 'company_linkedin_url', 'company_revenue', 'company_employee_count', 'primary_industry', 'company_description', 'company_sic', 'company_naics'],
+  'Location': ['personal_address', 'personal_city', 'personal_state', 'personal_zip', 'personal_country', 'company_address', 'company_city', 'company_state', 'company_zip', 'company_country'],
+  'Job': ['job_title', 'seniority_level', 'department', 'job_title_last_updated'],
+  'Metadata': ['_ingestion_job_id', '_ingested_at', '_segment_ids', '_verification_status', '_verified_at', 'topic_type', 'source_table', 'topic_id'],
+};
 
 // --- Helpers ---
 function formatBytes(bytes: number): string {
@@ -51,6 +63,8 @@ export default function DatabasePage() {
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [showColPicker, setShowColPicker] = useState(false);
+  const [pageSize, setPageSize] = useState(50);
+  const [dataSourceFilter, setDataSourceFilter] = useState<string>('');
   const colPickerRef = useRef<HTMLDivElement>(null);
   const colPickerBtnRef = useRef<HTMLButtonElement>(null);
   
@@ -145,9 +159,9 @@ export default function DatabasePage() {
         method: 'POST',
         body: {
           search: currentSearch,
-          filters: activeFilters,
+          filters: { ...activeFilters, ...(dataSourceFilter ? { _ingestion_job_id: dataSourceFilter } : {}) },
           page,
-          pageSize: 50,
+          pageSize,
           sortBy: sortCol || activeCols[0] || 'up_id',
           sortDir,
           columns: activeCols.length > 0 ? activeCols : undefined
@@ -159,7 +173,7 @@ export default function DatabasePage() {
     } finally {
       setLoading(false);
     }
-  }, [filters, page, sortCol, sortDir, visibleCols, activeTab, columnsLoaded]);
+  }, [filters, page, pageSize, sortCol, sortDir, visibleCols, activeTab, columnsLoaded, dataSourceFilter]);
 
   // Single effect for Browse tab (handles both search debounce and other filters)
   useEffect(() => {
@@ -354,20 +368,46 @@ export default function DatabasePage() {
                 </button>
                 {showColPicker && (
                   <div ref={colPickerRef} style={{
-                    position: 'absolute', top: 44, right: 0, width: 220, zIndex: 100,
+                    position: 'absolute', top: 44, right: 0, width: 260, zIndex: 100,
                     background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
-                    boxShadow: 'var(--shadow-lg)', padding: 12, maxHeight: 300, overflowY: 'auto'
+                    boxShadow: 'var(--shadow-lg)', padding: 12, maxHeight: 400, overflowY: 'auto'
                   }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 8, paddingLeft: 8 }}>Visible Columns</div>
-                    {allColumns.map((col: string) => (
-                      <label key={col} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', cursor: 'pointer', borderRadius: 6 }}
-                        onMouseOver={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                        onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-                      >
-                        <input type="checkbox" checked={!!visibleCols[col]} onChange={() => toggleCol(col)} />
-                        <span style={{ fontSize: 13, userSelect: 'none' }}>{col.replace(/_/g, ' ')}</span>
-                      </label>
-                    ))}
+                    {Object.entries(COLUMN_GROUPS).map(([group, groupCols]) => {
+                      const available = groupCols.filter(c => allColumns.includes(c));
+                      if (available.length === 0) return null;
+                      return (
+                        <div key={group} style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', padding: '4px 8px', letterSpacing: '0.08em' }}>{group}</div>
+                          {available.map(col => (
+                            <label key={col} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 12 }}
+                              onMouseOver={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                              onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                              <input type="checkbox" checked={!!visibleCols[col]} onChange={() => toggleCol(col)} style={{ accentColor: 'var(--accent)' }} />
+                              <span style={{ userSelect: 'none' }}>{col.replace(/_/g, ' ')}</span>
+                            </label>
+                          ))}
+                        </div>
+                      );
+                    })}
+                    {/* Other columns not in any group */}
+                    {(() => {
+                      const grouped = new Set(Object.values(COLUMN_GROUPS).flat());
+                      const other = allColumns.filter(c => !grouped.has(c));
+                      if (other.length === 0) return null;
+                      return (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', padding: '4px 8px', letterSpacing: '0.08em' }}>Other</div>
+                          {other.map(col => (
+                            <label key={col} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 12 }}
+                              onMouseOver={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                              onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                              <input type="checkbox" checked={!!visibleCols[col]} onChange={() => toggleCol(col)} style={{ accentColor: 'var(--accent)' }} />
+                              <span style={{ userSelect: 'none' }}>{col.replace(/_/g, ' ')}</span>
+                            </label>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -478,35 +518,65 @@ export default function DatabasePage() {
         </h3>
         
         {/* Pagination & Export for Browse OR just Export for SQL */}
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-          {activeTab === 'browse' && result && (result.total || 0) > 0 && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <Button variant="ghost" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={{ padding: '6px 10px' }}><ChevronLeft size={16}/></Button>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                Page
-                <input
-                  type="number"
-                  value={page}
-                  min={1}
-                  max={Math.max(1, Math.ceil((result.total || 0) / 50))}
-                  onChange={e => {
-                    const v = parseInt(e.target.value, 10);
-                    if (!isNaN(v) && v >= 1 && v <= Math.ceil((result.total || 0) / 50)) setPage(v);
-                  }}
-                  style={{
-                    width: 52, textAlign: 'center', padding: '4px 6px', borderRadius: 6,
-                    border: '1px solid var(--border)', background: 'var(--bg-input)',
-                    color: 'var(--text-primary)', fontSize: 12, fontWeight: 600,
-                    outline: 'none'
-                  }}
-                  onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
-                  onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}
-                />
-                of {Math.max(1, Math.ceil((result.total || 0) / 50)).toLocaleString()}
-              </span>
-              <Button variant="ghost" disabled={page >= Math.ceil((result.total || 0) / 50)} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 10px' }}><ChevronRight size={16}/></Button>
-            </div>
-          )}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          {activeTab === 'browse' && result && (result.total || 0) > 0 && (() => {
+            const totalPages = Math.max(1, Math.ceil((result.total || 0) / pageSize));
+            return (
+              <>
+                {/* Rows per page */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Layers size={12} color="var(--text-tertiary)" />
+                  <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} style={{
+                    background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 6,
+                    color: 'var(--text-primary)', fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
+                  }}>
+                    {PAGE_SIZES.map(s => <option key={s} value={s}>{s} rows</option>)}
+                  </select>
+                </div>
+
+                {/* Data source filter */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <select value={dataSourceFilter} onChange={e => { setDataSourceFilter(e.target.value); setPage(1); }} style={{
+                    background: dataSourceFilter ? 'var(--accent)' : 'var(--bg-input)',
+                    border: '1px solid var(--border)', borderRadius: 6,
+                    color: dataSourceFilter ? '#fff' : 'var(--text-primary)',
+                    fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
+                  }}>
+                    <option value="">All Sources</option>
+                    {/* Job IDs from result metadata could be listed here — for now, user can type */}
+                  </select>
+                </div>
+
+                {/* Page nav */}
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <Button variant="ghost" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={{ padding: '6px 10px' }}><ChevronLeft size={16}/></Button>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    Page
+                    <input
+                      type="number"
+                      value={page}
+                      min={1}
+                      max={totalPages}
+                      onChange={e => {
+                        const v = parseInt(e.target.value, 10);
+                        if (!isNaN(v) && v >= 1 && v <= totalPages) setPage(v);
+                      }}
+                      style={{
+                        width: 52, textAlign: 'center', padding: '4px 6px', borderRadius: 6,
+                        border: '1px solid var(--border)', background: 'var(--bg-input)',
+                        color: 'var(--text-primary)', fontSize: 12, fontWeight: 600,
+                        outline: 'none'
+                      }}
+                      onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
+                      onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+                    />
+                    of {totalPages.toLocaleString()}
+                  </span>
+                  <Button variant="ghost" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 10px' }}><ChevronRight size={16}/></Button>
+                </div>
+              </>
+            );
+          })()}
           {result?.rows.length ? (
             <Button variant="ghost" icon={<Download size={14} />} onClick={downloadCSV}>Export CSV</Button>
           ) : null}
