@@ -57,20 +57,11 @@ export default function DatabasePage() {
   // Available filters populated from backend limit 200
   const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({});
   
-  // Default visible columns
-  const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({
-    first_name: true, last_name: true, business_email: true, personal_emails: true,
-    company_name: true, job_title_normalized: true, personal_state: true, primary_industry: true
-  });
-
-  const availableFilters = ['personal_state', 'primary_industry', 'seniority_level', 'department', 'company_state'];
-  
-  const selectableCols = [
-    'first_name', 'last_name', 'business_email', 'personal_emails', 'mobile_phone',
-    'linkedin_url', 'personal_city', 'personal_state', 'contact_country',
-    'job_title_normalized', 'seniority_level', 'department',
-    'company_name', 'company_domain', 'company_revenue', 'company_employee_count', 'primary_industry'
-  ];
+  // Dynamic columns from backend
+  const [allColumns, setAllColumns] = useState<string[]>([]);
+  const [availableFilters, setAvailableFilters] = useState<string[]>([]);
+  const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({});
+  const [columnsLoaded, setColumnsLoaded] = useState(false);
 
   // --- Data Fetching ---
   const fetchStats = useCallback(async () => {
@@ -86,7 +77,26 @@ export default function DatabasePage() {
     setStatsLoading(false);
   }, []);
 
+  // Fetch columns and filters dynamically from backend
+  const fetchColumns = useCallback(async () => {
+    try {
+      const [cols, filterCols] = await Promise.all([
+        apiCall<string[]>('/api/database/columns').catch(() => []),
+        apiCall<string[]>('/api/database/filterable-columns').catch(() => []),
+      ]);
+      setAllColumns(cols);
+      setAvailableFilters(filterCols.slice(0, 8)); // Show up to 8 filter dropdowns
+      // Default visible: first 8 non-internal columns
+      const internalCols = new Set(['_ingestion_job_id', '_ingested_at', '_segment_ids', '_verification_status', '_verified_at']);
+      const defaultVisible: Record<string, boolean> = {};
+      cols.filter(c => !internalCols.has(c)).slice(0, 8).forEach(c => { defaultVisible[c] = true; });
+      setVisibleCols(defaultVisible);
+      setColumnsLoaded(true);
+    } catch { /* ignore */ }
+  }, []);
+
   const fetchFilterOptions = useCallback(async () => {
+    if (availableFilters.length === 0) return;
     try {
       const opts: Record<string, string[]> = {};
       await Promise.all(availableFilters.map(async (f) => {
@@ -94,13 +104,16 @@ export default function DatabasePage() {
       }));
       setFilterOptions(opts);
     } catch { /* ignore */ }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [availableFilters]);
 
   useEffect(() => { 
     fetchStats();
+    fetchColumns();
+  }, [fetchStats, fetchColumns]);
+
+  useEffect(() => {
     fetchFilterOptions();
-  }, [fetchStats, fetchFilterOptions]);
+  }, [fetchFilterOptions]);
 
   // Click outside handler for column picker
   useEffect(() => {
@@ -122,7 +135,7 @@ export default function DatabasePage() {
 
   // Load browse data
   const runBrowse = useCallback(async (currentSearch: string = searchRef.current) => {
-    if (activeTab !== 'browse') return;
+    if (activeTab !== 'browse' || !columnsLoaded) return;
     setLoading(true); setError(null);
     try {
       const activeFilters = Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== ''));
@@ -135,9 +148,9 @@ export default function DatabasePage() {
           filters: activeFilters,
           page,
           pageSize: 50,
-          sortBy: sortCol || 'last_name',
+          sortBy: sortCol || activeCols[0] || 'up_id',
           sortDir,
-          columns: activeCols.length > 0 ? activeCols : ['id']
+          columns: activeCols.length > 0 ? activeCols : undefined
         }
       });
       setResult(res);
@@ -146,7 +159,7 @@ export default function DatabasePage() {
     } finally {
       setLoading(false);
     }
-  }, [filters, page, sortCol, sortDir, visibleCols, activeTab]);
+  }, [filters, page, sortCol, sortDir, visibleCols, activeTab, columnsLoaded]);
 
   // Single effect for Browse tab (handles both search debounce and other filters)
   useEffect(() => {
@@ -346,7 +359,7 @@ export default function DatabasePage() {
                     boxShadow: 'var(--shadow-lg)', padding: 12, maxHeight: 300, overflowY: 'auto'
                   }}>
                     <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 8, paddingLeft: 8 }}>Visible Columns</div>
-                    {selectableCols.map(col => (
+                    {allColumns.map((col: string) => (
                       <label key={col} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', cursor: 'pointer', borderRadius: 6 }}
                         onMouseOver={e => e.currentTarget.style.background = 'var(--bg-hover)'}
                         onMouseOut={e => e.currentTarget.style.background = 'transparent'}
@@ -469,8 +482,27 @@ export default function DatabasePage() {
           {activeTab === 'browse' && result && (result.total || 0) > 0 && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <Button variant="ghost" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={{ padding: '6px 10px' }}><ChevronLeft size={16}/></Button>
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Page {page} of {Math.max(1, Math.ceil((result.total || 0) / 50))}
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                Page
+                <input
+                  type="number"
+                  value={page}
+                  min={1}
+                  max={Math.max(1, Math.ceil((result.total || 0) / 50))}
+                  onChange={e => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v) && v >= 1 && v <= Math.ceil((result.total || 0) / 50)) setPage(v);
+                  }}
+                  style={{
+                    width: 52, textAlign: 'center', padding: '4px 6px', borderRadius: 6,
+                    border: '1px solid var(--border)', background: 'var(--bg-input)',
+                    color: 'var(--text-primary)', fontSize: 12, fontWeight: 600,
+                    outline: 'none'
+                  }}
+                  onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
+                  onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+                />
+                of {Math.max(1, Math.ceil((result.total || 0) / 50)).toLocaleString()}
               </span>
               <Button variant="ghost" disabled={page >= Math.ceil((result.total || 0) / 50)} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 10px' }}><ChevronRight size={16}/></Button>
             </div>
