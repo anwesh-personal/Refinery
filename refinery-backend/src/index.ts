@@ -26,6 +26,14 @@ import verify550Routes from './routes/verify550.js';
 import { setupScheduler } from './services/ingestion-rules.js';
 import { ensureEnvServersRegistered } from './services/servers.js';
 
+// v1 API routes (machine-to-machine, API key auth)
+import v1KeysRoutes from './routes/v1/keys.js';
+import v1ContactsRoutes from './routes/v1/contacts.js';
+import v1SegmentsRoutes from './routes/v1/segments.js';
+import v1VerifyRoutes from './routes/v1/verify.js';
+import { requireApiKey } from './middleware/apiKeyAuth.js';
+import { apiKeyRateLimiter } from './middleware/rateLimiter.js';
+
 const app = express();
 
 // ── Middleware ──
@@ -73,6 +81,12 @@ app.use('/api/s3-sources', s3sourcesRoutes);
 app.use('/api/ingestion-rules', ingestionRulesRoutes);
 app.use('/api/janitor', janitorRoutes);
 app.use('/api/v550', verify550Routes);
+
+// ── v1 API (machine-to-machine, API key authenticated) ──
+app.use('/api/v1/keys', v1KeysRoutes);
+app.use('/api/v1/contacts', requireApiKey, apiKeyRateLimiter, v1ContactsRoutes);
+app.use('/api/v1/segments', requireApiKey, apiKeyRateLimiter, v1SegmentsRoutes);
+app.use('/api/v1/verify', requireApiKey, apiKeyRateLimiter, v1VerifyRoutes);
 
 // ── Health ──
 app.get('/api/health', (_req, res) => {

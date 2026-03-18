@@ -179,6 +179,24 @@ const SCHEMAS = [
   ) ENGINE = ReplacingMergeTree(updated_at)
     ORDER BY id`,
 
+  // ── API Keys (machine-to-machine auth for external services) ──
+  `CREATE TABLE IF NOT EXISTS api_keys (
+    id                String,
+    key_hash          String,
+    key_prefix        String,
+    name              String,
+    owner_id          String,
+    scopes            Array(String),
+    environment       String DEFAULT 'live',
+    rate_limit_rpm    UInt32 DEFAULT 60,
+    is_active         UInt8 DEFAULT 1,
+    last_used_at      Nullable(DateTime),
+    created_at        DateTime DEFAULT now(),
+    updated_at        DateTime DEFAULT now(),
+    expires_at        Nullable(DateTime)
+  ) ENGINE = ReplacingMergeTree(updated_at)
+    ORDER BY id`,
+
   // ── Pipeline Studio Jobs (async verification) ──
   `CREATE TABLE IF NOT EXISTS pipeline_jobs (
     id                String,
