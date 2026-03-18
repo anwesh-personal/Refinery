@@ -1,4 +1,4 @@
-import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Edit2, Trash2, Folder, CheckSquare, Square, Layers } from 'lucide-react';
+import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Edit2, Trash2, Folder, CheckSquare, Square, Layers, ArrowUpDown, Filter, ChevronUp, ChevronDown } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
 import { useState, useEffect, useCallback } from 'react';
@@ -74,6 +74,21 @@ const statusColors: Record<string, string> = {
   uploading: 'var(--purple)', pending: 'var(--text-secondary)', failed: 'var(--red)',
 };
 
+type FileFormat = 'csv' | 'gz' | 'parquet' | 'other';
+const FORMAT_COLORS: Record<FileFormat, string> = {
+  csv: 'var(--green)', gz: 'var(--purple)', parquet: 'var(--blue)', other: 'var(--text-tertiary)',
+};
+function getFileFormat(name: string): FileFormat {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.parquet') || lower.endsWith('.pqt')) return 'parquet';
+  if (lower.endsWith('.gz')) return 'gz';
+  if (lower.endsWith('.csv') || lower.endsWith('.tsv') || lower.endsWith('.txt')) return 'csv';
+  return 'other';
+}
+
+type FileSortKey = 'name' | 'size' | 'date';
+type JobSortKey = 'date' | 'rows' | 'status' | 'file';
+
 /* ---------------- Component ---------------- */
 export default function IngestionPage() {
   const [stats, setStats] = useState<IngestionStats | null>(null);
@@ -86,6 +101,13 @@ export default function IngestionPage() {
   const [selectedSourceId, setSelectedSourceId] = useState<string>(''); // empty means use legacy env
   const [prefix, setPrefix] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  
+  // Sort & filter state
+  const [fileSortKey, setFileSortKey] = useState<FileSortKey>('date');
+  const [fileSortAsc, setFileSortAsc] = useState(false); // default: latest first
+  const [fileTypeFilter, setFileTypeFilter] = useState<FileFormat | 'all'>('all');
+  const [jobSortKey, setJobSortKey] = useState<JobSortKey>('date');
+  const [jobSortAsc, setJobSortAsc] = useState(false);
   
   // Loading states
   const [loading, setLoading] = useState(true);
@@ -442,15 +464,67 @@ export default function IngestionPage() {
           })}
         </div>
 
-        {(folders.length > 0 || sourceFiles.length > 0) ? (
+        {(folders.length > 0 || sourceFiles.length > 0) ? (() => {
+          // Apply filter and sort
+          const filtered = fileTypeFilter === 'all' ? sourceFiles : sourceFiles.filter(f => getFileFormat(f.key.split('/').pop() || '') === fileTypeFilter);
+          const sorted = [...filtered].sort((a, b) => {
+            let cmp = 0;
+            if (fileSortKey === 'name') cmp = (a.key.split('/').pop() || '').localeCompare(b.key.split('/').pop() || '');
+            else if (fileSortKey === 'size') cmp = a.size - b.size;
+            else cmp = new Date(a.modified).getTime() - new Date(b.modified).getTime();
+            return fileSortAsc ? cmp : -cmp;
+          });
+          const formatCounts = sourceFiles.reduce((acc, f) => { const fmt = getFileFormat(f.key.split('/').pop() || ''); acc[fmt] = (acc[fmt] || 0) + 1; return acc; }, {} as Record<string, number>);
+
+          return (
           <div style={{ borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-            {/* Header Row for Select All */}
+            {/* Sort & Filter Toolbar */}
             {sourceFiles.length > 0 && (
-              <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <button onClick={toggleSelectAll} style={{ background:'none', border:'none', cursor:'pointer', padding: 0, color: selectedFiles.size === sourceFiles.length ? 'var(--accent)' : 'var(--text-tertiary)' }}>
-                  {selectedFiles.size > 0 && selectedFiles.size === sourceFiles.length ? <CheckSquare size={16} /> : <Square size={16} />}
-                </button>
-                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)' }}>Select All {sourceFiles.length} Files</span>
+              <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button onClick={toggleSelectAll} style={{ background:'none', border:'none', cursor:'pointer', padding: 0, color: selectedFiles.size === sourceFiles.length ? 'var(--accent)' : 'var(--text-tertiary)' }}>
+                    {selectedFiles.size > 0 && selectedFiles.size === sourceFiles.length ? <CheckSquare size={16} /> : <Square size={16} />}
+                  </button>
+                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)' }}>
+                    {filtered.length} file{filtered.length !== 1 ? 's' : ''}{fileTypeFilter !== 'all' ? ` (${fileTypeFilter.toUpperCase()})` : ''}
+                    {folders.length > 0 ? ` · ${folders.length} folder${folders.length !== 1 ? 's' : ''}` : ''}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {/* Type filter */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <Filter size={12} color="var(--text-tertiary)" />
+                    <select value={fileTypeFilter} onChange={e => setFileTypeFilter(e.target.value as FileFormat | 'all')} style={{
+                      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
+                      color: 'var(--text-primary)', fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
+                    }}>
+                      <option value="all">All Types</option>
+                      {formatCounts['csv'] && <option value="csv">CSV ({formatCounts['csv']})</option>}
+                      {formatCounts['gz'] && <option value="gz">GZ ({formatCounts['gz']})</option>}
+                      {formatCounts['parquet'] && <option value="parquet">Parquet ({formatCounts['parquet']})</option>}
+                      {formatCounts['other'] && <option value="other">Other ({formatCounts['other']})</option>}
+                    </select>
+                  </div>
+                  {/* Sort */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <ArrowUpDown size={12} color="var(--text-tertiary)" />
+                    <select value={fileSortKey} onChange={e => setFileSortKey(e.target.value as FileSortKey)} style={{
+                      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
+                      color: 'var(--text-primary)', fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
+                    }}>
+                      <option value="date">Date</option>
+                      <option value="name">Name</option>
+                      <option value="size">Size</option>
+                    </select>
+                    <button onClick={() => setFileSortAsc(!fileSortAsc)} style={{
+                      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
+                      cursor: 'pointer', padding: '3px 6px', display: 'flex', alignItems: 'center',
+                      color: 'var(--text-primary)',
+                    }}>
+                      {fileSortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -474,8 +548,9 @@ export default function IngestionPage() {
               </div>
             )})}
             
-            {sourceFiles.map((f) => {
-              const fileName = f.key.split('/').pop();
+            {sorted.map((f) => {
+              const fileName = f.key.split('/').pop() || '';
+              const format = getFileFormat(fileName);
               const isSelected = selectedFiles.has(f.key);
               return (
               <div
@@ -496,9 +571,16 @@ export default function IngestionPage() {
                   </button>
                   <FileText size={16} color="var(--text-tertiary)" />
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{fileName}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{fileName}</span>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+                        padding: '2px 6px', borderRadius: 4,
+                        color: FORMAT_COLORS[format], background: FORMAT_COLORS[format] + '18',
+                      }}>{format === 'gz' ? 'GZ' : format.toUpperCase()}</span>
+                    </div>
                     <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                      {formatBytes(f.size)} · {new Date(f.modified).toLocaleDateString()}
+                      {formatBytes(f.size)} · {new Date(f.modified).toLocaleDateString()} {new Date(f.modified).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
                 </div>
@@ -513,7 +595,8 @@ export default function IngestionPage() {
               </div>
             )})}
           </div>
-        ) : (
+          );
+        })() : (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13, background: 'var(--bg-hover)', borderRadius: 8 }}>
             {browsing ? 'Loading...' : 'Select a source and click Browse or navigate using breadcrumbs to see available data.'}
           </div>
@@ -523,35 +606,61 @@ export default function IngestionPage() {
       {/* --- JOB HISTORY --- */}
       <SectionHeader title={`Ingestion Jobs (${jobs.length})`} action="Refresh" onAction={fetchData} />
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-        {jobs.length > 0 ? (
+        {jobs.length > 0 ? (() => {
+          const sortedJobs = [...jobs].sort((a, b) => {
+            let cmp = 0;
+            if (jobSortKey === 'date') cmp = new Date(a.started_at).getTime() - new Date(b.started_at).getTime();
+            else if (jobSortKey === 'file') cmp = a.file_name.localeCompare(b.file_name);
+            else if (jobSortKey === 'rows') cmp = Number(a.rows_ingested || 0) - Number(b.rows_ingested || 0);
+            else if (jobSortKey === 'status') cmp = a.status.localeCompare(b.status);
+            return jobSortAsc ? cmp : -cmp;
+          });
+
+          const jobHeaders: { label: string; key: JobSortKey }[] = [
+            { label: 'File', key: 'file' },
+            { label: 'Rows', key: 'rows' },
+            { label: 'Status', key: 'status' },
+            { label: 'Started', key: 'date' },
+          ];
+
+          return (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr>
-                  {['Job ID', 'File', 'Size', 'Rows', 'Status', 'Started'].map(h => (
-                    <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>Job ID</th>
+                  {jobHeaders.map(h => (
+                    <th key={h.key} onClick={() => { if (jobSortKey === h.key) setJobSortAsc(!jobSortAsc); else { setJobSortKey(h.key); setJobSortAsc(false); } }}
+                      style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: jobSortKey === h.key ? 'var(--accent)' : 'var(--text-tertiary)', borderBottom: '1px solid var(--border)', cursor: 'pointer', userSelect: 'none' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {h.label}
+                        {jobSortKey === h.key && (jobSortAsc ? <ChevronUp size={10} /> : <ChevronDown size={10} />)}
+                      </span>
+                    </th>
                   ))}
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>Size</th>
                 </tr>
               </thead>
               <tbody>
-                {jobs.map((job) => (
+                {sortedJobs.map((job) => (
                   <tr key={job.id} style={{ transition: 'background 0.1s' }}
                     onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                     onMouseOut={e => (e.currentTarget.style.background = '')}>
                     <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontFamily: 'monospace', fontSize: 12 }}>{job.id.slice(0, 8)}...</td>
-                    <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>{job.file_name}</td>
-                    <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{formatBytes(Number(job.file_size_bytes))}</td>
+                    <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.file_name}</td>
                     <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>{formatNumber(job.rows_ingested)}</td>
                     <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
                       <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', padding: '4px 10px', borderRadius: 6, color: statusColors[job.status] || 'var(--text-secondary)', background: (statusColors[job.status] || 'var(--text-secondary)') + '18' }}>{job.status}</span>
                     </td>
                     <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{timeAgo(job.started_at)}</td>
+                    <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{formatBytes(Number(job.file_size_bytes))}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        ) : (
+          );
+        })() : (
           <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-tertiary)' }}>
             <CloudDownload size={24} style={{ marginBottom: 12, opacity: 0.4 }} />
             <div style={{ fontWeight: 600 }}>{loading ? 'Loading...' : 'No ingestion jobs yet'}</div>
