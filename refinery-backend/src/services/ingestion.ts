@@ -9,12 +9,28 @@ import { env } from '../config/env.js';
 import { query, command, insertRows } from '../db/clickhouse.js';
 import { genId } from '../utils/helpers.js';
 import { Readable } from 'stream';
+import { createGunzip } from 'zlib';
 import { parse } from 'csv-parse';
+import { ParquetReader } from '@dsnp/parquetjs';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as s3Sources from './s3sources.js';
 
 /** Sanitise a string for inclusion in ClickHouse SQL */
 function esc(v: string): string {
   return v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+/** Detect file format from extension */
+type FileFormat = 'csv' | 'csv.gz' | 'parquet' | 'unknown';
+function detectFormat(fileName: string): FileFormat {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.parquet') || lower.endsWith('.pqt')) return 'parquet';
+  if (lower.endsWith('.csv.gz') || lower.endsWith('.tsv.gz') || lower.endsWith('.txt.gz')) return 'csv.gz';
+  if (lower.endsWith('.gz')) return 'csv.gz'; // assume gzipped CSV
+  if (lower.endsWith('.csv') || lower.endsWith('.tsv') || lower.endsWith('.txt')) return 'csv';
+  return 'unknown';
 }
 
 /** Build an S3 client for the env-based source bucket (legacy fallback) */
@@ -63,27 +79,25 @@ export async function testStorageConnection(): Promise<{ ok: boolean; error?: st
   }
 }
 
-/** Browse a source bucket — returns folders and files using S3 delimiter */
-export async function listSourceFiles(
-  prefix?: string,
-  sourceId?: string
-): Promise<{ folders: string[]; files: { key: string; size: number; modified: string }[]; prefix: string }> {
+/** List files from an S3 source with folder/file separation */
+export async function listSourceFiles(prefix?: string, sourceId?: string) {
   let client: S3Client;
   let bucket: string;
+  let defaultPrefix: string | undefined;
 
   if (sourceId) {
     const src = await s3Sources.getSource(sourceId);
     if (!src) throw new Error(`S3 source '${sourceId}' not found`);
     client = s3Sources.buildClient(src);
     bucket = src.bucket;
-    // Use source prefix as default root if no explicit prefix provided
-    if (!prefix && src.prefix) prefix = src.prefix;
+    defaultPrefix = src.prefix || undefined;
   } else {
     client = getSourceClient();
     bucket = env.s3Source.bucket;
+    defaultPrefix = undefined;
   }
 
-  const effectivePrefix = prefix || '';
+  const effectivePrefix = prefix !== undefined && prefix !== '' ? prefix : (defaultPrefix || '');
 
   const resp = await client.send(new ListObjectsV2Command({
     Bucket: bucket,
@@ -92,11 +106,11 @@ export async function listSourceFiles(
     MaxKeys: 1000,
   }));
 
-  const folders = (resp.CommonPrefixes || []).map(p => p.Prefix || '');
+  const folders = (resp.CommonPrefixes || []).map(cp => cp.Prefix!).filter(Boolean);
   const files = (resp.Contents || [])
-    .filter(obj => obj.Key !== effectivePrefix) // exclude the folder itself
+    .filter(obj => obj.Key && obj.Key !== effectivePrefix)
     .map(obj => ({
-      key: obj.Key || '',
+      key: obj.Key!,
       size: obj.Size || 0,
       modified: obj.LastModified?.toISOString() || '',
     }));
@@ -104,38 +118,39 @@ export async function listSourceFiles(
   return { folders, files, prefix: effectivePrefix };
 }
 
-/** Get all ingestion jobs */
-export async function getJobs() {
-  return query('SELECT * FROM ingestion_jobs ORDER BY started_at DESC LIMIT 50');
+/** Get list of ingestion jobs */
+export async function getJobs(limit = 50) {
+  return query(`SELECT * FROM ingestion_jobs ORDER BY started_at DESC LIMIT ${limit}`);
 }
 
 /** Get ingestion stats */
 export async function getIngestionStats() {
-  const [stats] = await query<{
-    total_jobs: string;
-    total_rows: string;
-    total_bytes: string;
-    pending: string;
+  const [row] = await query<{
+    total_rows: string; total_bytes: string; pending: string; latest_file: string;
   }>(`
-    SELECT 
-      count() as total_jobs,
-      sum(rows_ingested) as total_rows,
-      sum(file_size_bytes) as total_bytes,
-      countIf(status = 'pending' OR status = 'downloading') as pending
-    FROM ingestion_jobs
+    SELECT
+      (SELECT count() FROM universal_person) as total_rows,
+      (SELECT sum(file_size_bytes) FROM ingestion_jobs WHERE status = 'complete') as total_bytes,
+      (SELECT count() FROM ingestion_jobs WHERE status IN ('pending','downloading','uploading','ingesting')) as pending,
+      (SELECT file_name FROM ingestion_jobs ORDER BY started_at DESC LIMIT 1) as latest_file
   `);
-  return stats;
+  return row || { total_rows: '0', total_bytes: '0', pending: '0', latest_file: '' };
 }
 
 /**
  * Start an ingestion job:
  * 1. Download from source S3 (dynamic or env-based)
  * 2. Upload to Linode Object Storage
- * 3. Stream-parse CSV and insert into ClickHouse
+ * 3. Parse file (CSV / GZ / Parquet) and insert into ClickHouse
  */
 export async function startIngestionJob(sourceKey: string, sourceId?: string): Promise<string> {
   const jobId = genId();
   const fileName = sourceKey.split('/').pop() || sourceKey;
+  const format = detectFormat(fileName);
+
+  if (format === 'unknown') {
+    throw new Error(`Unsupported file format: ${fileName}. Supported: .csv, .csv.gz, .gz, .parquet`);
+  }
 
   // Resolve S3 source — dynamic if sourceId provided, else env fallback
   let sourceBucket: string;
@@ -161,7 +176,7 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string): P
   }]);
 
   // Run the actual pipeline in the background (non-blocking)
-  runIngestionPipeline(jobId, sourceKey, fileName, sourceClient, sourceBucket).catch(async (err) => {
+  runIngestionPipeline(jobId, sourceKey, fileName, format, sourceClient, sourceBucket).catch(async (err) => {
     console.error(`[Ingestion] Job ${jobId} failed:`, err.message);
     await command(`
       ALTER TABLE ingestion_jobs UPDATE 
@@ -173,11 +188,13 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string): P
   return jobId;
 }
 
-async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: string, sourceClient: S3Client, sourceBucket: string) {
+async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: string, format: FileFormat, sourceClient: S3Client, sourceBucket: string) {
   const storageClient = getStorageClient();
+  const BATCH_SIZE = 10000;
+  let totalRows = 0;
 
   // Step 1: Download from S3
-  console.log(`[Ingestion] ${jobId}: Downloading ${sourceKey} from ${sourceBucket}...`);
+  console.log(`[Ingestion] ${jobId}: Downloading ${sourceKey} from ${sourceBucket}... (format: ${format})`);
   const getResp = await sourceClient.send(new GetObjectCommand({
     Bucket: sourceBucket,
     Key: sourceKey,
@@ -186,7 +203,7 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
   const bodyStream = getResp.Body as Readable;
   const fileSize = getResp.ContentLength || 0;
 
-  // Step 2: Upload to Object Storage (MinIO)
+  // Step 2: Upload to Object Storage (MinIO) — archive the raw file
   console.log(`[Ingestion] ${jobId}: Uploading to Object Storage...`);
   await command(`ALTER TABLE ingestion_jobs UPDATE status = 'uploading', file_size_bytes = ${fileSize} WHERE id = '${esc(jobId)}'`);
 
@@ -199,48 +216,28 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
       Body: bodyStream,
     },
     queueSize: 4,
-    partSize: 10 * 1024 * 1024, // 10MB parts
+    partSize: 10 * 1024 * 1024,
   });
   await upload.done();
 
-  // Step 3: Re-download from Object Storage and stream into ClickHouse
-  console.log(`[Ingestion] ${jobId}: Ingesting into ClickHouse...`);
+  // Step 3: Re-download from Object Storage and ingest into ClickHouse
+  console.log(`[Ingestion] ${jobId}: Ingesting into ClickHouse (${format})...`);
   await command(`ALTER TABLE ingestion_jobs UPDATE status = 'ingesting' WHERE id = '${esc(jobId)}'`);
 
   const storageResp = await storageClient.send(new GetObjectCommand({
     Bucket: env.objectStorage.bucket,
     Key: storageKey,
   }));
+  const rawStream = storageResp.Body as Readable;
 
-  // Track CSV headers for dynamic column creation
-  let csvHeaders: string[] = [];
-
-  const csvStream = (storageResp.Body as Readable).pipe(
-    parse({
-      columns: (header: string[]) => {
-        csvHeaders = header.map((h: string) => h.toLowerCase().trim());
-        return csvHeaders;
-      },
-      skip_empty_lines: true,
-      relax_column_count: true,
-    }),
-  );
-
-  // Step 3a: Auto-detect and add missing columns to ClickHouse
-  // We need to read the first row to trigger header parsing, then handle schema
-  const iterator = csvStream[Symbol.asyncIterator]();
-  const firstResult = await iterator.next();
-
-  if (!firstResult.done && csvHeaders.length > 0) {
-    // Get existing columns from ClickHouse
+  // ─── Shared helpers ───
+  async function syncSchema(headers: string[]) {
     const existingCols = await query<{ name: string }>(`
-      SELECT name FROM system.columns 
+      SELECT name FROM system.columns
       WHERE database = '${esc(env.clickhouse.database)}' AND table = 'universal_person'
     `);
     const existingSet = new Set(existingCols.map(c => c.name));
-
-    // Find columns in CSV that don't exist in the table
-    const missingCols = csvHeaders.filter(h => !existingSet.has(h));
+    const missingCols = headers.filter(h => !existingSet.has(h));
 
     if (missingCols.length > 0) {
       console.log(`[Ingestion] ${jobId}: Adding ${missingCols.length} new columns: ${missingCols.join(', ')}`);
@@ -254,37 +251,105 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
     }
   }
 
-  // Step 3b: Insert all rows (including the first one we already read)
-  let batch: Record<string, unknown>[] = [];
-  let totalRows = 0;
-  const BATCH_SIZE = 10000;
-
-  // Process first row
-  if (!firstResult.done) {
-    const row = firstResult.value as Record<string, unknown>;
-    row._ingestion_job_id = jobId;
-    batch.push(row);
-  }
-
-  // Process remaining rows
-  for await (const row of csvStream) {
-    (row as Record<string, unknown>)._ingestion_job_id = jobId;
-    batch.push(row as Record<string, unknown>);
-
-    if (batch.length >= BATCH_SIZE) {
-      await insertRows('universal_person', batch);
-      totalRows += batch.length;
-      batch = [];
-      if (totalRows % 100000 === 0) {
-        console.log(`[Ingestion] ${jobId}: ${totalRows.toLocaleString()} rows inserted...`);
-      }
+  async function flushBatch(batch: Record<string, unknown>[]) {
+    if (batch.length === 0) return;
+    await insertRows('universal_person', batch);
+    totalRows += batch.length;
+    if (totalRows % 100000 === 0) {
+      console.log(`[Ingestion] ${jobId}: ${totalRows.toLocaleString()} rows inserted...`);
     }
   }
 
-  // Flush remaining
-  if (batch.length > 0) {
-    await insertRows('universal_person', batch);
-    totalRows += batch.length;
+  // ─── Format-specific parsing ───
+  if (format === 'csv' || format === 'csv.gz') {
+    // Decompress if gzipped, then pipe through csv-parse
+    const decompressed = format === 'csv.gz' ? rawStream.pipe(createGunzip()) : rawStream;
+    let csvHeaders: string[] = [];
+
+    const csvStream = decompressed.pipe(
+      parse({
+        columns: (header: string[]) => {
+          csvHeaders = header.map((h: string) => h.toLowerCase().trim());
+          return csvHeaders;
+        },
+        skip_empty_lines: true,
+        relax_column_count: true,
+      }),
+    );
+
+    // Read first row to trigger header parsing
+    const iterator = csvStream[Symbol.asyncIterator]();
+    const firstResult = await iterator.next();
+
+    if (!firstResult.done && csvHeaders.length > 0) {
+      await syncSchema(csvHeaders);
+    }
+
+    // Insert all rows
+    let batch: Record<string, unknown>[] = [];
+
+    if (!firstResult.done) {
+      const row = firstResult.value as Record<string, unknown>;
+      row._ingestion_job_id = jobId;
+      batch.push(row);
+    }
+
+    for await (const row of csvStream) {
+      (row as Record<string, unknown>)._ingestion_job_id = jobId;
+      batch.push(row as Record<string, unknown>);
+      if (batch.length >= BATCH_SIZE) {
+        await flushBatch(batch);
+        batch = [];
+      }
+    }
+    await flushBatch(batch);
+
+  } else if (format === 'parquet') {
+    // Parquet: write to temp file, then read with parquetjs cursor
+    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'refinery-pq-'));
+    const tmpFile = path.join(tmpDir, fileName);
+
+    try {
+      // Write stream to temp file
+      const writeStream = fs.createWriteStream(tmpFile);
+      await new Promise<void>((resolve, reject) => {
+        rawStream.pipe(writeStream);
+        writeStream.on('finish', resolve);
+        writeStream.on('error', reject);
+      });
+
+      // Open parquet file
+      const reader = await ParquetReader.openFile(tmpFile);
+      const schema = reader.getSchema();
+      const fieldNames = Object.keys(schema.fields).map(f => f.toLowerCase().trim());
+
+      // Sync schema with ClickHouse
+      await syncSchema(fieldNames);
+
+      // Read rows via cursor
+      const cursor = reader.getCursor();
+      let batch: Record<string, unknown>[] = [];
+      let record: Record<string, unknown> | null;
+
+      while ((record = await cursor.next() as Record<string, unknown> | null)) {
+        // Normalize keys to lowercase
+        const normalized: Record<string, unknown> = { _ingestion_job_id: jobId };
+        for (const [key, val] of Object.entries(record)) {
+          normalized[key.toLowerCase().trim()] = val != null ? String(val) : null;
+        }
+        batch.push(normalized);
+
+        if (batch.length >= BATCH_SIZE) {
+          await flushBatch(batch);
+          batch = [];
+        }
+      }
+      await flushBatch(batch);
+      await reader.close();
+    } finally {
+      // Clean up temp files
+      await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
   }
 
   // Mark complete
@@ -293,5 +358,6 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
       status = 'complete', rows_ingested = ${totalRows}, completed_at = now()
     WHERE id = '${esc(jobId)}'
   `);
-  console.log(`[Ingestion] ${jobId}: Complete — ${totalRows.toLocaleString()} rows ingested.`);
+  console.log(`[Ingestion] ${jobId}: Complete — ${totalRows.toLocaleString()} rows ingested (${format}).`);
 }
+
