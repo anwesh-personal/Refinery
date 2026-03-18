@@ -131,6 +131,28 @@ router.post('/delete-user', async (req, res) => {
   }
 });
 
+// Create user directly (bypass invite)
+router.post('/create-user', async (req, res) => {
+  try {
+    const { email, password, fullName, role } = req.body;
+    const adminId = (req as any).userId;
+
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+    if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+
+    const validRoles = ['member', 'admin', 'superadmin'];
+    if (role && !validRoles.includes(role)) {
+      return res.status(400).json({ error: `Invalid role. Must be one of: ${validRoles.join(', ')}` });
+    }
+
+    const result = await adminService.createUser({ email, password, fullName, role: role || 'member' });
+    await auditLog(adminId, 'admin_create_user', result.userId, { email, role: role || 'member', fullName });
+    res.json({ message: 'User created successfully', userId: result.userId });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Get current rate limit config
 router.get('/config', async (_req, res) => {
   res.json({

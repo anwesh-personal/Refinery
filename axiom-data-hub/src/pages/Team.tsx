@@ -58,6 +58,11 @@ export default function TeamPage() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteMessage, setInviteMessage] = useState({ text: '', type: '' });
 
+  // Create user directly state
+  const [createMode, setCreateMode] = useState<'invite' | 'create'>('invite');
+  const [createPassword, setCreatePassword] = useState('');
+  const [createFullName, setCreateFullName] = useState('');
+
   // Right Side Panel state
   const [selectedUser, setSelectedUser] = useState<ProfileRow | null>(null);
 
@@ -269,6 +274,37 @@ export default function TeamPage() {
       setInviteMessage({ text: 'Invite recorded successfully! They will receive these roles upon signup.', type: 'success' });
       setInviteEmail('');
       setInviteRole('member');
+    }
+    setInviteLoading(false);
+  };
+
+  const handleCreateUser = async () => {
+    if (!inviteEmail.trim() || !createPassword.trim() || !user) return;
+    if (createPassword.length < 6) {
+      setInviteMessage({ text: 'Password must be at least 6 characters', type: 'error' });
+      return;
+    }
+    setInviteLoading(true);
+    setInviteMessage({ text: '', type: '' });
+
+    try {
+      const res = await apiCall<{ message: string; userId: string }>('/api/admin/create-user', {
+        method: 'POST',
+        body: {
+          email: inviteEmail.trim(),
+          password: createPassword,
+          fullName: createFullName.trim() || undefined,
+          role: inviteRole,
+        },
+      });
+      setInviteMessage({ text: `${res.message} — they can now log in immediately.`, type: 'success' });
+      setInviteEmail('');
+      setCreatePassword('');
+      setCreateFullName('');
+      setInviteRole('member');
+      fetchTeam();
+    } catch (err: any) {
+      setInviteMessage({ text: `Error: ${err.message}`, type: 'error' });
     }
     setInviteLoading(false);
   };
@@ -544,8 +580,8 @@ export default function TeamPage() {
           
           {activeTab === 'members' && (
             <>
-              {/* Invite form */}
-              <SectionHeader title="Invite Team Member" />
+              {/* Invite / Create form */}
+              <SectionHeader title={createMode === 'invite' ? 'Invite Team Member' : 'Create User Account'} />
           <div
             className="animate-fadeIn"
             style={{
@@ -553,13 +589,85 @@ export default function TeamPage() {
               borderRadius: 16, padding: 28, marginBottom: 36,
             }}
           >
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 20 }}>
+            {/* Mode Toggle */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'var(--bg-hover)', padding: 4, borderRadius: 10, width: 'fit-content' }}>
+              <button
+                onClick={() => setCreateMode('invite')}
+                style={{
+                  padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+                  background: createMode === 'invite' ? 'var(--accent)' : 'transparent',
+                  color: createMode === 'invite' ? '#fff' : 'var(--text-secondary)',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <Mail size={13} style={{ display: 'inline', marginRight: 6, verticalAlign: '-2px' }} />
+                Send Invite
+              </button>
+              <button
+                onClick={() => setCreateMode('create')}
+                style={{
+                  padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
+                  background: createMode === 'create' ? 'var(--accent)' : 'transparent',
+                  color: createMode === 'create' ? '#fff' : 'var(--text-secondary)',
+                  transition: 'all 0.2s',
+                }}
+              >
+                <Plus size={13} style={{ display: 'inline', marginRight: 6, verticalAlign: '-2px' }} />
+                Create Directly
+              </button>
+            </div>
+
+            {createMode === 'create' && (
+              <div style={{ 
+                padding: '10px 14px', borderRadius: 8, fontSize: 12, lineHeight: 1.5,
+                background: 'var(--accent-muted)', color: 'var(--accent)', border: '1px solid var(--accent)',
+                marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8,
+              }}>
+                <Key size={14} />
+                Creates a fully activated account. The user can log in immediately with the credentials you set.
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>
-                  Email Address
+                  Email Address *
                 </label>
-                <Input placeholder="team@company.com" value={inviteEmail} onChange={setInviteEmail} />
+                <Input placeholder="user@company.com" value={inviteEmail} onChange={setInviteEmail} />
               </div>
+
+              {createMode === 'create' && (
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>
+                    Full Name
+                  </label>
+                  <Input placeholder="e.g. John Doe" value={createFullName} onChange={setCreateFullName} />
+                </div>
+              )}
+
+              {createMode === 'create' && (
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>
+                    Password *
+                  </label>
+                  <Input placeholder="Min 6 characters" value={createPassword} onChange={setCreatePassword} type="password" />
+                  {createPassword.length > 0 && (
+                    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ flex: 1, height: 4, borderRadius: 2, background: 'var(--border)', overflow: 'hidden' }}>
+                        <div style={{ 
+                          height: '100%', borderRadius: 2, transition: 'width 0.3s, background 0.3s',
+                          width: createPassword.length < 6 ? '25%' : createPassword.length < 10 ? '60%' : '100%',
+                          background: createPassword.length < 6 ? 'var(--red)' : createPassword.length < 10 ? 'var(--yellow)' : 'var(--green)',
+                        }} />
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: createPassword.length < 6 ? 'var(--red)' : createPassword.length < 10 ? 'var(--yellow)' : 'var(--green)' }}>
+                        {createPassword.length < 6 ? 'Too short' : createPassword.length < 10 ? 'Good' : 'Strong'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 8 }}>
                   Base Role
@@ -580,8 +688,11 @@ export default function TeamPage() {
                 </select>
               </div>
             </div>
-            <Button onClick={handleInvite} disabled={inviteLoading || !inviteEmail.trim()}>
-              {inviteLoading ? 'Sending...' : 'Issue Invite'}
+            <Button 
+              onClick={createMode === 'invite' ? handleInvite : handleCreateUser} 
+              disabled={inviteLoading || !inviteEmail.trim() || (createMode === 'create' && createPassword.length < 6)}
+            >
+              {inviteLoading ? 'Processing...' : createMode === 'invite' ? 'Issue Invite' : 'Create User Account'}
             </Button>
             {inviteMessage.text && (
               <p style={{ marginTop: 12, fontSize: 13, color: inviteMessage.type === 'error' ? 'var(--red)' : 'var(--green)' }}>

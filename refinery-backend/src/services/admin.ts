@@ -59,3 +59,55 @@ export async function deleteAuthUser(userId: string) {
   if (error) throw new Error(`Supabase Admin Error: ${error.message}`);
   return true;
 }
+
+/**
+ * Create a new user directly (bypasses invite flow).
+ * Creates the Supabase Auth user with email_confirm: true so they can login immediately.
+ * The profiles table trigger will auto-create their profile row.
+ */
+export async function createUser(opts: {
+  email: string;
+  password: string;
+  fullName?: string;
+  role?: string;
+}): Promise<{ userId: string }> {
+  if (!env.supabase.secretKey) throw new Error('Backend is missing SUPABASE_SECRET_KEY');
+
+  // 1. Create the auth user
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email: opts.email,
+    password: opts.password,
+    email_confirm: true, // Skip email verification
+    user_metadata: {
+      full_name: opts.fullName || opts.email.split('@')[0],
+    },
+  });
+
+  if (error) throw new Error(`Create user failed: ${error.message}`);
+  if (!data.user) throw new Error('User creation returned no user object');
+
+  const userId = data.user.id;
+
+  // 2. Update their profile with role and name (the trigger creates a default row)
+  //    Small delay to let the trigger fire
+  await new Promise(r => setTimeout(r, 500));
+
+  const updates: Record<string, unknown> = {};
+  if (opts.fullName) updates.full_name = opts.fullName;
+  if (opts.role) updates.role = opts.role;
+  updates.is_active = true;
+
+  if (Object.keys(updates).length > 0) {
+    const { error: profileErr } = await supabaseAdmin
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId);
+
+    if (profileErr) {
+      console.warn(`[Admin] Profile update after create failed: ${profileErr.message}`);
+      // Don't throw — the auth user was created, profile will just have defaults
+    }
+  }
+
+  return { userId };
+}
