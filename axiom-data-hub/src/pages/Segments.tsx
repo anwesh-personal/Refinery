@@ -128,7 +128,8 @@ export default function SegmentsPage() {
     <>
       <PageHeader
         title="Segments"
-        sub="Create and manage lead segmentation rules for niche-based routing."
+        sub="Create intelligent audience segments by filtering your universal lead database with SQL-powered rules."
+        description="Each segment is a saved query that slices your data by industry, geography, job title, company size, or any combination of 50+ columns. Segments are the building blocks for verification batches, target exports, and campaign audiences. A segment's count updates live as new data is ingested."
         action={<ServerSelector type="clickhouse" />}
       />
 

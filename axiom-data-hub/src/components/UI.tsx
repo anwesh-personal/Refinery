@@ -1,19 +1,59 @@
 import { type ReactNode } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, ExternalLink } from 'lucide-react';
 
 /* ═══════════════════════════════════════
-   PAGE HEADER
+   PAGE HEADER — Rich, animated, informative
    ═══════════════════════════════════════ */
-export function PageHeader({ title, sub, action }: { title: string; sub: string; action?: ReactNode }) {
+export function PageHeader({ title, sub, description, learnMoreUrl, learnMoreLabel, action }: {
+  title: string;
+  sub: string;
+  description?: string;
+  learnMoreUrl?: string;
+  learnMoreLabel?: string;
+  action?: ReactNode;
+}) {
   return (
-    <div className="animate-fadeIn" style={{ marginBottom: 32, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-      <div>
+    <div className="animate-fadeIn" style={{
+      marginBottom: 32, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+      position: 'relative',
+    }}>
+      {/* Accent bar */}
+      <div style={{
+        position: 'absolute', left: -24, top: 4, bottom: 4, width: 4, borderRadius: 4,
+        background: 'var(--accent)', opacity: 0.6,
+      }} />
+      <div style={{ maxWidth: 680 }}>
         <h1 style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-primary)', margin: 0 }}>
           {title}
         </h1>
-        <p style={{ fontSize: 14, fontWeight: 500, marginTop: 6, color: 'var(--text-secondary)' }}>
+        <p style={{ fontSize: 14, fontWeight: 500, marginTop: 6, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
           {sub}
         </p>
+        {description && (
+          <p style={{
+            fontSize: 12, fontWeight: 400, marginTop: 8, color: 'var(--text-tertiary)',
+            lineHeight: 1.7, maxWidth: 580,
+          }}>
+            {description}
+          </p>
+        )}
+        {learnMoreUrl && (
+          <a
+            href={learnMoreUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+              fontSize: 11, fontWeight: 600, color: 'var(--accent)',
+              textDecoration: 'none', marginTop: 8,
+              transition: 'opacity 0.2s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = '0.7')}
+            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+          >
+            {learnMoreLabel || 'Learn more'} <ExternalLink size={10} />
+          </a>
+        )}
       </div>
       {action && <div>{action}</div>}
     </div>
@@ -104,9 +144,29 @@ export function StatCard({ label, value, sub, icon, color, colorMuted, delay = 0
   );
 }
 
+/* ... (GradientCard, ActionCard remain the same) ... */
+
 /* ═══════════════════════════════════════
-   GRADIENT CARD
+   EMPTY STATE — with breathing pulse
    ═══════════════════════════════════════ */
+export function EmptyState({ icon, title, sub, action }: { icon: ReactNode; title: string; sub: string; action?: ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '48px 24px' }}>
+      <div style={{
+        width: 56, height: 56, borderRadius: 16,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)',
+        marginBottom: 16,
+        animation: 'pulse 3s ease-in-out infinite',
+      }}>
+        {icon}
+      </div>
+      <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>{title}</p>
+      <p style={{ fontSize: 12, fontWeight: 500, marginTop: 4, color: 'var(--text-tertiary)', maxWidth: 300 }}>{sub}</p>
+      {action && <div style={{ marginTop: 16 }}>{action}</div>}
+    </div>
+  );
+}
 interface GradientCardProps {
   label: string;
   value: string | number;
@@ -225,25 +285,8 @@ export function ActionCard({ title, sub, icon, color, colorMuted, onClick, delay
   );
 }
 
-/* ═══════════════════════════════════════
-   EMPTY STATE
-   ═══════════════════════════════════════ */
-export function EmptyState({ icon, title, sub }: { icon: ReactNode; title: string; sub: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '48px 24px' }}>
-      <div style={{
-        width: 56, height: 56, borderRadius: 16,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--bg-card-hover)', color: 'var(--text-tertiary)',
-        marginBottom: 16,
-      }}>
-        {icon}
-      </div>
-      <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)' }}>{title}</p>
-      <p style={{ fontSize: 12, fontWeight: 500, marginTop: 4, color: 'var(--text-tertiary)' }}>{sub}</p>
-    </div>
-  );
-}
+
+
 
 /* ═══════════════════════════════════════
    DATA TABLE

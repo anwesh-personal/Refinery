@@ -374,7 +374,8 @@ export default function VerificationPage() {
     <>
       <PageHeader 
         title="Verification Engine" 
-        sub="Validate lead emails via the built-in SMTP engine or Verify550 API." 
+        sub="Batch-verify segment emails using the built-in SMTP probe or the high-speed Verify550 API — track progress, yields, and bounces in real-time."
+        description="Select a segment, choose your verification engine (Built-in SMTP for maximum control, or Verify550 API for speed), then hit Verify. The engine queries MX records, connects to mail servers, and checks each address for deliverability. Results flow back into ClickHouse with per-email status tags. Bounced leads are automatically flagged across all segments."
         action={<ServerSelector type="clickhouse" />}
       />
 

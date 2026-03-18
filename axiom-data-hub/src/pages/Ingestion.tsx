@@ -489,7 +489,8 @@ export default function IngestionPage() {
     <>
       <PageHeader
         title="Data Ingestion"
-        sub="Connect S3 sources, browse files, and ingest into ClickHouse."
+        sub="Connect S3-compatible object storage, browse files, and ingest millions of leads into ClickHouse."
+        description="Step 1: Register an S3/MinIO/Linode source with credentials. Step 2: Browse available files and select a CSV or Parquet to ingest. Step 3: Map source columns to universal schema fields. Step 4: Hit Ingest — the engine downloads, parses, deduplicates, and inserts into ClickHouse. Set up automated Ingestion Rules with cron schedules for hands-free daily syncs."
         action={<ServerSelector type="clickhouse" />}
       />
 

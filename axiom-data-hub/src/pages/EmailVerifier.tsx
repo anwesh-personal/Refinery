@@ -426,7 +426,8 @@ export default function EmailVerifierPage() {
     <>
       <PageHeader
         title="Pipeline Studio"
-        sub="Standalone multi-stage email verification pipeline with granular checks, custom scoring, and advanced heuristics."
+        sub="Upload any CSV and run it through a multi-stage verification pipeline — syntax checks, typo fixes, MX lookups, SMTP probes, and risk scoring."
+        description="Drag-and-drop your CSV, map the email column, toggle individual checks (disposable filter, role-based detection, free provider flagging, catch-all detection), set custom severity weights, and hit Run. Jobs process asynchronously on the server — you can safely navigate away. Watch the progress ring fill up in real-time, then download clean results as CSV."
       />
 
       {/* Toast Notification */}

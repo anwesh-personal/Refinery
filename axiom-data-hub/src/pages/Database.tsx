@@ -340,7 +340,8 @@ export default function DatabasePage() {
     <>
       <PageHeader
         title="Universal Data Explorer"
-        sub="Browse, filter, and inspect your lead database."
+        sub="Browse, search, filter, and export your entire lead database with millisecond ClickHouse performance."
+        description="Use the search bar for full-text lookups, or open Advanced Filters to build precise queries with 8 operators (equals, contains, starts with, etc.). Toggle columns via the column picker, adjust page size up to 5,000 rows, and export filtered results as CSV — either the current page or the full matching dataset."
         action={<ServerSelector type="clickhouse" />}
       />
 

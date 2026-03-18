@@ -97,7 +97,8 @@ export default function DashboardPage() {
     <>
       <PageHeader
         title="Intelligence Hub"
-        sub="Monitor your lead database, mailing queue, and recent verification batches."
+        sub="Your real-time command center for data operations, ingestion health, and verification yield."
+        description="This dashboard aggregates live stats from your ClickHouse database, ingestion pipeline, and verification engine. Watch total lead counts, active jobs, and storage usage update in real-time. Use the quick actions below to jump into any workflow — from ingesting new S3 data to verifying segments."
         action={<ServerSelector type="clickhouse" />}
       />
 
