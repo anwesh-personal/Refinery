@@ -1,12 +1,12 @@
-import { useState, type ReactNode } from 'react';
-import { useTheme } from './ThemeContext';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useTheme, THEME_META, type ThemeName } from './ThemeContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, ROLE_LABELS, ROLE_COLORS } from './auth/AuthContext';
 import type { PermissionKey } from './auth/AuthContext';
 import {
   LayoutDashboard, CloudDownload, Database, Filter, ShieldCheck,
   Send, ListOrdered, Server, ScrollText, Users, Settings2,
-  Moon, Sun, LogOut, Menu, X, Zap, ChevronRight, Beaker,
+  Moon, Sun, LogOut, Menu, X, Zap, ChevronRight, Beaker, Palette, Check,
 } from 'lucide-react';
 
 interface LayoutProps { children: ReactNode; }
@@ -47,12 +47,25 @@ const NAV = [
 ];
 
 export default function Layout({ children }: LayoutProps) {
-  const { theme, toggleTheme } = useTheme();
+  const { theme, mode, setTheme, toggleMode } = useTheme();
   const { user, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [themePicker, setThemePicker] = useState(false);
+  const themePickerRef = useRef<HTMLDivElement>(null);
   const roleStyle = user ? ROLE_COLORS[user.role] : ROLE_COLORS.member;
+
+  // Close theme picker on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (themePickerRef.current && !themePickerRef.current.contains(e.target as Node)) {
+        setThemePicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const currentTitle =
     NAV.flatMap((s) => s.items).find((i) => i.path === location.pathname)?.name ?? 'Dashboard';
@@ -227,9 +240,43 @@ export default function Layout({ children }: LayoutProps) {
               Systems OK
             </div>
 
-            {/* Theme toggle */}
+            {/* Theme picker */}
+            <div className="theme-picker" ref={themePickerRef}>
+              <button
+                onClick={() => setThemePicker(!themePicker)}
+                title="Choose theme"
+                style={{
+                  padding: 10, borderRadius: 12, border: '1px solid var(--border)', cursor: 'pointer',
+                  background: 'var(--bg-card)', color: 'var(--text-secondary)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--border-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+              >
+                <Palette size={16} />
+              </button>
+              {themePicker && (
+                <div className="theme-picker-dropdown">
+                  {(Object.keys(THEME_META) as ThemeName[]).map(t => (
+                    <button
+                      key={t}
+                      className={`theme-picker-option ${theme === t ? 'active' : ''}`}
+                      onClick={() => { setTheme(t); setThemePicker(false); }}
+                    >
+                      <span style={{ fontSize: 16 }}>{THEME_META[t].icon}</span>
+                      <span style={{ flex: 1 }}>{THEME_META[t].label}</span>
+                      {theme === t && <Check size={14} />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Dark/Light toggle */}
             <button
-              onClick={toggleTheme}
+              onClick={toggleMode}
+              title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
               style={{
                 padding: 10, borderRadius: 12, border: '1px solid var(--border)', cursor: 'pointer',
                 background: 'var(--bg-card)', color: 'var(--text-secondary)',
@@ -239,7 +286,7 @@ export default function Layout({ children }: LayoutProps) {
               onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--border-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
             >
-              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              {mode === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
 
             {/* Role badge */}

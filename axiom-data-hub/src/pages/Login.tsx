@@ -6,7 +6,7 @@ import { Zap, Sun, Moon, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const { user, loading: authLoading, signIn } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { mode, toggleMode } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -42,7 +42,7 @@ export default function LoginPage() {
     >
       {/* Theme toggle (top-right) */}
       <button
-        onClick={toggleTheme}
+        onClick={toggleMode}
         style={{
           position: 'fixed', top: 24, right: 24, zIndex: 50,
           padding: 10, borderRadius: 12,
@@ -52,7 +52,7 @@ export default function LoginPage() {
           transition: 'all 0.2s',
         }}
       >
-        {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        {mode === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
       </button>
 
       <div

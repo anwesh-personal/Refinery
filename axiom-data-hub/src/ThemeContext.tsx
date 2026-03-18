@@ -1,30 +1,47 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
-type Theme = 'dark' | 'light';
+export type ThemeName = 'dark' | 'aqua' | 'minimal';
+export type ThemeMode = 'dark' | 'light';
+
+export const THEME_META: Record<ThemeName, { label: string; icon: string; description: string }> = {
+  dark:    { label: 'Obsidian', icon: '🌑', description: 'Deep charcoal with amber accents' },
+  aqua:    { label: 'Aqua',    icon: '🌊', description: 'Deep ocean with neon teal accents' },
+  minimal: { label: 'Minimal', icon: '⬜', description: 'Clean slate — focus on the data' },
+};
 
 interface ThemeContextType {
-  theme: Theme;
-  toggleTheme: () => void;
+  theme: ThemeName;
+  mode: ThemeMode;
+  setTheme: (t: ThemeName) => void;
+  toggleMode: () => void;
   isDark: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('rn-theme') as Theme;
-    return saved || 'dark';
+  const [theme, setThemeState] = useState<ThemeName>(() => {
+    const saved = localStorage.getItem('rn-theme') as ThemeName;
+    return (saved && saved in THEME_META) ? saved : 'dark';
+  });
+
+  const [mode, setMode] = useState<ThemeMode>(() => {
+    const saved = localStorage.getItem('rn-mode') as ThemeMode;
+    return saved === 'light' ? 'light' : 'dark';
   });
 
   useEffect(() => {
     localStorage.setItem('rn-theme', theme);
+    localStorage.setItem('rn-mode', mode);
     document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
+    document.documentElement.setAttribute('data-mode', mode);
+  }, [theme, mode]);
 
-  const toggleTheme = () => setTheme(p => (p === 'dark' ? 'light' : 'dark'));
+  const setTheme = (t: ThemeName) => setThemeState(t);
+  const toggleMode = () => setMode(m => m === 'dark' ? 'light' : 'dark');
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, isDark: theme === 'dark' }}>
+    <ThemeContext.Provider value={{ theme, mode, setTheme, toggleMode, isDark: mode === 'dark' }}>
       {children}
     </ThemeContext.Provider>
   );
