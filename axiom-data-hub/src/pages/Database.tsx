@@ -1,10 +1,10 @@
 import {
   Database, Table2, Rows3, HardDrive, Play, Copy, Download, RefreshCw,
   Loader2, AlertCircle, CheckCircle2, ChevronDown, ChevronUp,
-  Search, Filter, Columns, ChevronLeft, ChevronRight, Check
+  Search, Columns, ChevronLeft, ChevronRight
 } from 'lucide-react';
-import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
-import { useState, useEffect, useCallback } from 'react';
+import { PageHeader, StatCard, Button } from '../components/UI';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ServerSelector } from '../components/ServerSelector';
 import { apiCall } from '../lib/api';
 
@@ -46,11 +46,13 @@ export default function DatabasePage() {
   const [query, setQuery] = useState('SELECT * FROM universal_person LIMIT 100');
   const [showTables, setShowTables] = useState(false);
 
-  // --- Browse (Data Explorer) State ---
+  // --- Browse (Data Explorer State) ---
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [showColPicker, setShowColPicker] = useState(false);
+  const colPickerRef = useRef<HTMLDivElement>(null);
+  const colPickerBtnRef = useRef<HTMLButtonElement>(null);
   
   // Available filters populated from backend limit 200
   const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({});
@@ -92,6 +94,7 @@ export default function DatabasePage() {
       }));
       setFilterOptions(opts);
     } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { 
@@ -99,8 +102,26 @@ export default function DatabasePage() {
     fetchFilterOptions();
   }, [fetchStats, fetchFilterOptions]);
 
-  // Load browse data when filters, search, page or sort changes
-  const runBrowse = useCallback(async () => {
+  // Click outside handler for column picker
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (colPickerRef.current && !colPickerRef.current.contains(event.target as Node) &&
+          colPickerBtnRef.current && !colPickerBtnRef.current.contains(event.target as Node)) {
+        setShowColPicker(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Use a ref for search to avoid double-fire when filtering
+  const searchRef = useRef(search);
+  useEffect(() => {
+    searchRef.current = search;
+  }, [search]);
+
+  // Load browse data
+  const runBrowse = useCallback(async (currentSearch: string = searchRef.current) => {
     if (activeTab !== 'browse') return;
     setLoading(true); setError(null);
     try {
@@ -110,7 +131,7 @@ export default function DatabasePage() {
       const res = await apiCall<QueryResult>('/api/database/browse', {
         method: 'POST',
         body: {
-          search,
+          search: currentSearch,
           filters: activeFilters,
           page,
           pageSize: 50,
@@ -125,23 +146,28 @@ export default function DatabasePage() {
     } finally {
       setLoading(false);
     }
+  }, [filters, page, sortCol, sortDir, visibleCols, activeTab]);
+
+  // Single effect for Browse tab (handles both search debounce and other filters)
+  useEffect(() => {
+    if (activeTab !== 'browse') return;
+    
+    const isSearchChange = search !== searchRef.current;
+    
+    // If it's a search change, debounce. Otherwise, run immediately.
+    let timer: ReturnType<typeof setTimeout>;
+    if (isSearchChange) {
+       timer = setTimeout(() => runBrowse(search), 400);
+    } else {
+       if (!loading) runBrowse(searchRef.current);
+    }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, filters, page, sortCol, sortDir, visibleCols, activeTab]);
 
-  // Debounced search hook for browse
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      runBrowse();
-    }, 400); // 400ms debounce
-    return () => clearTimeout(timer);
-  }, [search, runBrowse]); // runs when search changes after 400ms
-
-  // Run browse immediately when non-search deps change
-  useEffect(() => {
-    if (activeTab === 'browse' && !loading) {
-      runBrowse();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, page, sortCol, sortDir, visibleCols, activeTab]);
 
   const executeSQL = async () => {
     if (!query.trim()) return;
@@ -189,7 +215,7 @@ export default function DatabasePage() {
   };
 
   // Sorting
-  const columns = result?.rows.length ? Object.keys(result.rows[0]) : [];
+  const resultCols = result?.rows.length ? Object.keys(result.rows[0]) : [];
   
   // For SQL mode, we sort locally. For Browse mode, backend sorts, but we can do local sort for currently displayed page too
   const sortedRows = result?.rows ? [...result.rows].sort((a, b) => {
@@ -213,6 +239,29 @@ export default function DatabasePage() {
   const toggleCol = (col: string) => {
     setVisibleCols(prev => ({ ...prev, [col]: !prev[col] }));
   };
+
+  // Skeleton Loader for table rows
+  const SkeletonTable = () => (
+    <div style={{ padding: 20 }}>
+      {Array.from({ length: 15 }).map((_, i) => (
+         <div key={i} style={{ 
+           height: 32, 
+           background: 'var(--bg-card-hover)', 
+           borderRadius: 4, 
+           marginBottom: 8,
+           opacity: 1 - (i * 0.05), // Fades out
+           animation: 'pulse 1.5s infinite ease-in-out'
+         }} />
+      ))}
+      <style>{`
+        @keyframes pulse {
+          0% { background-color: var(--bg-card-hover); }
+          50% { background-color: var(--border); }
+          100% { background-color: var(--bg-card-hover); }
+        }
+      `}</style>
+    </div>
+  );
 
   return (
     <>
@@ -272,11 +321,26 @@ export default function DatabasePage() {
               </div>
               
               <div style={{ position: 'relative' }}>
-                <Button variant="secondary" icon={<Columns size={14} />} onClick={() => setShowColPicker(!showColPicker)}>
-                  Columns
-                </Button>
+                {/* 
+                  Use generic button element here and capture ref, 
+                  so we can cleanly attach ref without breaking UI.Button constraints
+                */}
+                <button 
+                  ref={colPickerBtnRef}
+                  onClick={() => setShowColPicker(!showColPicker)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    padding: '10px 20px', borderRadius: 12, fontSize: 13, fontWeight: 600,
+                    cursor: 'pointer', transition: 'all 0.2s',
+                    background: 'var(--bg-card-hover)', color: 'var(--text-primary)', border: '1px solid var(--border)'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                >
+                  <Columns size={14} /> Columns
+                </button>
                 {showColPicker && (
-                  <div style={{
+                  <div ref={colPickerRef} style={{
                     position: 'absolute', top: 44, right: 0, width: 220, zIndex: 100,
                     background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
                     boxShadow: 'var(--shadow-lg)', padding: 12, maxHeight: 300, overflowY: 'auto'
@@ -295,13 +359,13 @@ export default function DatabasePage() {
                 )}
               </div>
               
-              <Button variant="secondary" icon={<RefreshCw size={14} />} onClick={runBrowse}>Refresh</Button>
+              <Button variant="secondary" icon={<RefreshCw size={14} />} onClick={() => runBrowse()}>Refresh</Button>
             </div>
 
             {/* Filters */}
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               {availableFilters.map(f => (
-                <div key={f} style={{ minWidth: 160, flex: 1 }}>
+                <div key={f} style={{ minWidth: 160, flex: 1, position: 'relative' }}>
                   <select
                     value={filters[f] || ''}
                     onChange={e => {
@@ -309,11 +373,11 @@ export default function DatabasePage() {
                       setPage(1);
                     }}
                     style={{
-                      width: '100%', padding: '9px 12px', borderRadius: 10,
+                      width: '100%', padding: '9px 32px 9px 12px', borderRadius: 10,
                       fontSize: 13, fontWeight: 500, outline: 'none', cursor: 'pointer',
                       background: 'var(--bg-input)', border: '1px solid var(--border)',
                       color: filters[f] ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                      appearance: 'none',
+                      // Allow native appearance so arrow shows
                     }}
                   >
                     <option value="">{f.split('_').join(' ').toUpperCase()} (All)</option>
@@ -393,7 +457,7 @@ export default function DatabasePage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
           {activeTab === 'browse' ? (
-            loading ? (<span><Loader2 size={14} className="spin" style={{ display: 'inline', marginRight: 8 }}/> Loading data...</span>) : 
+            loading && !result ? (<span><Loader2 size={14} className="spin" style={{ display: 'inline', marginRight: 8 }}/> Loading data...</span>) : 
             result ? `Showing ${formatNumber(result.total || 0)} results (${result.elapsed}ms)` : 'Data Results'
           ) : (
             `Query Results ${result ? `(${result.rows.length} rows, ${result.elapsed}ms)` : ''}`
@@ -418,12 +482,14 @@ export default function DatabasePage() {
       </div>
 
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', minHeight: 400 }}>
-        {sortedRows.length > 0 ? (
+        {loading && !result ? (
+          <SkeletonTable />
+        ) : sortedRows.length > 0 ? (
           <div style={{ overflowX: 'auto', maxHeight: '70vh' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 10, borderBottom: '1px solid var(--border)' }}>
                 <tr>
-                  {columns.map(col => (
+                  {resultCols.map(col => (
                     <th key={col} onClick={() => toggleSort(col)}
                       style={{
                         padding: '12px 16px', textAlign: 'left', fontWeight: 700,
@@ -446,7 +512,7 @@ export default function DatabasePage() {
                   <tr key={i} style={{ transition: 'background 0.1s' }}
                     onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                     onMouseOut={e => (e.currentTarget.style.background = '')}>
-                    {columns.map(col => {
+                    {resultCols.map(col => {
                       const val = row[col];
                       return (
                         <td key={col} style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }} title={String(val ?? '')}>
@@ -461,13 +527,9 @@ export default function DatabasePage() {
           </div>
         ) : (
           <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-tertiary)' }}>
-            {loading ? (
-               <Loader2 size={32} className="spin" style={{ marginBottom: 16, opacity: 0.5 }} />
-            ) : (
-               <Database size={32} style={{ marginBottom: 16, opacity: 0.3 }} />
-            )}
-            <div style={{ fontWeight: 600, fontSize: 15 }}>{loading ? 'Fetching data...' : 'No results found'}</div>
-            {!loading && <div style={{ fontSize: 13, marginTop: 6 }}>{activeTab === 'browse' ? 'Try adjusting your filters or search' : 'Execute a query to see results here'}</div>}
+            <Database size={32} style={{ marginBottom: 16, opacity: 0.3 }} />
+            <div style={{ fontWeight: 600, fontSize: 15 }}>No results found</div>
+            <div style={{ fontSize: 13, marginTop: 6 }}>{activeTab === 'browse' ? 'Try adjusting your filters or search' : 'Execute a query to see results here'}</div>
           </div>
         )}
       </div>
