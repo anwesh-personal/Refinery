@@ -67,6 +67,12 @@ export default function VerificationPage() {
   const [uploadingCSV, setUploadingCSV] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // V550 Job Detail state
+  const [v550DetailJob, setV550DetailJob] = useState<any>(null);
+  const [v550DetailLoading, setV550DetailLoading] = useState(false);
+  const [v550ExportCategories, setV550ExportCategories] = useState<Set<string>>(new Set());
+  const [v550ExportFormat, setV550ExportFormat] = useState<'csv' | 'xlsx'>('csv');
+
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ok: boolean; message: string} | null>(null);
@@ -308,6 +314,50 @@ export default function VerificationPage() {
     }
   };
 
+  const handleV550ExportFiltered = async (jobId: string) => {
+    try {
+      const params = new URLSearchParams();
+      params.set('format', v550ExportFormat);
+      if (v550ExportCategories.size > 0) params.set('categories', Array.from(v550ExportCategories).join(','));
+      const blob = await apiCall<Blob>(`/api/v550/export/${jobId}?${params.toString()}`, {
+        method: 'GET',
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `verify550-${jobId}-${v550ExportFormat}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(`Export failed: ${err.message}`);
+    }
+  };
+
+  const fetchV550JobDetail = async (jobId: string) => {
+    setV550DetailLoading(true);
+    try {
+      const data = await apiCall<any>(`/api/v550/job/${jobId}`);
+      setV550DetailJob(data?.data || data);
+      setV550ExportCategories(new Set());
+    } catch (e: any) {
+      alert(`Failed to fetch job details: ${e.message}`);
+    } finally {
+      setV550DetailLoading(false);
+    }
+  };
+
+  // V550 Category grouping for display
+  const V550_GROUPS: { label: string; color: string; bg: string; categories: string[] }[] = [
+    { label: '✅ Safe', color: 'var(--green)', bg: 'rgba(34,197,94,0.1)', categories: ['ok', 'ok_for_all'] },
+    { label: '⚠️ Risky', color: 'var(--yellow)', bg: 'rgba(234,179,8,0.1)', categories: ['unknown', 'antispam_system', 'soft_bounce', 'departmental', 'invalid_vendor_response'] },
+    { label: '❌ Dead', color: 'var(--red)', bg: 'rgba(239,68,68,0.1)', categories: ['email_disabled', 'dead_server', 'invalid_mx', 'invalid_syntax', 'smtp_protocol', 'hard_bounces'] },
+    { label: '🚫 Threats', color: '#a855f7', bg: 'rgba(168,85,247,0.1)', categories: ['complainers', 'sleeper_cell', 'seeds', 'email_bot', 'spamcops', 'spamtraps', 'threat_endings', 'threat_string', 'advisory_trap', 'blacklisted', 'disposables', 'bot_clickers', 'litigators', 'lashback'] },
+  ];
+
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'complete': return <Badge label="Complete" color="var(--green)" colorMuted="var(--green-muted)" />;
@@ -506,15 +556,18 @@ export default function VerificationPage() {
             { key: 'action', label: '' }
           ]}
           rows={v550Jobs.map(job => ({
-            jobId: <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{job.jobId}</span>,
+            jobId: <span style={{ fontFamily: 'monospace', fontSize: 12, cursor: 'pointer', color: 'var(--accent)' }} onClick={() => fetchV550JobDetail(job.jobId)}>{job.jobId}</span>,
             file_name: <span style={{ fontSize: 13, fontWeight: 500 }}>{job.file_name}</span>,
             count: (job.count || 0).toLocaleString(),
             processed: (job.processed || 0).toLocaleString(),
             uploadTime: new Date(job.uploadTime).toLocaleString(),
             status: <Badge label={job.status} color={job.status === 'finished' ? 'var(--green)' : 'var(--blue)'} colorMuted={job.status === 'finished' ? 'var(--green-muted)' : 'var(--blue-muted)'} />,
-            action: job.status === 'finished' ? (
-               <Button variant="secondary" style={{ padding: '6px 12px', fontSize: 11 }} onClick={() => handleV550Export(job.jobId)} icon={<Download size={12} />}>Export ZIP</Button>
-            ) : null
+            action: <div style={{ display: 'flex', gap: 6 }}>
+              <Button variant="secondary" style={{ padding: '6px 10px', fontSize: 11 }} onClick={() => fetchV550JobDetail(job.jobId)} icon={v550DetailLoading ? <RefreshCw size={12} className="spin" /> : <Activity size={12} />} disabled={v550DetailLoading}>Details</Button>
+              {job.status === 'finished' && (
+                <Button variant="secondary" style={{ padding: '6px 10px', fontSize: 11 }} onClick={() => handleV550Export(job.jobId)} icon={<Download size={12} />}>Export</Button>
+              )}
+            </div>
           }))}
           emptyIcon={<Activity size={24} />}
           emptyTitle="No external Verify550 jobs"
@@ -607,6 +660,158 @@ export default function VerificationPage() {
                 {startingBatch ? 'Submitting…' : 'Launch Batch'}
               </Button>
               <Button variant="secondary" onClick={() => setIsModalOpen(false)} style={{ flex: 1 }}>Cancel</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* V550 JOB DETAIL MODAL */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {v550DetailJob && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setV550DetailJob(null); }}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+            padding: 24,
+          }}
+        >
+          <div className="animate-scaleIn" style={{
+            background: 'var(--bg-app)', border: '1px solid var(--border)',
+            borderRadius: 20, width: '100%', maxWidth: 820, maxHeight: '90vh',
+            boxShadow: 'var(--shadow-lg)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '20px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0,
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Job Detail — {v550DetailJob.file_name}
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>
+                  Job ID: {v550DetailJob.jobId} · Status: {v550DetailJob.status} · {(v550DetailJob.count || 0).toLocaleString()} emails
+                </p>
+              </div>
+              <button onClick={() => setV550DetailJob(null)} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: 32, height: 32, borderRadius: 8, cursor: 'pointer',
+                background: 'transparent', border: 'none', color: 'var(--text-tertiary)',
+              }}>✕</button>
+            </div>
+
+            {/* Body */}
+            <div style={{ overflowY: 'auto', flex: 1, padding: 24 }}>
+              {/* Summary Stats */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+                <div style={{ padding: 16, borderRadius: 12, background: 'var(--bg-hover)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{(v550DetailJob.count || 0).toLocaleString()}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Total</div>
+                </div>
+                <div style={{ padding: 16, borderRadius: 12, background: 'var(--bg-hover)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{(v550DetailJob.processed || 0).toLocaleString()}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Processed</div>
+                </div>
+                <div style={{ padding: 16, borderRadius: 12, background: 'var(--bg-hover)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{(v550DetailJob.duplicates || 0).toLocaleString()}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Duplicates</div>
+                </div>
+                <div style={{ padding: 16, borderRadius: 12, background: 'var(--bg-hover)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--green)' }}>
+                    {v550DetailJob.suppression_results ? (
+                      ((((v550DetailJob.suppression_results.ok || 0) + (v550DetailJob.suppression_results.ok_for_all || 0)) / Math.max(v550DetailJob.processed || 1, 1)) * 100).toFixed(1) + '%'
+                    ) : '—'}
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Safe Rate</div>
+                </div>
+              </div>
+
+              {/* Suppression Results Breakdown */}
+              {v550DetailJob.suppression_results && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {V550_GROUPS.map(group => {
+                    const results = v550DetailJob.suppression_results as Record<string, number>;
+                    const groupCats = group.categories.filter(c => (results[c] || 0) > 0);
+                    const groupTotal = group.categories.reduce((sum, c) => sum + (results[c] || 0), 0);
+                    if (groupTotal === 0) return null;
+                    return (
+                      <div key={group.label} style={{ borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
+                        <div style={{ padding: '10px 16px', background: group.bg, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontWeight: 700, fontSize: 13, color: group.color }}>{group.label}</span>
+                          <span style={{ fontWeight: 800, fontSize: 14, color: group.color }}>{groupTotal.toLocaleString()}</span>
+                        </div>
+                        <div style={{ padding: '8px 0' }}>
+                          {groupCats.map(cat => (
+                            <label key={cat} style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '6px 16px', cursor: 'pointer', fontSize: 13, transition: 'background 0.15s',
+                            }}
+                              onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                              onMouseOut={e => (e.currentTarget.style.background = '')}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={v550ExportCategories.has(cat)}
+                                  onChange={() => {
+                                    const next = new Set(v550ExportCategories);
+                                    next.has(cat) ? next.delete(cat) : next.add(cat);
+                                    setV550ExportCategories(next);
+                                  }}
+                                  style={{ accentColor: group.color }}
+                                />
+                                <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{cat.replace(/_/g, ' ')}</span>
+                              </div>
+                              <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                                {(results[cat] || 0).toLocaleString()}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Timing Info */}
+              {v550DetailJob.uploadTime && (
+                <div style={{ marginTop: 20, padding: 16, borderRadius: 12, background: 'var(--bg-hover)', fontSize: 12, color: 'var(--text-secondary)', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                  <span>Uploaded: {new Date(v550DetailJob.uploadTime).toLocaleString()}</span>
+                  {v550DetailJob.startTime && <span>Started: {new Date(v550DetailJob.startTime).toLocaleString()}</span>}
+                  {v550DetailJob.completionTime && <span>Completed: {new Date(v550DetailJob.completionTime).toLocaleString()}</span>}
+                </div>
+              )}
+            </div>
+
+            {/* Footer — Export controls */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Format:</span>
+                <select value={v550ExportFormat} onChange={e => setV550ExportFormat(e.target.value as 'csv' | 'xlsx')} style={{
+                  background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
+                  color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
+                }}>
+                  <option value="csv">CSV</option>
+                  <option value="xlsx">XLSX</option>
+                </select>
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                  {v550ExportCategories.size > 0 ? `${v550ExportCategories.size} categories selected` : 'All categories (no filter)'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Button variant="secondary" onClick={() => setV550DetailJob(null)}>Close</Button>
+                <Button
+                  onClick={() => handleV550ExportFiltered(v550DetailJob.jobId)}
+                  icon={<Download size={14} />}
+                  disabled={v550DetailJob.status !== 'finished'}
+                >
+                  {v550ExportCategories.size > 0 ? 'Export Selected' : 'Export All'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
