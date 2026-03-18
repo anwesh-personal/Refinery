@@ -1,4 +1,4 @@
-import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Edit2, Trash2, Folder, CheckSquare, Square, Layers, ArrowUpDown, Filter, ChevronUp, ChevronDown } from 'lucide-react';
+import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Edit2, Trash2, Folder, CheckSquare, Square, Layers, ArrowUpDown, Filter, ChevronUp, ChevronDown, Zap, Settings, RotateCw } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
 import { useState, useEffect, useCallback } from 'react';
@@ -44,6 +44,32 @@ interface S3Source {
   last_test_result?: string;
   created_at: string;
 }
+
+interface IngestionRule {
+  id: string;
+  source_id: string;
+  label: string;
+  prefix_pattern: string;
+  file_types: string[];
+  min_date: string | null;
+  max_file_size_mb: number | null;
+  schedule: string;
+  enabled: number;
+  skip_duplicates: number;
+  created_at: string;
+  last_run_at: string | null;
+  last_run_status: string | null;
+  files_found_last_run: number | null;
+  files_ingested_last_run: number | null;
+}
+
+const SCHEDULE_PRESETS = [
+  { label: 'Every Hour', value: '0 * * * *' },
+  { label: 'Every 6 Hours', value: '0 */6 * * *' },
+  { label: 'Every 12 Hours', value: '0 */12 * * *' },
+  { label: 'Daily (Midnight)', value: '0 0 * * *' },
+  { label: 'Daily (6 AM)', value: '0 6 * * *' },
+];
 
 /* ---------------- Helpers ---------------- */
 function formatBytes(bytes: number): string {
@@ -109,6 +135,12 @@ export default function IngestionPage() {
   const [jobSortKey, setJobSortKey] = useState<JobSortKey>('date');
   const [jobSortAsc, setJobSortAsc] = useState(false);
   
+  // Auto-ingest rules
+  const [rules, setRules] = useState<IngestionRule[]>([]);
+  const [showRuleModal, setShowRuleModal] = useState(false);
+  const [editingRule, setEditingRule] = useState<Partial<IngestionRule> | null>(null);
+  const [runningRuleId, setRunningRuleId] = useState<string | null>(null);
+  
   // Loading states
   const [loading, setLoading] = useState(true);
   const [browsing, setBrowsing] = useState(false);
@@ -129,14 +161,16 @@ export default function IngestionPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, j, src] = await Promise.all([
+      const [s, j, src, r] = await Promise.all([
         apiCall<IngestionStats>('/api/ingestion/stats').catch(() => null),
         apiCall<IngestionJob[]>('/api/ingestion/jobs').catch(() => []),
         apiCall<S3Source[]>('/api/s3-sources').catch(() => []),
+        apiCall<IngestionRule[]>('/api/ingestion-rules').catch(() => []),
       ]);
       setStats(s);
       setJobs(j);
       setSources(src);
+      setRules(r);
       // Auto-select first source if none selected
       if (!selectedSourceId && src.length > 0) {
         setSelectedSourceId(src[0].id);
@@ -146,6 +180,57 @@ export default function IngestionPage() {
   }, [selectedSourceId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Rule handlers
+  const handleSaveRule = async () => {
+    if (!editingRule) return;
+    try {
+      if (editingRule.id) {
+        await apiCall(`/api/ingestion-rules/${editingRule.id}`, { method: 'PUT', body: editingRule });
+      } else {
+        await apiCall('/api/ingestion-rules', { method: 'POST', body: editingRule });
+      }
+      setShowRuleModal(false);
+      setEditingRule(null);
+      setSuccess('Rule saved successfully');
+      setTimeout(() => setSuccess(null), 3000);
+      fetchData();
+    } catch (e: any) {
+      setError(`Failed to save rule: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const handleDeleteRule = async (id: string) => {
+    try {
+      await apiCall(`/api/ingestion-rules/${id}`, { method: 'DELETE' });
+      fetchData();
+    } catch (e: any) {
+      setError(`Failed to delete rule: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const handleToggleRule = async (id: string, enabled: boolean) => {
+    try {
+      await apiCall(`/api/ingestion-rules/${id}/toggle`, { method: 'POST', body: { enabled } });
+      fetchData();
+    } catch (e: any) {
+      setError(`Failed to toggle rule: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const handleRunRule = async (id: string) => {
+    setRunningRuleId(id);
+    try {
+      const result = await apiCall<{ filesFound: number; filesIngested: number; skipped: number }>(`/api/ingestion-rules/${id}/run`, { method: 'POST' });
+      setSuccess(`Rule executed: ${result.filesFound} found, ${result.filesIngested} ingested, ${result.skipped} skipped`);
+      setTimeout(() => setSuccess(null), 5000);
+      fetchData();
+    } catch (e: any) {
+      setError(`Rule execution failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRunningRuleId(null);
+    }
+  };
 
   // Auto-browse when source changes
   useEffect(() => {
@@ -603,6 +688,79 @@ export default function IngestionPage() {
         )}
       </div>
 
+      {/* --- AUTO-INGEST RULES --- */}
+      <SectionHeader title={`Auto-Ingest Rules (${rules.length})`} action="+ Create Rule" onAction={() => { setEditingRule({ source_id: selectedSourceId || sources[0]?.id || '', file_types: ['csv', 'gz', 'parquet'], schedule: '0 */6 * * *', skip_duplicates: 1 } as any); setShowRuleModal(true); }} />
+      <div className="animate-fadeIn stagger-6" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, marginBottom: 36 }}>
+        {rules.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {rules.map(rule => {
+              const sourceName = sources.find(s => s.id === rule.source_id)?.label || 'Unknown';
+              const scheduleLabel = SCHEDULE_PRESETS.find(p => p.value === rule.schedule)?.label || rule.schedule;
+              return (
+                <div key={rule.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 16, padding: '14px 18px',
+                  background: 'var(--bg-hover)', borderRadius: 12, border: '1px solid var(--border)',
+                  opacity: rule.enabled ? 1 : 0.6, transition: 'all 0.2s',
+                }}>
+                  {/* Toggle */}
+                  <button onClick={() => handleToggleRule(rule.id, !rule.enabled)} style={{
+                    width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer',
+                    background: rule.enabled ? 'var(--green)' : 'var(--border)', position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                  }}>
+                    <div style={{
+                      width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2,
+                      left: rule.enabled ? 18 : 2, transition: 'left 0.2s',
+                    }} />
+                  </button>
+
+                  {/* Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <Zap size={14} color={rule.enabled ? 'var(--accent)' : 'var(--text-tertiary)'} />
+                      <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{rule.label}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 500 }}>· {sourceName}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11, color: 'var(--text-secondary)' }}>
+                      <span><Settings size={10} style={{ marginRight: 3, verticalAlign: 'middle' }} />{scheduleLabel}</span>
+                      {rule.prefix_pattern && <span>📂 {rule.prefix_pattern}</span>}
+                      <span>Types: {rule.file_types.map(t => t.toUpperCase()).join(', ')}</span>
+                      {rule.skip_duplicates ? <span>🔄 Skip Dupes</span> : null}
+                      {rule.last_run_at && (
+                        <span style={{ color: rule.last_run_status === 'success' ? 'var(--green)' : rule.last_run_status === 'empty' ? 'var(--text-tertiary)' : 'var(--yellow)' }}>
+                          Last: {timeAgo(rule.last_run_at)} — {rule.files_found_last_run ?? 0} found, {rule.files_ingested_last_run ?? 0} ingested
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <Button variant="secondary" icon={runningRuleId === rule.id ? <Loader2 size={12} className="spin" /> : <RotateCw size={12} />}
+                      onClick={() => handleRunRule(rule.id)} disabled={runningRuleId !== null}>
+                      {runningRuleId === rule.id ? 'Running...' : 'Run Now'}
+                    </Button>
+                    <button onClick={() => { setEditingRule(rule); setShowRuleModal(true); }} style={{
+                      background: 'none', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
+                      padding: '4px 8px', color: 'var(--text-tertiary)',
+                    }}><Edit2 size={12} /></button>
+                    <button onClick={() => handleDeleteRule(rule.id)} style={{
+                      background: 'none', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
+                      padding: '4px 8px', color: 'var(--red)',
+                    }}><Trash2 size={12} /></button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13 }}>
+            <Zap size={20} style={{ marginBottom: 8, opacity: 0.4 }} />
+            <div style={{ fontWeight: 600 }}>No auto-ingestion rules yet</div>
+            <div style={{ marginTop: 4 }}>Create a rule to automatically detect and ingest new files on a schedule.</div>
+          </div>
+        )}
+      </div>
+
       {/* --- JOB HISTORY --- */}
       <SectionHeader title={`Ingestion Jobs (${jobs.length})`} action="Refresh" onAction={fetchData} />
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
@@ -743,6 +901,118 @@ export default function IngestionPage() {
                 </Button>
                 <Button onClick={handleSaveSource}>Save Source</Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- CREATE / EDIT RULE MODAL --- */}
+      {showRuleModal && editingRule && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowRuleModal(false); setEditingRule(null); } }}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
+          }}
+        >
+          <div className="animate-scaleIn" style={{
+            background: 'var(--bg-app)', border: '1px solid var(--border)',
+            padding: 32, borderRadius: 20, width: '100%', maxWidth: 540,
+            boxShadow: 'var(--shadow-lg)', maxHeight: '90vh', overflowY: 'auto',
+          }}>
+            <h2 style={{ margin: '0 0 20px 0', fontSize: 20, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Zap size={20} color="var(--accent)" />
+              {editingRule.id ? 'Edit Auto-Ingest Rule' : 'Create Auto-Ingest Rule'}
+            </h2>
+
+            <div style={{ display: 'grid', gap: 16 }}>
+              {/* Label */}
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Rule Name</label>
+                <Input placeholder="e.g. Daily 5x Coop Sync" value={editingRule.label || ''} onChange={(v: string) => setEditingRule({...editingRule, label: v})} />
+              </div>
+
+              {/* Source + Prefix */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>S3 Source</label>
+                  <select value={editingRule.source_id || ''} onChange={e => setEditingRule({...editingRule, source_id: e.target.value})} style={{
+                    width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)',
+                    background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13,
+                  }}>
+                    <option value="">Select source...</option>
+                    {sources.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Prefix / Folder</label>
+                  <Input placeholder="e.g. outgoing/apis/" value={editingRule.prefix_pattern || ''} onChange={(v: string) => setEditingRule({...editingRule, prefix_pattern: v})} />
+                </div>
+              </div>
+
+              {/* File Types */}
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>File Types</label>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  {(['csv', 'gz', 'parquet'] as const).map(t => {
+                    const types = editingRule.file_types || ['csv', 'gz', 'parquet'];
+                    const checked = types.includes(t);
+                    return (
+                      <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)' }}>
+                        <input type="checkbox" checked={checked} onChange={() => {
+                          const next = checked ? types.filter(x => x !== t) : [...types, t];
+                          setEditingRule({...editingRule, file_types: next});
+                        }} style={{ accentColor: 'var(--accent)' }} />
+                        {t.toUpperCase()}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Schedule */}
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Schedule</label>
+                <select value={editingRule.schedule || '0 */6 * * *'} onChange={e => setEditingRule({...editingRule, schedule: e.target.value})} style={{
+                  width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)',
+                  background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13,
+                }}>
+                  {SCHEDULE_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label} ({p.value})</option>)}
+                </select>
+              </div>
+
+              {/* Date + Size filters */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Only Files After (optional)</label>
+                  <input type="date" value={editingRule.min_date ? editingRule.min_date.split('T')[0] : ''}
+                    onChange={e => setEditingRule({...editingRule, min_date: e.target.value || null})} style={{
+                    width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)',
+                    background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13,
+                  }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Max File Size (MB)</label>
+                  <Input placeholder="e.g. 500" value={editingRule.max_file_size_mb?.toString() || ''}
+                    onChange={(v: string) => setEditingRule({...editingRule, max_file_size_mb: v ? Number(v) : null})} />
+                </div>
+              </div>
+
+              {/* Skip Duplicates */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)' }}>
+                  <input type="checkbox" checked={!!editingRule.skip_duplicates}
+                    onChange={() => setEditingRule({...editingRule, skip_duplicates: editingRule.skip_duplicates ? 0 : 1})}
+                    style={{ accentColor: 'var(--accent)' }} />
+                  Skip already-ingested files (recommended)
+                </label>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 28 }}>
+              <Button variant="secondary" onClick={() => { setShowRuleModal(false); setEditingRule(null); }}>Cancel</Button>
+              <Button onClick={handleSaveRule} disabled={!editingRule.label || !editingRule.source_id}>Save Rule</Button>
             </div>
           </div>
         </div>
