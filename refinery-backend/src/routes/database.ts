@@ -85,4 +85,29 @@ router.get('/health', async (_req, res) => {
   }
 });
 
+// POST /api/database/export — same params as browse but returns CSV
+router.post('/export', async (req, res) => {
+  try {
+    const result = await dbService.browseData({ ...req.body, page: 1, pageSize: 100000 });
+    const rows = result.rows;
+    if (!rows.length) return res.status(200).send('');
+    const cols = Object.keys(rows[0]);
+    const header = cols.join(',');
+    const lines = rows.map(row =>
+      cols.map(c => {
+        const v = row[c];
+        if (v === null || v === undefined) return '';
+        const s = String(v).replace(/"/g, '""');
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+      }).join(',')
+    );
+    const csv = [header, ...lines].join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="export-${Date.now()}.csv"`);
+    res.send(csv);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;

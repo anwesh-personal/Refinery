@@ -100,9 +100,16 @@ export async function getAvailableColumns(): Promise<string[]> {
   return getTableColumns();
 }
 
+export interface AdvancedFilter {
+  column: string;
+  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'starts_with' | 'ends_with' | 'is_null' | 'is_not_null';
+  value?: string;
+}
+
 export interface BrowseParams {
   search?: string;
   filters?: Record<string, string>;
+  advancedFilters?: AdvancedFilter[];
   page?: number;
   pageSize?: number;
   sortBy?: string;
@@ -155,11 +162,29 @@ export async function browseData(params: BrowseParams) {
     conditions.push(`(${searchClauses})`);
   }
 
-  // Filters
+  // Simple exact-match filters (legacy / dropdown support)
   for (const [col, val] of Object.entries(filters)) {
     if (!allowedSet.has(col) || !val) continue;
     const escaped = val.replace(/'/g, "\\'");
     conditions.push(`\`${col}\` = '${escaped}'`);
+  }
+
+  // Advanced filters with operators
+  const advancedFilters = params.advancedFilters || [];
+  for (const af of advancedFilters) {
+    if (!allowedSet.has(af.column)) continue;
+    const col = `\`${af.column}\``;
+    const escaped = (af.value || '').replace(/'/g, "\\'");
+    switch (af.operator) {
+      case 'equals':       conditions.push(`${col} = '${escaped}'`); break;
+      case 'not_equals':   conditions.push(`${col} != '${escaped}'`); break;
+      case 'contains':     conditions.push(`lower(coalesce(toString(${col}), '')) LIKE lower('%${escaped}%')`); break;
+      case 'not_contains':  conditions.push(`lower(coalesce(toString(${col}), '')) NOT LIKE lower('%${escaped}%')`); break;
+      case 'starts_with':  conditions.push(`lower(coalesce(toString(${col}), '')) LIKE lower('${escaped}%')`); break;
+      case 'ends_with':    conditions.push(`lower(coalesce(toString(${col}), '')) LIKE lower('%${escaped}')`); break;
+      case 'is_null':      conditions.push(`(${col} IS NULL OR toString(${col}) = '')`); break;
+      case 'is_not_null':  conditions.push(`(${col} IS NOT NULL AND toString(${col}) != '')`); break;
+    }
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -169,7 +194,7 @@ export async function browseData(params: BrowseParams) {
   const safeSortDir = sortDir === 'desc' ? 'DESC' : 'ASC';
 
   // Clamp page size
-  const safePageSize = Math.min(Math.max(pageSize, 10), 200);
+  const safePageSize = Math.min(Math.max(pageSize, 10), 5000);
   const offset = (Math.max(page, 1) - 1) * safePageSize;
 
   const start = Date.now();
