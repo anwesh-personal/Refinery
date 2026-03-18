@@ -121,6 +121,15 @@ export default function EmailVerifierPage() {
   const [emailsRaw, setEmailsRaw] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<PipelineResult | null>(null);
+  const [toast, setToast] = useState<{ type: 'error' | 'warning' | 'info'; message: string } | null>(null);
+
+  // Auto-dismiss toast after 6s
+  const showToast = (type: 'error' | 'warning' | 'info', message: string) => {
+    // Strip HTML tags from error messages (e.g. nginx 502 pages)
+    const clean = message.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    setToast({ type, message: clean });
+    setTimeout(() => setToast(null), 6000);
+  };
 
   const [checks, setChecks] = useState<CheckConfig>(DEFAULT_CHECKS);
   const [weights, setWeights] = useState<SeverityWeights>(DEFAULT_WEIGHTS);
@@ -206,7 +215,7 @@ export default function EmailVerifierPage() {
     if (inputType === 'text') {
       list = emailsRaw.split(/[\n,]+/).map(e => e.trim()).filter(Boolean);
     } else {
-      if (!csvFile || !selectedColumn) return alert('Please upload a CSV and select the email column.');
+      if (!csvFile || !selectedColumn) return showToast('warning', 'Please upload a CSV and select the email column.');
       try {
         setLoading(true);
         list = await new Promise<string[]>((resolve, reject) => {
@@ -227,17 +236,17 @@ export default function EmailVerifierPage() {
         });
       } catch (err) {
         setLoading(false);
-        return alert('Failed to parse CSV file.');
+        return showToast('error', 'Failed to parse CSV file. Please check the format.');
       }
     }
 
     if (list.length === 0) {
       setLoading(false);
-      return alert('No valid emails found to verify.');
+      return showToast('warning', 'No valid emails found to verify.');
     }
     if (list.length > 50000) {
       setLoading(false);
-      return alert(`Maximum 50,000 emails allowed per request. You provided ${list.length}.`);
+      return showToast('warning', `Maximum 50,000 emails per request. You provided ${list.length.toLocaleString()}.`);
     }
 
     setLoading(true);
@@ -256,7 +265,7 @@ export default function EmailVerifierPage() {
       });
       setResult(res);
     } catch (err: any) {
-      alert(`Pipeline failed: ${err.message}`);
+      showToast('error', `Pipeline failed: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -356,6 +365,24 @@ export default function EmailVerifierPage() {
         title="Pipeline Studio"
         sub="Standalone multi-stage email verification pipeline with granular checks, custom scoring, and advanced heuristics."
       />
+
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className="animate-fadeIn"
+          style={{
+            marginBottom: 20, padding: '14px 20px', borderRadius: 12,
+            display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, fontWeight: 600,
+            background: toast.type === 'error' ? 'rgba(239,68,68,0.12)' : toast.type === 'warning' ? 'rgba(245,158,11,0.12)' : 'rgba(59,130,246,0.12)',
+            border: `1px solid ${toast.type === 'error' ? 'rgba(239,68,68,0.3)' : toast.type === 'warning' ? 'rgba(245,158,11,0.3)' : 'rgba(59,130,246,0.3)'}`,
+            color: toast.type === 'error' ? '#ef4444' : toast.type === 'warning' ? '#f59e0b' : '#3b82f6',
+          }}
+        >
+          {toast.type === 'error' ? <XCircle size={18} /> : <ShieldAlert size={18} />}
+          <span style={{ flex: 1 }}>{toast.message}</span>
+          <button onClick={() => setToast(null)} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 4 }}>✕</button>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 24, alignItems: 'flex-start' }}>
         
