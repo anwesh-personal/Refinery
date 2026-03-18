@@ -1,4 +1,4 @@
-import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Server, Edit2, Trash2 } from 'lucide-react';
+import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Edit2, Trash2 } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
 import { useState, useEffect, useCallback } from 'react';
@@ -199,14 +199,17 @@ export default function IngestionPage() {
 
   /* --- Browsing & Ingestion --- */
   const browseFiles = async () => {
+    if (!selectedSourceId) {
+      setError('Please select an S3 source first, or add one using the + button.');
+      return;
+    }
     setBrowsing(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       if (prefix) params.set('prefix', prefix);
-      if (selectedSourceId) params.set('sourceId', selectedSourceId);
-      const qs = params.toString();
-      const url = `/api/ingestion/source-files${qs ? `?${qs}` : ''}`;
+      params.set('sourceId', selectedSourceId);
+      const url = `/api/ingestion/source-files?${params.toString()}`;
       
       const files = await apiCall<SourceFile[]>(url);
       setSourceFiles(files);
@@ -270,32 +273,8 @@ export default function IngestionPage() {
       </div>
 
       {/* --- S3 SOURCES MANAGEMENT --- */}
-      <SectionHeader 
-        title="Configured S3 Sources" 
-        action="+ Add Source" 
-        onAction={() => {
-          setEditingSource({});
-          setTestCredsResult(null);
-          setShowSourceModal(true);
-        }} 
-      />
+      <SectionHeader title="Configured S3 Sources" />
       <div className="animate-fadeIn stagger-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16, marginBottom: 36 }}>
-        
-        {/* Legacy Mode Card */}
-        <div 
-          onClick={() => setSelectedSourceId('')}
-          style={{ 
-            background: selectedSourceId === '' ? 'var(--bg-hover)' : 'var(--bg-card)', 
-            border: `1px solid ${selectedSourceId === '' ? 'var(--accent)' : 'var(--border)'}`, 
-            borderRadius: 12, padding: 20, cursor: 'pointer', transition: 'all 0.2s',
-            boxShadow: selectedSourceId === '' ? '0 0 0 1px var(--accent)' : 'none'
-          }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-            <Server size={18} color={selectedSourceId === '' ? 'var(--accent)' : 'var(--text-tertiary)'} />
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>System Default (Env)</div>
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Uses environment variables for legacy compatibility.</div>
-        </div>
 
         {sources.map(src => (
           <div 
@@ -317,24 +296,50 @@ export default function IngestionPage() {
               <div style={{ display: 'flex', gap: 8 }}>
                 <button 
                   onClick={(e) => { e.stopPropagation(); setEditingSource(src); setTestCredsResult(null); setShowSourceModal(true); }}
-                  style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 4, borderRadius: 6, transition: 'color 0.2s' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-secondary)')}
                 >
                   <Edit2 size={14} />
                 </button>
                 <button 
                   onClick={(e) => { e.stopPropagation(); handleDeleteSource(src.id); }}
-                  style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer' }}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 4, borderRadius: 6, transition: 'color 0.2s' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-tertiary)')}
                 >
                   <Trash2 size={14} />
                 </button>
               </div>
             </div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
               <strong>Bucket:</strong> {src.bucket} <br/>
               <strong>Region:</strong> {src.region}
+              {src.prefix ? <><br/><strong>Prefix:</strong> {src.prefix}</> : null}
             </div>
           </div>
         ))}
+
+        {/* Add New Source Card */}
+        <div
+          onClick={() => { setEditingSource({}); setTestCredsResult(null); setShowSourceModal(true); }}
+          style={{
+            background: 'transparent',
+            border: '2px dashed var(--border)',
+            borderRadius: 12, padding: 20, cursor: 'pointer', transition: 'all 0.2s',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            minHeight: 110, gap: 10,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--bg-hover)'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'transparent'; }}
+        >
+          <div style={{
+            width: 40, height: 40, borderRadius: 12,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'var(--accent)', color: '#fff', fontSize: 22, fontWeight: 700,
+          }}>+</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Add New Source</div>
+        </div>
       </div>
 
       {/* --- SOURCE BROWSER --- */}

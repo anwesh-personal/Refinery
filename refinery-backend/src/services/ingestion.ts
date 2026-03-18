@@ -176,7 +176,7 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
 
   // Step 2: Upload to Object Storage (MinIO)
   console.log(`[Ingestion] ${jobId}: Uploading to Object Storage...`);
-  await command(`ALTER TABLE ingestion_jobs UPDATE status = 'uploading', file_size_bytes = ${fileSize} WHERE id = '${jobId}'`);
+  await command(`ALTER TABLE ingestion_jobs UPDATE status = 'uploading', file_size_bytes = ${fileSize} WHERE id = '${esc(jobId)}'`);
 
   const storageKey = `ingestion/${jobId}/${fileName}`;
   const upload = new Upload({
@@ -193,34 +193,76 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
 
   // Step 3: Re-download from Object Storage and stream into ClickHouse
   console.log(`[Ingestion] ${jobId}: Ingesting into ClickHouse...`);
-  await command(`ALTER TABLE ingestion_jobs UPDATE status = 'ingesting' WHERE id = '${jobId}'`);
+  await command(`ALTER TABLE ingestion_jobs UPDATE status = 'ingesting' WHERE id = '${esc(jobId)}'`);
 
   const storageResp = await storageClient.send(new GetObjectCommand({
     Bucket: env.objectStorage.bucket,
     Key: storageKey,
   }));
 
+  // Track CSV headers for dynamic column creation
+  let csvHeaders: string[] = [];
+
   const csvStream = (storageResp.Body as Readable).pipe(
     parse({
-      columns: (header: string[]) => header.map((h: string) => h.toLowerCase().trim()),
+      columns: (header: string[]) => {
+        csvHeaders = header.map((h: string) => h.toLowerCase().trim());
+        return csvHeaders;
+      },
       skip_empty_lines: true,
       relax_column_count: true,
     }),
   );
 
+  // Step 3a: Auto-detect and add missing columns to ClickHouse
+  // We need to read the first row to trigger header parsing, then handle schema
+  const iterator = csvStream[Symbol.asyncIterator]();
+  const firstResult = await iterator.next();
+
+  if (!firstResult.done && csvHeaders.length > 0) {
+    // Get existing columns from ClickHouse
+    const existingCols = await query<{ name: string }>(`
+      SELECT name FROM system.columns 
+      WHERE database = '${esc(env.clickhouse.database)}' AND table = 'universal_person'
+    `);
+    const existingSet = new Set(existingCols.map(c => c.name));
+
+    // Find columns in CSV that don't exist in the table
+    const missingCols = csvHeaders.filter(h => !existingSet.has(h));
+
+    if (missingCols.length > 0) {
+      console.log(`[Ingestion] ${jobId}: Adding ${missingCols.length} new columns: ${missingCols.join(', ')}`);
+      for (const col of missingCols) {
+        try {
+          await command(`ALTER TABLE universal_person ADD COLUMN IF NOT EXISTS \`${col}\` Nullable(String)`);
+        } catch (e: any) {
+          console.warn(`[Ingestion] ${jobId}: Could not add column '${col}': ${e.message}`);
+        }
+      }
+    }
+  }
+
+  // Step 3b: Insert all rows (including the first one we already read)
   let batch: Record<string, unknown>[] = [];
   let totalRows = 0;
   const BATCH_SIZE = 10000;
 
-  for await (const row of csvStream) {
+  // Process first row
+  if (!firstResult.done) {
+    const row = firstResult.value as Record<string, unknown>;
     row._ingestion_job_id = jobId;
     batch.push(row);
+  }
+
+  // Process remaining rows
+  for await (const row of csvStream) {
+    (row as Record<string, unknown>)._ingestion_job_id = jobId;
+    batch.push(row as Record<string, unknown>);
 
     if (batch.length >= BATCH_SIZE) {
       await insertRows('universal_person', batch);
       totalRows += batch.length;
       batch = [];
-      // Update progress every batch
       if (totalRows % 100000 === 0) {
         console.log(`[Ingestion] ${jobId}: ${totalRows.toLocaleString()} rows inserted...`);
       }
@@ -237,7 +279,7 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
   await command(`
     ALTER TABLE ingestion_jobs UPDATE 
       status = 'complete', rows_ingested = ${totalRows}, completed_at = now()
-    WHERE id = '${jobId}'
+    WHERE id = '${esc(jobId)}'
   `);
   console.log(`[Ingestion] ${jobId}: Complete — ${totalRows.toLocaleString()} rows ingested.`);
 }
