@@ -31,6 +31,9 @@ import v1KeysRoutes from './routes/v1/keys.js';
 import v1ContactsRoutes from './routes/v1/contacts.js';
 import v1SegmentsRoutes from './routes/v1/segments.js';
 import v1VerifyRoutes from './routes/v1/verify.js';
+import v1WebhooksRoutes from './routes/v1/webhooks.js';
+import v1StatsRoutes from './routes/v1/stats.js';
+import v1MtaRoutes from './routes/v1/mta.js';
 import { requireApiKey } from './middleware/apiKeyAuth.js';
 import { apiKeyRateLimiter } from './middleware/rateLimiter.js';
 
@@ -87,6 +90,9 @@ app.use('/api/v1/keys', v1KeysRoutes);
 app.use('/api/v1/contacts', requireApiKey, apiKeyRateLimiter, v1ContactsRoutes);
 app.use('/api/v1/segments', requireApiKey, apiKeyRateLimiter, v1SegmentsRoutes);
 app.use('/api/v1/verify', requireApiKey, apiKeyRateLimiter, v1VerifyRoutes);
+app.use('/api/v1/webhooks', requireApiKey, apiKeyRateLimiter, v1WebhooksRoutes);
+app.use('/api/v1/stats', requireApiKey, apiKeyRateLimiter, v1StatsRoutes);
+app.use('/api/v1/mta', requireApiKey, apiKeyRateLimiter, v1MtaRoutes);
 
 // ── Health ──
 app.get('/api/health', (_req, res) => {

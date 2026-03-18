@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ecosystem Reference — Oraya × Refinery × MarketX × MailWizz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0B0B11;--bg2:#101018;--bg3:#16161F;--bg4:#1C1C28;
+  --border:#252535;--border2:#2F2F42;
+  --text:#E8EAF0;--text2:#A0A4B8;--text3:#6B6F85;
+  --green:#10B981;--green2:#34D399;--green-bg:rgba(16,185,129,.08);
+  --blue:#3B82F6;--blue2:#60A5FA;--blue-bg:rgba(59,130,246,.08);
+  --purple:#A855F7;--purple2:#C084FC;--purple-bg:rgba(168,85,247,.08);
+  --amber:#F59E0B;--amber2:#FBBF24;--amber-bg:rgba(245,158,11,.08);
+  --red:#EF4444;--red2:#FCA5A5;--red-bg:rgba(239,68,68,.08);
+  --font:\'DM Sans\',system-ui,sans-serif;
+  --mono:\'JetBrains Mono\',\'Courier New\',monospace;
+}
+html{background:var(--bg);scroll-behavior:smooth}
+body{font-family:var(--font);color:var(--text);background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+code,pre,.mono{font-family:var(--mono)}
+a{color:var(--blue2);text-decoration:none}a:hover{text-decoration:underline}
+
+/* ─── LAYOUT ─── */
+.shell{max-width:1320px;margin:0 auto;padding:0 1.5rem}
+header{border-bottom:1px solid var(--border);padding:1rem 0;position:sticky;top:0;z-index:100;background:var(--bg);backdrop-filter:blur(12px)}
+.head-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.logo{font-family:var(--mono);font-weight:700;font-size:1rem;color:var(--text);display:flex;align-items:center;gap:.5rem}
+.logo .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+
+/* ─── TABS ─── */
+.tabs{display:flex;gap:2px;flex-wrap:wrap}
+.tab{padding:.5rem 1rem;font-size:.78rem;font-weight:600;font-family:var(--font);letter-spacing:.02em;border:none;cursor:pointer;border-radius:6px;transition:all .2s;color:var(--text3);background:transparent}
+.tab:hover{color:var(--text2);background:var(--bg3)}
+.tab.active{color:var(--text);background:var(--bg3);box-shadow:inset 0 0 0 1px var(--border)}
+.tab-panel{display:none;padding:2rem 0 4rem;animation:fadeIn .25s ease}
+.tab-panel.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* ─── SECTION HEADERS ─── */
+.sec-title{font-size:1.6rem;font-weight:700;margin-bottom:.5rem;letter-spacing:-.01em}
+.sec-desc{color:var(--text2);font-size:.95rem;max-width:640px;margin-bottom:2rem}
+.sec-label{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.5rem;font-weight:600}
+
+/* ─── CARDS ─── */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.5rem;transition:border-color .2s}
+.card:hover{border-color:var(--border2)}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem}
+.card-title{font-weight:700;font-size:1.05rem;margin-bottom:.4rem;display:flex;align-items:center;gap:.5rem}
+.card-sub{color:var(--text2);font-size:.85rem;margin-bottom:1rem}
+
+/* ─── BADGE / TAGS ─── */
+.badge{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .6rem;border-radius:100px;font-size:.7rem;font-weight:600;font-family:var(--mono)}
+.badge-green{background:var(--green-bg);color:var(--green2);border:1px solid rgba(16,185,129,.2)}
+.badge-blue{background:var(--blue-bg);color:var(--blue2);border:1px solid rgba(59,130,246,.2)}
+.badge-purple{background:var(--purple-bg);color:var(--purple2);border:1px solid rgba(168,85,247,.2)}
+.badge-amber{background:var(--amber-bg);color:var(--amber2);border:1px solid rgba(245,158,11,.2)}
+.badge-red{background:var(--red-bg);color:var(--red2);border:1px solid rgba(239,68,68,.2)}
+.badge-dim{background:var(--bg3);color:var(--text3);border:1px solid var(--border)}
+
+.tag{display:inline-block;padding:.15rem .5rem;font-family:var(--mono);font-size:.68rem;border-radius:4px;background:var(--bg3);color:var(--text3);border:1px solid var(--border);margin:.15rem}
+
+/* ─── TABLE ─── */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px;margin:1rem 0}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th{text-align:left;padding:.65rem 1rem;background:var(--bg3);color:var(--text2);font-weight:600;font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:.6rem 1rem;border-bottom:1px solid var(--border);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--bg3)}
+.method{font-family:var(--mono);font-weight:700;font-size:.68rem;padding:.15rem .4rem;border-radius:3px;white-space:nowrap}
+.m-get{background:rgba(16,185,129,.12);color:var(--green2)}
+.m-post{background:rgba(59,130,246,.12);color:var(--blue2)}
+.m-put{background:rgba(245,158,11,.12);color:var(--amber2)}
+.m-patch{background:rgba(168,85,247,.12);color:var(--purple2)}
+.m-del{background:rgba(239,68,68,.12);color:var(--red2)}
+.path{font-family:var(--mono);font-size:.78rem;color:var(--text)}
+
+/* ─── FILE TREE ─── */
+.tree{font-family:var(--mono);font-size:.78rem;line-height:1.8;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;overflow-x:auto}
+.tree .dir{color:var(--blue2)}
+.tree .file{color:var(--text2)}
+.tree .new{color:var(--green2);font-weight:600}
+.tree .new::after{content:" ← NEW";font-size:.6rem;color:var(--green);opacity:.7}
+.tree .hot{color:var(--amber2)}
+.tree .hot::after{content:" ← KEY";font-size:.6rem;color:var(--amber);opacity:.7}
+.tree .indent{padding-left:1.5rem}
+.tree .indent2{padding-left:3rem}
+.tree .indent3{padding-left:4.5rem}
+
+/* ─── CODE BLOCK ─── */
+.code-block{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:1rem 1.25rem;font-family:var(--mono);font-size:.78rem;line-height:1.7;overflow-x:auto;color:var(--text2);margin:.75rem 0}
+.code-block .kw{color:var(--purple2)}
+.code-block .str{color:var(--green2)}
+.code-block .cm{color:var(--text3);font-style:italic}
+.code-block .fn{color:var(--blue2)}
+
+/* ─── PROS / CONS ─── */
+.pc-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0}
+@media(max-width:640px){.pc-grid{grid-template-columns:1fr}}
+.pros,.cons{border-radius:10px;padding:1.25rem}
+.pros{background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.15)}
+.cons{background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.15)}
+.pros h4{color:var(--green2);font-size:.8rem;margin-bottom:.75rem;font-family:var(--mono)}
+.cons h4{color:var(--red2);font-size:.8rem;margin-bottom:.75rem;font-family:var(--mono)}
+.pros li,.cons li{font-size:.85rem;color:var(--text2);margin-bottom:.4rem;padding-left:.25rem}
+
+/* ─── MODAL / LIGHTBOX ─── */
+.modal-overlay{position:fixed;inset:0;background:rgba(4,4,10,.85);backdrop-filter:blur(8px);z-index:1000;display:none;align-items:center;justify-content:center;padding:2rem}
+.modal-overlay.open{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:16px;max-width:820px;width:100%;max-height:85vh;overflow-y:auto;padding:2rem;position:relative;animation:modalIn .2s ease}
+@keyframes modalIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+.modal-close{position:absolute;top:1rem;right:1rem;width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.modal-close:hover{background:var(--border);color:var(--text)}
+.modal h3{font-size:1.2rem;font-weight:700;margin-bottom:.3rem}
+.modal .modal-sub{color:var(--text3);font-size:.8rem;font-family:var(--mono);margin-bottom:1.25rem}
+.modal hr{border:none;border-top:1px solid var(--border);margin:1.25rem 0}
+
+/* ─── CONNECTION DIAGRAM ─── */
+.conn-row{display:flex;align-items:center;gap:1rem;padding:1rem;background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin:.5rem 0;flex-wrap:wrap}
+.conn-from,.conn-to{font-family:var(--mono);font-size:.78rem;padding:.4rem .8rem;border-radius:6px;font-weight:500}
+.conn-arrow{color:var(--text3);font-size:1.2rem;flex-shrink:0}
+.conn-via{font-size:.72rem;color:var(--text3);font-family:var(--mono);background:var(--bg3);padding:.25rem .6rem;border-radius:4px}
+.conn-label{font-size:.78rem;color:var(--text2);margin-left:auto}
+.clickable{cursor:pointer;transition:all .15s}
+.clickable:hover{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue),0 4px 20px rgba(59,130,246,.08)}
+
+/* ─── FLOW SVG ─── */
+.flow-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.5rem;margin:1.5rem 0;overflow:auto}
+.flow-wrap svg{width:100%;height:auto;min-width:900px}
+.flow-wrap text{font-family:var(--mono)}
+
+/* ─── RESPONSIVE ─── */
+@media(max-width:768px){.head-row{flex-direction:column;align-items:flex-start}.tabs{width:100%}}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HEADER + TABS ═══════════ -->
+<header>
+<div class="shell">
+  <div class="head-row">
+    <div class="logo"><span class="dot"></span>ECOSYSTEM REFERENCE</div>
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-tab="map">System Map</button>
+      <button class="tab" data-tab="refinery">Refinery Nexus</button>
+      <button class="tab" data-tab="marketx">MarketX</button>
+      <button class="tab" data-tab="mailwizz">MailWizz</button>
+      <button class="tab" data-tab="connections">Connections</button>
+      <button class="tab" data-tab="loop">The Loop</button>
+      <button class="tab" data-tab="status">Build Status</button>
+    </div>
+  </div>
+</div>
+</header>
+
+<main class="shell">
+
+<!-- ═════════════════════════════════════════════
+     TAB 1 — SYSTEM MAP
+     ═════════════════════════════════════════════ -->
+<div class="tab-panel active" id="panel-map">
+  <div class="sec-label" style="color:var(--purple2)">Overview</div>
+  <div class="sec-title">The Four Systems</div>
+  <div class="sec-desc">Click any card to see full details — file structure, endpoints, and how it connects to the others.</div>
+
+  <div class="card-grid">
+    <div class="card clickable" onclick="openModal('m-oraya')">
+      <div class="card-title"><span style="color:var(--purple)">●</span> Oraya</div>
+      <div class="badge badge-purple" style="margin-bottom:.75rem">THE ARCHITECT</div>
+      <div class="card-sub">The AI OS. Personal team of AI agents. It <strong>built</strong> Refinery Nexus. Not in the runtime data loop — it's the builder, not the plumbing.</div>
+      <div><span class="tag">Tauri + Rust</span><span class="tag">SQLite</span><span class="tag">Multi-Agent</span><span class="tag">Local-First</span></div>
+    </div>
+
+    <div class="card clickable" onclick="openModal('m-refinery')">
+      <div class="card-title"><span style="color:var(--green)">●</span> Refinery Nexus</div>
+      <div class="badge badge-green" style="margin-bottom:.75rem">THE DATA BRAIN</div>
+      <div class="card-sub">Stores millions of contacts in ClickHouse. Verifies emails. Scores quality. Serves clean v1 REST APIs that MarketerX calls.</div>
+      <div><span class="tag">Express 5 + TS</span><span class="tag">ClickHouse</span><span class="tag">API Key Auth</span><span class="tag">Supabase</span></div>
+    </div>
+
+    <div class="card clickable" onclick="openModal('m-axiom')">
+      <div class="card-title"><span style="color:var(--blue)">●</span> MarketX <span style="font-size:.75rem;color:var(--text3)">(MarketWriter)</span></div>
+      <div class="badge badge-blue" style="margin-bottom:.75rem">THE STRATEGIST</div>
+      <div class="card-sub">Intelligent orchestrator. Uses Refinery data + MTA delivery + AI learning to decide who gets what email when. Self-heals based on engagement.</div>
+      <div><span class="tag">Next.js</span><span class="tag">BullMQ Workers</span><span class="tag">Supabase</span><span class="tag">Workflow Engine</span></div>
+    </div>
+
+    <div class="card clickable" onclick="openModal('m-mailwizz')">
+      <div class="card-title"><span style="color:var(--amber)">●</span> MailWizz</div>
+      <div class="badge badge-amber" style="margin-bottom:.75rem">THE MESSENGER (temp)</div>
+      <div class="card-sub">Dumb delivery pipe. Sends emails via SMTP, reports bounce/open/click back. Zero intelligence. Replaceable via MTA Adapter pattern.</div>
+      <div><span class="tag">PHP</span><span class="tag">Self-hosted</span><span class="tag">SMTP</span><span class="tag">⚠ Replaceable</span></div>
+    </div>
+  </div>
+
+  <!-- ─── VISUAL FLOW ─── -->
+  <div class="flow-wrap">
+    <svg viewBox="0 0 1000 400" fill="none">
+      <defs>
+        <marker id="ah-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#10B981"/></marker>
+        <marker id="ah-b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#3B82F6"/></marker>
+        <marker id="ah-a" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#F59E0B"/></marker>
+        <marker id="ah-p" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#A855F7"/></marker>
+      </defs>
+
+      <!-- Nodes -->
+      <rect x="20" y="40" width="180" height="80" rx="10" fill="#16161F" stroke="#A855F7" stroke-width="1.5"/>
+      <text x="110" y="72" text-anchor="middle" fill="#C084FC" font-size="13" font-weight="700">🧠 Oraya</text>
+      <text x="110" y="92" text-anchor="middle" fill="#6B6F85" font-size="9">Built Refinery (not in loop)</text>
+
+      <rect x="320" y="140" width="220" height="100" rx="10" fill="#16161F" stroke="#10B981" stroke-width="1.5"/>
+      <text x="430" y="174" text-anchor="middle" fill="#34D399" font-size="13" font-weight="700">⚗️ Refinery Nexus</text>
+      <text x="430" y="194" text-anchor="middle" fill="#6B6F85" font-size="9">ClickHouse · /api/v1/*</text>
+      <text x="430" y="210" text-anchor="middle" fill="#6B6F85" font-size="9">Contacts · Segments · Verify</text>
+      <text x="430" y="226" text-anchor="middle" fill="#34D399" font-size="8">Auth: rnx_live_xxx</text>
+
+      <rect x="700" y="40" width="200" height="90" rx="10" fill="#16161F" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="5 3"/>
+      <text x="800" y="72" text-anchor="middle" fill="#FBBF24" font-size="13" font-weight="700">📬 MailWizz</text>
+      <text x="800" y="92" text-anchor="middle" fill="#6B6F85" font-size="9">SMTP Delivery · Webhooks</text>
+      <text x="800" y="108" text-anchor="middle" fill="#F59E0B" font-size="8" opacity=".6">⚠ Swappable</text>
+
+      <rect x="650" y="270" width="240" height="100" rx="10" fill="#16161F" stroke="#3B82F6" stroke-width="1.5"/>
+      <text x="770" y="304" text-anchor="middle" fill="#60A5FA" font-size="13" font-weight="700">🎯 MarketX (MarketWriter)</text>
+      <text x="770" y="324" text-anchor="middle" fill="#6B6F85" font-size="9">Workflow Engine · Mastery Agents</text>
+      <text x="770" y="340" text-anchor="middle" fill="#6B6F85" font-size="9">BullMQ Workers · AI Learning</text>
+      <text x="770" y="356" text-anchor="middle" fill="#60A5FA" font-size="8">email_provider_configs</text>
+
+      <!-- Arrows -->
+      <path d="M200,80 Q260,80 320,160" stroke="#A855F7" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ah-p)" opacity=".5"/>
+      <text x="240" y="108" fill="#A855F7" font-size="8" opacity=".7" transform="rotate(-20 240 108)">CREATED</text>
+
+      <path d="M650,310 Q560,290 540,230" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#ah-b)"/>
+      <text x="570" y="265" fill="#3B82F6" font-size="8">/api/v1/* queries</text>
+
+      <path d="M430,240 Q480,310 650,320" stroke="#10B981" stroke-width="1.5" marker-end="url(#ah-g)"/>
+      <text x="520" y="300" fill="#10B981" font-size="8">stats response</text>
+
+      <path d="M890,320 Q950,200 900,130" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#ah-b)"/>
+      <text x="930" y="230" fill="#3B82F6" font-size="8" transform="rotate(-70 930 230)">MTA Adapter</text>
+
+      <path d="M700,72 Q580,60 540,150" stroke="#F59E0B" stroke-width="1.5" marker-end="url(#ah-a)"/>
+      <text x="610" y="90" fill="#F59E0B" font-size="8">webhooks POST</text>
+    </svg>
+  </div>
+  <p style="color:var(--text3);font-size:.75rem;text-align:center">Solid lines = runtime data flow · Dashed = build-time relationship · Click any card above for details</p>
+</div>
+
+<!-- ═════════════════════════════════════════════
+     TAB 2 — REFINERY NEXUS
+     ═════════════════════════════════════════════ -->
+<div class="tab-panel" id="panel-refinery">
+  <div class="sec-label" style="color:var(--green2)">Refinery Nexus</div>
+  <div class="sec-title">The Data Brain — Complete Reference</div>
+  <div class="sec-desc">Express 5 + TypeScript backend with ClickHouse. Serves v1 REST APIs for machine-to-machine access. Supabase for user auth.</div>
+
+  <!-- File Tree -->
+  <h3 style="margin:1.5rem 0 .75rem;font-size:1rem">File Structure</h3>
+  <div class="tree">
+<span class="dir">refinery-backend/src/</span>
+<div class="indent"><span class="file">index.ts</span> <span class="hot"></span></div>
+<div class="indent"><span class="dir">config/</span></div>
+<div class="indent2"><span class="file">env.ts</span></div>
+<div class="indent"><span class="dir">db/</span></div>
+<div class="indent2"><span class="file">clickhouse.ts</span> — query(), command(), insertRows(), ping()</div>
+<div class="indent2"><span class="file">init.ts</span> — All table schemas (CREATE TABLE IF NOT EXISTS)</div>
+<div class="indent"><span class="dir">middleware/</span></div>
+<div class="indent2"><span class="file">auth.ts</span> — requireAuth (Supabase JWT), requireSuperadmin</div>
+<div class="indent2"><span class="new">apiKeyAuth.ts</span> — requireApiKey, requireScope()</div>
+<div class="indent2"><span class="new">rateLimiter.ts</span> — Per-key rate limiting (60 rpm default)</div>
+<div class="indent"><span class="dir">services/</span></div>
+<div class="indent2"><span class="new">apiKeys.ts</span> — createApiKey, validateApiKey, revokeApiKey, hasScope</div>
+<div class="indent2"><span class="file">segments.ts</span> — CRUD for segments table</div>
+<div class="indent2"><span class="file">verification.ts</span> — Batch verification engine</div>
+<div class="indent2"><span class="file">database.ts</span> — Browse, query, filter, stats</div>
+<div class="indent2"><span class="file">supabaseAdmin.ts</span> — Supabase service-role client</div>
+<div class="indent"><span class="dir">routes/</span></div>
+<div class="indent2"><span class="file">segments.ts, database.ts, verification.ts, ...</span> — Internal UI routes</div>
+<div class="indent2"><span class="dir">v1/</span> <span style="color:var(--green);font-size:.65rem">← NEW API LAYER</span></div>
+<div class="indent3"><span class="new">keys.ts</span> — POST/GET/DELETE (Supabase JWT auth)</div>
+<div class="indent3"><span class="new">contacts.ts</span> — GET/POST/PATCH/search (API key auth)</div>
+<div class="indent3"><span class="new">segments.ts</span> — CRUD + execute + preview (API key auth)</div>
+<div class="indent3"><span class="new">verify.ts</span> — stats, status, bulk-status, batches (API key auth)</div>
+  </div>
+
+  <!-- API Key System -->
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">API Key System</h3>
+  <div class="card" style="margin-bottom:1rem">
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+      <div class="badge badge-green">Format: rnx_live_&lt;48 hex&gt;</div>
+      <div class="badge badge-dim">Hash: SHA-256 in ClickHouse</div>
+      <div class="badge badge-dim">Shown once at creation</div>
+    </div>
+    <div class="code-block"><span class="cm">// Auth header format</span>
+Authorization: Bearer rnx_live_a1b2c3d4e5f6...
+
+<span class="cm">// Available scopes</span>
+contacts:read · contacts:write · segments:read · segments:write
+verify:read · verify:write · webhooks:write · stats:read</div>
+    <p style="font-size:.82rem;color:var(--text2)"><strong>Middleware chain:</strong> <code>requireApiKey → apiKeyRateLimiter → requireScope → handler</code></p>
+  </div>
+
+  <!-- Endpoints Table: Keys -->
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">Key Management Endpoints <span class="badge badge-dim">Supabase JWT Auth</span></h3>
+  <div class="tbl-wrap"><table>
+    <tr><th>Method</th><th>Path</th><th>Description</th><th>Body / Params</th></tr>
+    <tr><td><span class="method m-post">POST</span></td><td class="path">/api/v1/keys</td><td>Create API key</td><td class="mono" style="font-size:.72rem">{ name, scopes[], environment?, rateLimitRpm?, expiresAt? }</td></tr>
+    <tr><td><span class="method m-get">GET</span></td><td class="path">/api/v1/keys</td><td>List your keys</td><td>—</td></tr>
+    <tr><td><span class="method m-get">GET</span></td><td class="path">/api/v1/keys/all</td><td>List all (superadmin)</td><td>—</td></tr>
+    <tr><td><span class="method m-del">DEL</span></td><td class="path">/api/v1/keys/:id</td><td>Revoke key</td><td>—</td></tr>
+    <tr><td><span class="method m-get">GET</span></td><td class="path">/api/v1/keys/scopes</td><td>Available scopes</td><td>—</td></tr>
+  </table></div>
+
+  <!-- Endpoints Table: Contacts -->
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">Contact Endpoints <span class="badge badge-green">API Key Auth</span></h3>
+  <div class="tbl-wrap"><table>
+    <tr><th>Method</th><th>Path</th><th>Scope</th><th>Description</th><th style="min-width:280px">Body / Query Params</th></tr>
+    <tr class="clickable" onclick="openModal('m-contacts-list')"><td><span class="method m-get">GET</span></td><td class="path">/api/v1/contacts</td><td><span class="tag">contacts:read</span></td><td>List (paginated)</td><td class="mono" style="font-size:.7rem">?page=1&per_page=50&state=&industry=&sort_by=&sort_dir=</td></tr>
+    <tr><td><span class="method m-get">GET</span></td><td class="path">/api/v1/contacts/count</td><td><span class="tag">contacts:read</span></td><td>Count with filters</td><td class="mono" style="font-size:.7rem">?state=&industry=&verification_status=&company_domain=</td></tr>
+    <tr class="clickable" onclick="openModal('m-contacts-get')"><td><span class="method m-get">GET</span></td><td class="path">/api/v1/contacts/:id</td><td><span class="tag">contacts:read</span></td><td>Single contact (all fields)</td><td>—</td></tr>
+    <tr class="clickable" onclick="openModal('m-contacts-create')"><td><span class="method m-post">POST</span></td><td class="path">/api/v1/contacts</td><td><span class="tag">contacts:write</span></td><td>Batch upsert (max 10k)</td><td class="mono" style="font-size:.7rem">{ contacts: [{ business_email, first_name, ... }] }</td></tr>
+    <tr><td><span class="method m-patch">PATCH</span></td><td class="path">/api/v1/contacts/:id</td><td><span class="tag">contacts:write</span></td><td>Update fields</td><td class="mono" style="font-size:.7rem">{ first_name?, company_name?, ... }</td></tr>
+    <tr class="clickable" onclick="openModal('m-contacts-search')"><td><span class="method m-post">POST</span></td><td class="path">/api/v1/contacts/search</td><td><span class="tag">contacts:read</span></td><td>Advanced filter search</td><td class="mono" style="font-size:.7rem">{ filters: { key: val | [arr] | {like,gt,lt} }, page, per_page }</td></tr>
+  </table></div>
+
+  <!-- Endpoints: Segments -->
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">Segment Endpoints <span class="badge badge-green">API Key Auth</span></h3>
+  <div class="tbl-wrap"><table>
+    <tr><th>Method</th><th>Path</th><th>Scope</th><th>Description</th><th>Body</th></tr>
+    <tr><td><span class="method m-get">GET</span></td><td class="path">/api/v1/segments</td><td><span class="tag">segments:read</span></td><td>List all</td><td>—</td></tr>
+    <tr><td><span class="method m-get">GET</span></td><td class="path">/api/v1/segments/:id</td><td><span class="tag">segments:read</span></td><td>Single segment</td><td>—</td></tr>
+    <tr><td><span class="method m-post">POST</span></td><td class="path">/api/v1/segments</td><td><span class="tag">segments:write</span></td><td>Create</td><td class="mono" style="font-size:.7rem">{ name, filter_query, niche?, client_name? }</td></tr>
+    <tr><td><span class="method m-put">PUT</span></td><td class="path">/api/v1/segments/:id</td><td><span class="tag">segments:write</span></td><td>Update</td><td class="mono" style="font-size:.7rem">{ name?, filter_query?, ... }</td></tr>
+    <tr><td><span class="method m-post">POST</span></td><td class="path">/api/v1/segments/:id/execute</td><td><span class="tag">segments:write</span></td><td>Tag contacts</td><td>—</td></tr>
+    <tr><td><span class="method m-get">GET</span></td><td class="path">/api/v1/segments/:id/contacts</td><td><span class="tag">segments:read</span></td><td>Contacts in segment</td><td>—</td></tr>
+    <tr><td><span class="method m-del">DEL</span></td><td class="path">/api/v1/segments/:id</td><td><span class="tag">segments:write</span></td><td>Delete</td><td>—</td></tr>
+    <tr><td><span class="method m-post">POST</span></td><td class="path">/api/v1/segments/preview</td><td><span class="tag">segments:read</span></td><td>Preview filter</td><td class="mono" style="font-size:.7rem">{ filter_query }</td></tr>
+  </table></div>
+
+  <!-- Endpoints: Verify -->
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">Verify Endpoints <span class="badge badge-green">API Key Auth</span></h3>
+  <div class="tbl-wrap"><table>
+    <tr><th>Method</th><th>Path</th><th>Scope</th><th>Description</th><th>Body</th></tr>
+    <tr><td><span class="method m-get">GET</span></td><td class="path">/api/v1/verify/stats</td><td><span class="tag">verify:read</span></td><td>Overall verification stats</td><td>—</td></tr>
+    <tr><td><span class="method m-get">GET</span></td><td class="path">/api/v1/verify/status/:email</td><td><span class="tag">verify:read</span></td><td>Single email status</td><td>—</td></tr>
+    <tr class="clickable" onclick="openModal('m-verify-bulk')"><td><span class="method m-post">POST</span></td><td class="path">/api/v1/verify/bulk-status</td><td><span class="tag">verify:read</span></td><td>Bulk check (max 1k)</td><td class="mono" style="font-size:.7rem">{ emails: ["a@b.com", ...] }</td></tr>
+    <tr><td><span class="method m-get">GET</span></td><td class="path">/api/v1/verify/batches</td><td><span class="tag">verify:read</span></td><td>List batches</td><td>?limit=50</td></tr>
+    <tr><td><span class="method m-get">GET</span></td><td class="path">/api/v1/verify/batches/:id</td><td><span class="tag">verify:read</span></td><td>Batch detail</td><td>—</td></tr>
+  </table></div>
+
+  <!-- ClickHouse Tables -->
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">ClickHouse Tables</h3>
+  <div class="tbl-wrap"><table>
+    <tr><th>Table</th><th>Engine</th><th>Key Columns</th><th>Purpose</th></tr>
+    <tr><td class="mono">universal_person</td><td class="mono" style="font-size:.7rem">MergeTree</td><td class="mono" style="font-size:.7rem">up_id, business_email, personal_emails, company_*, job_*, _verification_status, _segment_ids</td><td>Main contact table (70+ cols)</td></tr>
+    <tr><td class="mono">segments</td><td class="mono" style="font-size:.7rem">ReplacingMergeTree</td><td class="mono" style="font-size:.7rem">id, name, filter_query, lead_count, status</td><td>Segment definitions</td></tr>
+    <tr><td class="mono">verification_batches</td><td class="mono" style="font-size:.7rem">MergeTree</td><td class="mono" style="font-size:.7rem">id, segment_id, engine, total/verified/bounced counts</td><td>Verification batch tracking</td></tr>
+    <tr><td class="mono" style="color:var(--green2)">api_keys ← NEW</td><td class="mono" style="font-size:.7rem">ReplacingMergeTree</td><td class="mono" style="font-size:.7rem">id, key_hash, key_prefix, name, owner_id, scopes[], rate_limit_rpm</td><td>API key storage (SHA-256 hash)</td></tr>
+    <tr><td class="mono">target_lists</td><td class="mono" style="font-size:.7rem">MergeTree</td><td class="mono" style="font-size:.7rem">id, segment_id, email_count, export_format</td><td>Export target lists</td></tr>
+    <tr><td class="mono">ingestion_jobs</td><td class="mono" style="font-size:.7rem">MergeTree</td><td class="mono" style="font-size:.7rem">id, source_bucket, source_key, rows_ingested, status</td><td>S3 ingestion tracking</td></tr>
+  </table></div>
+</div>
+
+<!-- ═════════════════════════════════════════════
+     TAB 3 — AXIOM (MARKETWRITER)
+     ═════════════════════════════════════════════ -->
+<div class="tab-panel" id="panel-marketx">
+  <div class="sec-label" style="color:var(--blue2)">MarketX / MarketWriter</div>
+  <div class="sec-title">The Intelligent Orchestrator</div>
+  <div class="sec-desc">Next.js monorepo with BullMQ workers. Contains the workflow engine, mastery agents, email dispatch, and AI services.</div>
+
+  <h3 style="margin:1.5rem 0 .75rem;font-size:1rem">Monorepo Structure</h3>
+  <div class="tree">
+<span class="dir">Axiom/</span> <span style="color:var(--blue2);font-size:.65rem">← MarketX codebase</span>
+<div class="indent"><span class="dir">apps/</span></div>
+<div class="indent2"><span class="dir">frontend/</span> — Next.js (writer, brain-chat, portal, superadmin, workflows)</div>
+<div class="indent3"><span class="hot">src/services/email/providers/MailWizzAdapter.ts</span></div>
+<div class="indent3"><span class="file">src/services/email/EmailDispatchService.ts</span></div>
+<div class="indent3"><span class="file">src/services/email/EmailProviderAdapter.ts</span> — Interface</div>
+<div class="indent3"><span class="file">src/app/api/webhooks/email/[provider]/route.ts</span> — Webhook handlers</div>
+<div class="indent2"><span class="dir">backend/</span> — Express API (port 3001)</div>
+<div class="indent2"><span class="dir">workers/</span> — BullMQ workers (port 3100)</div>
+<div class="indent3"><span class="hot">src/processors/workflow-execution-processor.ts</span> — 4400+ lines</div>
+<div class="indent3"><span class="file">src/processors/brain/marketing-coach-processor.ts</span></div>
+<div class="indent3"><span class="file">src/processors/analytics/self-healing.ts</span></div>
+<div class="indent3"><span class="file">src/utils/ai-service.ts</span> — OpenAI, Anthropic, Google, Perplexity</div>
+<div class="indent"><span class="dir">supabase/migrations/</span> — 39 migrations</div>
+<div class="indent"><span class="dir">database/migrations/</span> — Engine bundles, snapshots</div>
+  </div>
+
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">Key Supabase Tables (relevant to integration)</h3>
+  <div class="tbl-wrap"><table>
+    <tr><th>Table</th><th>Purpose</th><th>Connection</th></tr>
+    <tr><td class="mono">email_provider_configs</td><td>Provider configs (mailwizz, ses, sendgrid, etc.)</td><td class="badge badge-amber">→ MailWizz API</td></tr>
+    <tr><td class="mono">engine_instances</td><td>Workflow engine instances + state</td><td class="badge badge-blue">Internal</td></tr>
+    <tr><td class="mono">signal_event</td><td>Webhook events (canonical form)</td><td class="badge badge-amber">← MailWizz webhooks</td></tr>
+    <tr><td class="mono">mastery_agent_configs</td><td>AI agent learning configs</td><td class="badge badge-blue">Internal</td></tr>
+    <tr><td class="mono">ai_providers</td><td>AI API keys per provider</td><td class="badge badge-blue">Internal</td></tr>
+    <tr><td class="mono">contact_decisions</td><td>Per-contact sending decisions</td><td class="badge badge-green">← Refinery data</td></tr>
+    <tr><td class="mono">deliverability_snapshots</td><td>Domain deliverability tracking</td><td class="badge badge-green">← Refinery stats</td></tr>
+  </table></div>
+
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">Workflow Engine — Node Types That Touch External Systems</h3>
+  <div class="tbl-wrap"><table>
+    <tr><th>Node Type</th><th>What It Does</th><th>External Call</th><th>File Location</th></tr>
+    <tr><td class="mono">output-email</td><td>Send email</td><td>Currently: Resend API. Needs: MTA Adapter</td><td class="mono" style="font-size:.7rem">workflow-execution-processor.ts:~3330</td></tr>
+    <tr><td class="mono">output-webhook</td><td>POST to external URL</td><td>fetch(webhookUrl)</td><td class="mono" style="font-size:.7rem">workflow-execution-processor.ts:~3217</td></tr>
+    <tr><td class="mono">resolve-icp</td><td>Build ICP profile</td><td>Needs: Refinery /contacts/search</td><td class="mono" style="font-size:.7rem">workflow-execution-processor.ts</td></tr>
+  </table></div>
+
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">What MarketX Needs To Do (Integration Points)</h3>
+  <div class="card" style="border-color:var(--blue)">
+    <p style="font-size:.85rem;color:var(--text2);margin-bottom:1rem">These are the files in MarketX that need to call Refinery's v1 API:</p>
+    <div class="code-block"><span class="cm">// NEW FILE NEEDED in MarketX:</span>
+<span class="dir">apps/workers/src/services/refinery-client.ts</span>
+
+<span class="cm">// This client wraps all Refinery v1 calls:</span>
+<span class="kw">const</span> REFINERY_URL = process.env.<span class="fn">REFINERY_NEXUS_URL</span>  <span class="cm">// e.g. https://refinery.yourdomain.com</span>
+<span class="kw">const</span> REFINERY_KEY = process.env.<span class="fn">REFINERY_API_KEY</span>  <span class="cm">// e.g. rnx_live_a1b2c3...</span>
+
+<span class="cm">// Methods:</span>
+refineryClient.<span class="fn">searchContacts</span>(filters, page, perPage)  <span class="cm">→ POST /api/v1/contacts/search</span>
+refineryClient.<span class="fn">getContact</span>(id)                        <span class="cm">→ GET  /api/v1/contacts/:id</span>
+refineryClient.<span class="fn">bulkVerifyStatus</span>(emails[])             <span class="cm">→ POST /api/v1/verify/bulk-status</span>
+refineryClient.<span class="fn">getVerifyStats</span>()                      <span class="cm">→ GET  /api/v1/verify/stats</span>
+refineryClient.<span class="fn">listSegments</span>()                        <span class="cm">→ GET  /api/v1/segments</span>
+refineryClient.<span class="fn">getSegmentContacts</span>(id)                <span class="cm">→ GET  /api/v1/segments/:id/contacts</span></div>
+  </div>
+</div>
+
+<!-- ═════════════════════════════════════════════
+     TAB 4 — MAILWIZZ
+     ═════════════════════════════════════════════ -->
+<div class="tab-panel" id="panel-mailwizz">
+  <div class="sec-label" style="color:var(--amber2)">MailWizz</div>
+  <div class="sec-title">The Dumb Delivery Pipe</div>
+  <div class="sec-desc">Self-hosted PHP email marketing platform. It sends emails via SMTP and reports engagement back via webhooks. Zero intelligence — pure plumbing.</div>
+
+  <div class="pc-grid">
+    <div class="pros">
+      <h4>✓ PROS</h4>
+      <ul>
+        <li>Self-hosted — full control, no vendor lock-in</li>
+        <li>Handles SMTP relay, bounce processing, throttling</li>
+        <li>Free (open source + one-time license)</li>
+        <li>Has a REST API (lists, subscribers, campaigns)</li>
+        <li>Built-in bounce/complaint handling</li>
+        <li>Campaign templates and scheduling</li>
+        <li>Already set up and working</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>✗ CONS</h4>
+      <ul>
+        <li>PHP — hard to customize, slow development</li>
+        <li>Limited API (clunky pagination, no batch ops)</li>
+        <li>No AI/ML integration capability</li>
+        <li>Clunky admin UI</li>
+        <li>Community shrinking</li>
+        <li>No real-time event streaming</li>
+        <li>Webhook format is non-standard</li>
+        <li>Can't handle advanced segmentation logic</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">MTA Adapter Interface (Phase 3 — To Build)</h3>
+  <div class="code-block"><span class="cm">// Abstract interface — MailWizz is first implementation</span>
+<span class="cm">// When you ditch MailWizz, swap one file. Nothing else changes.</span>
+
+<span class="kw">interface</span> <span class="fn">MTAAdapter</span> {
+  <span class="fn">createList</span>(name: string, defaults: ListDefaults): Promise&lt;{ listId: string }&gt;
+  <span class="fn">addSubscribers</span>(listId: string, contacts: Contact[]): Promise&lt;{ added: number }&gt;
+  <span class="fn">sendCampaign</span>(opts: CampaignOpts): Promise&lt;{ campaignId: string }&gt;
+  <span class="fn">getCampaignStats</span>(campaignId: string): Promise&lt;CampaignStats&gt;
+  <span class="fn">pauseCampaign</span>(campaignId: string): Promise&lt;void&gt;
+  <span class="fn">getDeliveryStatus</span>(campaignId: string): Promise&lt;DeliveryStatus[]&gt;
+}
+
+<span class="cm">// File: refinery-backend/src/adapters/mta/MTAAdapter.ts (interface)</span>
+<span class="cm">// File: refinery-backend/src/adapters/mta/MailWizzAdapter.ts (implementation)</span>
+<span class="cm">// File: refinery-backend/src/adapters/mta/index.ts (factory)</span></div>
+
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">MailWizz Webhook Format</h3>
+  <div class="card">
+    <p style="font-size:.85rem;color:var(--text2);margin-bottom:1rem">MailWizz POSTs these events. Refinery's Phase 2 webhook receivers will normalize and store them.</p>
+    <div class="code-block"><span class="cm">// MailWizz → Refinery POST /api/v1/webhooks/bounce</span>
+{
+  <span class="str">"event"</span>: <span class="str">"bounce"</span>,
+  <span class="str">"subscriber_uid"</span>: <span class="str">"abc123"</span>,
+  <span class="str">"email"</span>: <span class="str">"user@example.com"</span>,
+  <span class="str">"campaign_uid"</span>: <span class="str">"camp_xyz"</span>,
+  <span class="str">"bounce_type"</span>: <span class="str">"hard"</span>,
+  <span class="str">"timestamp"</span>: <span class="str">"2026-03-19T10:00:00Z"</span>
+}
+
+<span class="cm">// MailWizz → Refinery POST /api/v1/webhooks/open</span>
+{
+  <span class="str">"event"</span>: <span class="str">"open"</span>,
+  <span class="str">"email"</span>: <span class="str">"user@example.com"</span>,
+  <span class="str">"campaign_uid"</span>: <span class="str">"camp_xyz"</span>,
+  <span class="str">"ip"</span>: <span class="str">"1.2.3.4"</span>,
+  <span class="str">"user_agent"</span>: <span class="str">"..."</span>,
+  <span class="str">"timestamp"</span>: <span class="str">"2026-03-19T10:05:00Z"</span>
+}</div>
+  </div>
+
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">Existing MarketX MailWizz Adapter</h3>
+  <div class="card">
+    <p style="font-size:.82rem;color:var(--text2);margin-bottom:.5rem"><code>apps/frontend/src/services/email/providers/MailWizzAdapter.ts</code></p>
+    <p style="font-size:.82rem;color:var(--text3)">Already exists in MarketX with basic send capability. Needs to be refactored to use the new MTAAdapter interface and route through Refinery instead of direct MailWizz API calls.</p>
+  </div>
+</div>
+
+<!-- ═════════════════════════════════════════════
+     TAB 5 — CONNECTIONS
+     ═════════════════════════════════════════════ -->
+<div class="tab-panel" id="panel-connections">
+  <div class="sec-label" style="color:var(--blue2)">Wiring</div>
+  <div class="sec-title">File-to-File Connections</div>
+  <div class="sec-desc">Exactly which file in which system talks to which endpoint. This is the wiring diagram you build against.</div>
+
+  <h3 style="margin:1.5rem 0 .75rem;font-size:1rem">① MarketX → Refinery <span class="badge badge-green">v1 API</span></h3>
+  <div class="conn-row clickable" onclick="openModal('m-conn-search')">
+    <span class="conn-from" style="background:var(--blue-bg);color:var(--blue2)">workflow-execution-processor.ts</span>
+    <span class="conn-arrow">→</span>
+    <span class="conn-via">POST</span>
+    <span class="conn-to" style="background:var(--green-bg);color:var(--green2)">/api/v1/contacts/search</span>
+    <span class="conn-label">Pick audience by ICP filters</span>
+  </div>
+  <div class="conn-row">
+    <span class="conn-from" style="background:var(--blue-bg);color:var(--blue2)">workflow-execution-processor.ts</span>
+    <span class="conn-arrow">→</span>
+    <span class="conn-via">POST</span>
+    <span class="conn-to" style="background:var(--green-bg);color:var(--green2)">/api/v1/verify/bulk-status</span>
+    <span class="conn-label">Check emails before sending</span>
+  </div>
+  <div class="conn-row">
+    <span class="conn-from" style="background:var(--blue-bg);color:var(--blue2)">self-healing.ts</span>
+    <span class="conn-arrow">→</span>
+    <span class="conn-via">GET</span>
+    <span class="conn-to" style="background:var(--green-bg);color:var(--green2)">/api/v1/verify/stats</span>
+    <span class="conn-label">Read verification health</span>
+  </div>
+  <div class="conn-row">
+    <span class="conn-from" style="background:var(--blue-bg);color:var(--blue2)">marketing-coach-processor.ts</span>
+    <span class="conn-arrow">→</span>
+    <span class="conn-via">GET</span>
+    <span class="conn-to" style="background:var(--green-bg);color:var(--green2)">/api/v1/segments</span>
+    <span class="conn-label">List available segments</span>
+  </div>
+  <div class="conn-row">
+    <span class="conn-from" style="background:var(--blue-bg);color:var(--blue2)">refinery-client.ts (new)</span>
+    <span class="conn-arrow">→</span>
+    <span class="conn-via">GET</span>
+    <span class="conn-to" style="background:var(--green-bg);color:var(--green2)">/api/v1/stats/*</span>
+    <span class="conn-label badge badge-dim">Phase 4</span>
+  </div>
+
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">② MarketX → MailWizz <span class="badge badge-amber">MTA Adapter</span></h3>
+  <div class="conn-row">
+    <span class="conn-from" style="background:var(--blue-bg);color:var(--blue2)">MailWizzAdapter.ts</span>
+    <span class="conn-arrow">→</span>
+    <span class="conn-via">POST</span>
+    <span class="conn-to" style="background:var(--amber-bg);color:var(--amber2)">MailWizz API /lists</span>
+    <span class="conn-label">Create subscriber list</span>
+  </div>
+  <div class="conn-row">
+    <span class="conn-from" style="background:var(--blue-bg);color:var(--blue2)">MailWizzAdapter.ts</span>
+    <span class="conn-arrow">→</span>
+    <span class="conn-via">POST</span>
+    <span class="conn-to" style="background:var(--amber-bg);color:var(--amber2)">MailWizz API /campaigns</span>
+    <span class="conn-label">Create + send campaign</span>
+  </div>
+
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">③ MailWizz → Refinery <span class="badge badge-red">Webhooks (Phase 2)</span></h3>
+  <div class="conn-row">
+    <span class="conn-from" style="background:var(--amber-bg);color:var(--amber2)">MailWizz Webhook</span>
+    <span class="conn-arrow">→</span>
+    <span class="conn-via">POST</span>
+    <span class="conn-to" style="background:var(--green-bg);color:var(--green2)">/api/v1/webhooks/bounce</span>
+    <span class="conn-label badge badge-dim">Phase 2</span>
+  </div>
+  <div class="conn-row">
+    <span class="conn-from" style="background:var(--amber-bg);color:var(--amber2)">MailWizz Webhook</span>
+    <span class="conn-arrow">→</span>
+    <span class="conn-via">POST</span>
+    <span class="conn-to" style="background:var(--green-bg);color:var(--green2)">/api/v1/webhooks/open, /click, /reply</span>
+    <span class="conn-label badge badge-dim">Phase 2</span>
+  </div>
+
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">④ Refinery → MarketX <span class="badge badge-green">Stats Feed</span></h3>
+  <div class="conn-row">
+    <span class="conn-from" style="background:var(--green-bg);color:var(--green2)">/api/v1/stats/deliverability</span>
+    <span class="conn-arrow">←</span>
+    <span class="conn-via">GET</span>
+    <span class="conn-to" style="background:var(--blue-bg);color:var(--blue2)">self-healing.ts</span>
+    <span class="conn-label badge badge-dim">Phase 4</span>
+  </div>
+  <div class="conn-row">
+    <span class="conn-from" style="background:var(--green-bg);color:var(--green2)">/api/v1/stats/engagement</span>
+    <span class="conn-arrow">←</span>
+    <span class="conn-via">GET</span>
+    <span class="conn-to" style="background:var(--blue-bg);color:var(--blue2)">marketing-coach-processor.ts</span>
+    <span class="conn-label badge badge-dim">Phase 4</span>
+  </div>
+
+  <h3 style="margin:2rem 0 .75rem;font-size:1rem">Environment Variables Needed</h3>
+  <div class="code-block"><span class="cm"># In MarketX workers/.env</span>
+REFINERY_NEXUS_URL=<span class="str">https://refinery.yourdomain.com</span>
+REFINERY_API_KEY=<span class="str">rnx_live_xxxxxxxxxxxxxxxxxxxxxxxx</span>
+
+<span class="cm"># In Refinery .env (already exists)</span>
+CLICKHOUSE_HOST=<span class="str">http://localhost:8123</span>
+SUPABASE_SECRET_KEY=<span class="str">your-service-role-key</span>
+
+<span class="cm"># MailWizz webhook target (configure in MailWizz admin)</span>
+WEBHOOK_URL=<span class="str">https://refinery.yourdomain.com/api/v1/webhooks</span></div>
+</div>
+
+<!-- ═════════════════════════════════════════════
+     TAB 6 — THE LOOP
+     ═════════════════════════════════════════════ -->
+<div class="tab-panel" id="panel-loop">
+  <div class="sec-label" style="color:var(--purple2)">The Intelligence Engine</div>
+  <div class="sec-title">The Self-Healing Loop</div>
+  <div class="sec-desc">Step by step, with exact API calls, request bodies, and which file makes each call.</div>
+
+  <div style="display:flex;flex-direction:column;gap:1.5rem;margin-top:1rem">
+
+    <div class="card" style="border-left:3px solid var(--blue)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+        <div class="badge badge-blue">Step 1 — Pick Contacts</div>
+        <span class="tag">MarketX → Refinery</span>
+      </div>
+      <p style="font-size:.85rem;color:var(--text2);margin-bottom:.75rem">MarketWriter's workflow engine queries Refinery to build the perfect audience based on ICP filters.</p>
+      <div class="code-block"><span class="cm">// MarketX: workflow-execution-processor.ts → refinery-client.ts</span>
+<span class="kw">POST</span> <span class="fn">/api/v1/contacts/search</span>
+Authorization: Bearer rnx_live_xxx
+
+{
+  <span class="str">"filters"</span>: {
+    <span class="str">"primary_industry"</span>: <span class="str">"SaaS"</span>,
+    <span class="str">"seniority_level"</span>: [<span class="str">"VP"</span>, <span class="str">"Director"</span>, <span class="str">"C-Level"</span>],
+    <span class="str">"company_employee_count"</span>: { <span class="str">"gt"</span>: <span class="str">"50"</span> },
+    <span class="str">"_verification_status"</span>: { <span class="str">"not"</span>: <span class="str">"bounced"</span> }
+  },
+  <span class="str">"per_page"</span>: 500,
+  <span class="str">"sort_by"</span>: <span class="str">"_ingested_at"</span>
+}
+
+<span class="cm">// Response:</span>
+{ <span class="str">"data"</span>: [{ up_id, business_email, company_name, ... }], <span class="str">"meta"</span>: { total: 12450 } }</div>
+    </div>
+
+    <div class="card" style="border-left:3px solid var(--green)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+        <div class="badge badge-green">Step 2 — Verify Emails</div>
+        <span class="tag">MarketX → Refinery</span>
+      </div>
+      <p style="font-size:.85rem;color:var(--text2);margin-bottom:.75rem">Before sending, check verification status. Remove bounced/risky emails.</p>
+      <div class="code-block"><span class="kw">POST</span> <span class="fn">/api/v1/verify/bulk-status</span>
+Authorization: Bearer rnx_live_xxx
+
+{ <span class="str">"emails"</span>: [<span class="str">"ceo@acme.com"</span>, <span class="str">"vp@startup.io"</span>, ...] }
+
+<span class="cm">// Response:</span>
+{
+  <span class="str">"data"</span>: [
+    { <span class="str">"email"</span>: <span class="str">"ceo@acme.com"</span>, <span class="str">"found"</span>: true, <span class="str">"verification_status"</span>: <span class="str">"safe"</span> },
+    { <span class="str">"email"</span>: <span class="str">"vp@startup.io"</span>, <span class="str">"found"</span>: true, <span class="str">"verification_status"</span>: <span class="str">"rejected"</span> }
+  ],
+  <span class="str">"meta"</span>: { <span class="str">"requested"</span>: 500, <span class="str">"found"</span>: 487 }
+}</div>
+    </div>
+
+    <div class="card" style="border-left:3px solid var(--amber)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+        <div class="badge badge-amber">Step 3 — Send via MTA</div>
+        <span class="tag">MarketX → MailWizz</span>
+      </div>
+      <p style="font-size:.85rem;color:var(--text2);margin-bottom:.75rem">MarketWriter pushes verified contacts through the MTA Adapter to MailWizz. MailWizz fires via SMTP.</p>
+      <div class="code-block"><span class="cm">// MarketX: MailWizzAdapter.ts (via MTAAdapter interface)</span>
+mtaAdapter.<span class="fn">createList</span>(<span class="str">"Campaign-2026-03-19"</span>)
+mtaAdapter.<span class="fn">addSubscribers</span>(listId, verifiedContacts)
+mtaAdapter.<span class="fn">sendCampaign</span>({ listId, subject, htmlBody, fromEmail })</div>
+    </div>
+
+    <div class="card" style="border-left:3px solid var(--amber)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+        <div class="badge badge-amber">Step 4 — Webhooks Flow Back</div>
+        <span class="tag">MailWizz → Refinery</span>
+      </div>
+      <p style="font-size:.85rem;color:var(--text2);margin-bottom:.75rem">MailWizz POSTs engagement events to Refinery. Stored in ClickHouse <code>engagement_events</code> table.</p>
+      <div class="code-block"><span class="cm">// MailWizz → Refinery (Phase 2)</span>
+<span class="kw">POST</span> <span class="fn">/api/v1/webhooks/bounce</span>   { email, bounce_type, campaign_uid }
+<span class="kw">POST</span> <span class="fn">/api/v1/webhooks/open</span>     { email, campaign_uid, ip, timestamp }
+<span class="kw">POST</span> <span class="fn">/api/v1/webhooks/click</span>    { email, campaign_uid, url, timestamp }
+<span class="kw">POST</span> <span class="fn">/api/v1/webhooks/reply</span>    { email, campaign_uid, timestamp }</div>
+    </div>
+
+    <div class="card" style="border-left:3px solid var(--green)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+        <div class="badge badge-green">Step 5 — Brain Reads Stats</div>
+        <span class="tag">MarketX ← Refinery</span>
+      </div>
+      <p style="font-size:.85rem;color:var(--text2);margin-bottom:.75rem">MarketWriter queries aggregated intelligence to measure what worked and what didn't.</p>
+      <div class="code-block"><span class="cm">// MarketX: self-healing.ts → refinery-client.ts (Phase 4)</span>
+<span class="kw">GET</span> <span class="fn">/api/v1/stats/deliverability</span>
+<span class="cm">// Response: { bounce_rate, inbox_rate, complaint_rate, by_domain: {...} }</span>
+
+<span class="kw">GET</span> <span class="fn">/api/v1/stats/engagement</span>
+<span class="cm">// Response: { open_rate, click_rate, reply_rate, by_segment: {...} }</span></div>
+    </div>
+
+    <div class="card" style="border-left:3px solid var(--purple)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+        <div class="badge badge-purple">Step 6 — Adjust & Repeat</div>
+        <span class="tag">MarketX internal</span>
+      </div>
+      <p style="font-size:.85rem;color:var(--text2);margin-bottom:.75rem">AI updates ICP scores, timing windows, content strategy. Mastery agents learn from results. The loop restarts, smarter.</p>
+      <div class="code-block"><span class="cm">// MarketX internal: mastery agents + marketing coach</span>
+<span class="cm">// Files: marketing-coach-processor.ts, self-healing.ts</span>
+<span class="cm">// Tables: mastery_agent_configs, brain_decisions, contact_decisions</span>
+<span class="cm">// → Updates ICP weights, sending time preferences, subject line patterns</span>
+<span class="cm">// → Next iteration uses refined filters in Step 1</span></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═════════════════════════════════════════════
+     TAB 7 — BUILD STATUS
+     ═════════════════════════════════════════════ -->
+<div class="tab-panel" id="panel-status">
+  <div class="sec-label" style="color:var(--green2)">Progress</div>
+  <div class="sec-title">Build Status & TODOs</div>
+  <div class="sec-desc">What's done, what's in progress, what's next. Check items off as you build.</div>
+
+  <div style="display:flex;flex-direction:column;gap:1.5rem">
+    <!-- Phase 1 -->
+    <div class="card" style="border-left:3px solid var(--green)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3 style="font-size:1.1rem">Phase 1: API Key Auth + v1 Endpoints</h3>
+        <span class="badge badge-green">✓ DONE</span>
+      </div>
+      <div class="tbl-wrap"><table>
+        <tr><th>File</th><th>Status</th><th>What</th></tr>
+        <tr><td class="mono" style="font-size:.75rem">src/db/init.ts</td><td><span class="badge badge-green" style="font-size:.6rem">✓</span></td><td>api_keys table added</td></tr>
+        <tr><td class="mono" style="font-size:.75rem">src/services/apiKeys.ts</td><td><span class="badge badge-green" style="font-size:.6rem">✓</span></td><td>Key generation, SHA-256 hash, validation, revoke</td></tr>
+        <tr><td class="mono" style="font-size:.75rem">src/middleware/apiKeyAuth.ts</td><td><span class="badge badge-green" style="font-size:.6rem">✓</span></td><td>requireApiKey + requireScope()</td></tr>
+        <tr><td class="mono" style="font-size:.75rem">src/middleware/rateLimiter.ts</td><td><span class="badge badge-green" style="font-size:.6rem">✓</span></td><td>Per-key rate limiting (express-rate-limit)</td></tr>
+        <tr><td class="mono" style="font-size:.75rem">src/routes/v1/keys.ts</td><td><span class="badge badge-green" style="font-size:.6rem">✓</span></td><td>Key management (Supabase JWT)</td></tr>
+        <tr><td class="mono" style="font-size:.75rem">src/routes/v1/contacts.ts</td><td><span class="badge badge-green" style="font-size:.6rem">✓</span></td><td>6 endpoints (list, get, create, update, search, count)</td></tr>
+        <tr><td class="mono" style="font-size:.75rem">src/routes/v1/segments.ts</td><td><span class="badge badge-green" style="font-size:.6rem">✓</span></td><td>8 endpoints (CRUD, execute, preview, contacts)</td></tr>
+        <tr><td class="mono" style="font-size:.75rem">src/routes/v1/verify.ts</td><td><span class="badge badge-green" style="font-size:.6rem">✓</span></td><td>5 endpoints (stats, status, bulk, batches)</td></tr>
+        <tr><td class="mono" style="font-size:.75rem">src/index.ts</td><td><span class="badge badge-green" style="font-size:.6rem">✓</span></td><td>v1 routes mounted with auth → rate-limit chain</td></tr>
+      </table></div>
+    </div>
+
+    <!-- Phase 2 -->
+    <div class="card" style="border-left:3px solid var(--blue)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3 style="font-size:1.1rem">Phase 2: Webhook Receivers</h3>
+        <span class="badge badge-blue">↻ NEXT</span>
+      </div>
+      <div class="tbl-wrap"><table>
+        <tr><th>TODO</th><th>Where</th><th>Details</th></tr>
+        <tr><td>Create engagement_events table</td><td class="mono" style="font-size:.75rem">src/db/init.ts</td><td>ClickHouse MergeTree — event_type, email, campaign_id, ip, timestamp, metadata</td></tr>
+        <tr><td>Webhook receiver routes</td><td class="mono" style="font-size:.75rem">src/routes/v1/webhooks.ts</td><td>POST /bounce, /open, /click, /reply — validate + insert into engagement_events</td></tr>
+        <tr><td>Webhook auth (optional)</td><td class="mono" style="font-size:.75rem">src/middleware/webhookAuth.ts</td><td>HMAC signature verification or shared secret header</td></tr>
+        <tr><td>Configure MailWizz webhooks</td><td class="mono" style="font-size:.75rem">MailWizz Admin Panel</td><td>Point to Refinery webhook URLs</td></tr>
+      </table></div>
+    </div>
+
+    <!-- Phase 3 -->
+    <div class="card" style="border-left:3px solid var(--text3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3 style="font-size:1.1rem">Phase 3: MTA Adapter Interface</h3>
+        <span class="badge badge-dim">○ PLANNED</span>
+      </div>
+      <div class="tbl-wrap"><table>
+        <tr><th>TODO</th><th>Where</th><th>Details</th></tr>
+        <tr><td>Define MTAAdapter interface</td><td class="mono" style="font-size:.75rem">src/adapters/mta/MTAAdapter.ts</td><td>createList, addSubscribers, sendCampaign, getCampaignStats, pauseCampaign</td></tr>
+        <tr><td>MailWizz implementation</td><td class="mono" style="font-size:.75rem">src/adapters/mta/MailWizzAdapter.ts</td><td>Wraps MailWizz REST API into adapter interface</td></tr>
+        <tr><td>Adapter factory</td><td class="mono" style="font-size:.75rem">src/adapters/mta/index.ts</td><td>getMTAAdapter() — returns current implementation</td></tr>
+        <tr><td>Update MarketX email dispatch</td><td class="mono" style="font-size:.75rem">MarketX: MailWizzAdapter.ts</td><td>Route through Refinery's adapter instead of direct MailWizz API</td></tr>
+      </table></div>
+    </div>
+
+    <!-- Phase 4 -->
+    <div class="card" style="border-left:3px solid var(--text3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3 style="font-size:1.1rem">Phase 4: Stats & Intelligence</h3>
+        <span class="badge badge-dim">○ PLANNED</span>
+      </div>
+      <div class="tbl-wrap"><table>
+        <tr><th>TODO</th><th>Where</th><th>Details</th></tr>
+        <tr><td>Deliverability stats endpoint</td><td class="mono" style="font-size:.75rem">src/routes/v1/stats.ts</td><td>GET /stats/deliverability — aggregate from engagement_events</td></tr>
+        <tr><td>Engagement stats endpoint</td><td class="mono" style="font-size:.75rem">src/routes/v1/stats.ts</td><td>GET /stats/engagement — open/click/reply rates by segment</td></tr>
+        <tr><td>MarketX refinery-client.ts</td><td class="mono" style="font-size:.75rem">MarketX: workers/src/services/</td><td>New file: wraps all Refinery v1 calls with REFINERY_API_KEY</td></tr>
+        <tr><td>Wire self-healing loop</td><td class="mono" style="font-size:.75rem">MarketX: self-healing.ts</td><td>Call stats endpoints, feed into mastery agents</td></tr>
+      </table></div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- ═══════════════════════════════════════
+     MODALS
+     ═══════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modal-content">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ─── TABS ───
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+});
+
+// ─── MODALS ───
+const modals = {
+  'm-oraya': `<h3>🧠 Oraya — The AI OS</h3><p class="modal-sub">Builder, not runtime plumbing</p><hr>
+<p style="margin-bottom:1rem;color:var(--text2);font-size:.9rem">Oraya is the AI operating system that <strong>built</strong> Refinery Nexus. It's a Tauri + Rust desktop app with a team of AI agents that can design, code, and deploy infrastructure.</p>
+<p style="margin-bottom:1rem;color:var(--text2);font-size:.9rem"><strong>It is NOT in the runtime data loop.</strong> Once Refinery is built and running, Oraya steps back. It may come back to add features, fix bugs, or build Phase 2-4.</p>
+<h4 style="margin:1.5rem 0 .5rem;font-size:.9rem">Tech Stack</h4>
+<div><span class="tag">Tauri 2.x</span><span class="tag">Rust backend</span><span class="tag">SQLite (local)</span><span class="tag">React frontend</span><span class="tag">Multi-agent system</span><span class="tag">Tool execution</span></div>
+<h4 style="margin:1.5rem 0 .5rem;font-size:.9rem">Codebase Location</h4>
+<code style="font-size:.8rem;color:var(--text3)">/Users/anweshrath/Documents/Cursor/Neeva Pilot/Oraya</code>`,
+
+  'm-refinery': `<h3>⚗️ Refinery Nexus — Data Brain</h3><p class="modal-sub">refinery-backend/ · axiom-data-hub/</p><hr>
+<p style="margin-bottom:1rem;color:var(--text2);font-size:.9rem">Express 5 + TypeScript backend serving REST APIs over ClickHouse. Stores millions of contacts with 70+ columns per record. Verifies emails, manages segments, and serves clean v1 APIs.</p>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Auth Systems</h4>
+<p style="font-size:.85rem;color:var(--text2)"><strong>Internal UI:</strong> Supabase JWT (browser sessions)<br><strong>v1 API:</strong> API Key auth (<code>rnx_live_xxx</code>) — SHA-256 hashed in ClickHouse, scoped permissions, per-key rate limiting</p>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Deployment</h4>
+<p style="font-size:.85rem;color:var(--text2)">Ubuntu 24.04 + PM2 (<code>refinery-api</code>). Nginx reverse proxy: <code>/api</code> → backend, <code>/play</code> → ClickHouse.</p>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Codebase</h4>
+<code style="font-size:.8rem;color:var(--text3)">/Users/anweshrath/Documents/Cursor/Refinery Nexus</code>`,
+
+  'm-axiom': `<h3>🎯 MarketX (MarketWriter)</h3><p class="modal-sub">Monorepo: frontend + backend + workers</p><hr>
+<p style="margin-bottom:1rem;color:var(--text2);font-size:.9rem">Next.js monorepo with BullMQ workers. The intelligent orchestrator that decides who gets what email when.</p>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Key Files for Integration</h4>
+<div class="code-block" style="font-size:.75rem"><span class="hot">apps/workers/src/processors/workflow-execution-processor.ts</span> — 4400 lines, main engine
+<span class="hot">apps/frontend/src/services/email/providers/MailWizzAdapter.ts</span> — Current MTA adapter
+<span class="file">apps/frontend/src/app/api/webhooks/email/[provider]/route.ts</span> — Webhook handler
+<span class="file">apps/workers/src/processors/analytics/self-healing.ts</span> — Self-healing logic
+<span class="file">apps/workers/src/processors/brain/marketing-coach-processor.ts</span> — AI coach</div>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">What Needs Building in MarketX</h4>
+<p style="font-size:.85rem;color:var(--text2)">A <code>refinery-client.ts</code> service that wraps all Refinery v1 API calls using <code>REFINERY_NEXUS_URL</code> + <code>REFINERY_API_KEY</code> env vars.</p>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Codebase</h4>
+<code style="font-size:.8rem;color:var(--text3)">/Users/anweshrath/Documents/Tommy-Fran/Axiom</code>`,
+
+  'm-mailwizz': `<h3>📬 MailWizz — The Messenger</h3><p class="modal-sub">Self-hosted PHP · Replaceable</p><hr>
+<p style="margin-bottom:1rem;color:var(--text2);font-size:.9rem">The dumb delivery pipe. It sends emails via SMTP and reports engagement back via webhooks. No intelligence, no strategy — just raw delivery.</p>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Why It's Temporary</h4>
+<p style="font-size:.85rem;color:var(--text2)">The MTA Adapter interface (Phase 3) makes MailWizz swappable. When you upgrade to a better MTA (Amazon SES, Postal, custom SMTP), you swap one adapter file. Nothing else in the system changes.</p>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">MailWizz REST API (used by adapter)</h4>
+<div class="code-block" style="font-size:.75rem">POST /api/lists                    — Create subscriber list
+POST /api/lists/{uid}/subscribers  — Add subscribers
+POST /api/campaigns                — Create campaign
+GET  /api/campaigns/{uid}          — Campaign status
+POST /api/campaigns/{uid}/pause    — Pause campaign</div>`,
+
+  'm-contacts-list': `<h3>GET /api/v1/contacts</h3><p class="modal-sub">List contacts with pagination and filtering</p><hr>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Request</h4>
+<div class="code-block" style="font-size:.75rem"><span class="kw">GET</span> /api/v1/contacts?page=1&per_page=50&state=California&industry=SaaS&sort_by=_ingested_at&sort_dir=DESC
+Authorization: Bearer rnx_live_xxx</div>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Response (200)</h4>
+<div class="code-block" style="font-size:.75rem">{
+  <span class="str">"data"</span>: [
+    {
+      <span class="str">"up_id"</span>: <span class="str">"abc123"</span>,
+      <span class="str">"first_name"</span>: <span class="str">"John"</span>,
+      <span class="str">"last_name"</span>: <span class="str">"Smith"</span>,
+      <span class="str">"business_email"</span>: <span class="str">"john@acme.com"</span>,
+      <span class="str">"company_name"</span>: <span class="str">"Acme Corp"</span>,
+      <span class="str">"job_title_normalized"</span>: <span class="str">"VP Engineering"</span>,
+      <span class="str">"_verification_status"</span>: <span class="str">"safe"</span>,
+      ...
+    }
+  ],
+  <span class="str">"meta"</span>: { <span class="str">"total"</span>: 125000, <span class="str">"page"</span>: 1, <span class="str">"per_page"</span>: 50, <span class="str">"total_pages"</span>: 2500 }
+}</div>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Available Filter Params</h4>
+<div><span class="tag">state</span><span class="tag">industry</span><span class="tag">verification_status</span><span class="tag">company_domain</span></div>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Sortable Columns</h4>
+<div style="font-size:.75rem;color:var(--text3);font-family:var(--mono)">up_id, first_name, last_name, business_email, company_name, job_title_normalized, seniority_level, primary_industry, personal_state, _verification_status, _ingested_at</div>`,
+
+  'm-contacts-get': `<h3>GET /api/v1/contacts/:id</h3><p class="modal-sub">Returns ALL columns for a single contact</p><hr>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Response includes 70+ fields</h4>
+<p style="font-size:.85rem;color:var(--text2)">Unlike the list endpoint (which returns safe columns only), this returns the full <code>universal_person</code> record including personal addresses, work history, education, programmatic emails, etc.</p>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Key fields for MarketWriter</h4>
+<div><span class="tag">business_email</span><span class="tag">personal_emails</span><span class="tag">company_name</span><span class="tag">company_domain</span><span class="tag">job_title_normalized</span><span class="tag">seniority_level</span><span class="tag">department</span><span class="tag">primary_industry</span><span class="tag">company_revenue</span><span class="tag">company_employee_count</span><span class="tag">_verification_status</span><span class="tag">_verified_at</span><span class="tag">_segment_ids</span></div>`,
+
+  'm-contacts-create': `<h3>POST /api/v1/contacts</h3><p class="modal-sub">Batch upsert — max 10,000 per request</p><hr>
+<div class="code-block" style="font-size:.75rem"><span class="kw">POST</span> /api/v1/contacts
+Authorization: Bearer rnx_live_xxx
+Content-Type: application/json
+
+{
+  <span class="str">"contacts"</span>: [
+    {
+      <span class="str">"business_email"</span>: <span class="str">"new@company.com"</span>,
+      <span class="str">"first_name"</span>: <span class="str">"Jane"</span>,
+      <span class="str">"last_name"</span>: <span class="str">"Doe"</span>,
+      <span class="str">"company_name"</span>: <span class="str">"NewCo"</span>,
+      <span class="str">"primary_industry"</span>: <span class="str">"FinTech"</span>
+    },
+    ...
+  ]
+}
+
+<span class="cm">// Response (201):</span>
+{ <span class="str">"data"</span>: { <span class="str">"inserted"</span>: 5000, <span class="str">"ids"</span>: [<span class="str">"id1"</span>, <span class="str">"id2"</span>, ...] } }</div>
+<p style="font-size:.82rem;color:var(--text3);margin-top:.75rem">If <code>up_id</code> not provided, auto-generated via nanoid(16). MergeTree engine doesn't deduplicate — provide up_id for upsert behavior.</p>`,
+
+  'm-contacts-search': `<h3>POST /api/v1/contacts/search</h3><p class="modal-sub">Advanced filter search — the main query endpoint for MarketWriter</p><hr>
+<div class="code-block" style="font-size:.75rem"><span class="kw">POST</span> /api/v1/contacts/search
+Authorization: Bearer rnx_live_xxx
+
+{
+  <span class="str">"filters"</span>: {
+    <span class="str">"primary_industry"</span>: <span class="str">"SaaS"</span>,                           <span class="cm">// exact match</span>
+    <span class="str">"seniority_level"</span>: [<span class="str">"VP"</span>, <span class="str">"Director"</span>, <span class="str">"C-Level"</span>],     <span class="cm">// IN (any of)</span>
+    <span class="str">"company_name"</span>: { <span class="str">"like"</span>: <span class="str">"Tech"</span> },                   <span class="cm">// ILIKE %Tech%</span>
+    <span class="str">"company_employee_count"</span>: { <span class="str">"gt"</span>: <span class="str">"50"</span> },             <span class="cm">// greater than</span>
+    <span class="str">"_verification_status"</span>: { <span class="str">"not"</span>: <span class="str">"bounced"</span> },          <span class="cm">// not equal</span>
+    <span class="str">"business_email"</span>: { <span class="str">"is_null"</span>: false }                 <span class="cm">// IS NOT NULL</span>
+  },
+  <span class="str">"page"</span>: 1,
+  <span class="str">"per_page"</span>: 200,
+  <span class="str">"sort_by"</span>: <span class="str">"_ingested_at"</span>,
+  <span class="str">"sort_dir"</span>: <span class="str">"DESC"</span>
+}
+
+<span class="cm">// Filter operators: exact match, array IN, like, gt, lt, not, is_null</span></div>`,
+
+  'm-verify-bulk': `<h3>POST /api/v1/verify/bulk-status</h3><p class="modal-sub">Check verification status of up to 1,000 emails at once</p><hr>
+<div class="code-block" style="font-size:.75rem"><span class="kw">POST</span> /api/v1/verify/bulk-status
+Authorization: Bearer rnx_live_xxx
+
+{ <span class="str">"emails"</span>: [<span class="str">"ceo@acme.com"</span>, <span class="str">"fake@test.xyz"</span>, <span class="str">"vp@startup.io"</span>] }
+
+<span class="cm">// Response:</span>
+{
+  <span class="str">"data"</span>: [
+    { <span class="str">"email"</span>: <span class="str">"ceo@acme.com"</span>, <span class="str">"found"</span>: true, <span class="str">"validation_status"</span>: <span class="str">"valid"</span>, <span class="str">"verification_status"</span>: <span class="str">"safe"</span>, <span class="str">"verified_at"</span>: <span class="str">"2026-03-15 10:30:00"</span> },
+    { <span class="str">"email"</span>: <span class="str">"fake@test.xyz"</span>, <span class="str">"found"</span>: false, <span class="str">"validation_status"</span>: null, <span class="str">"verification_status"</span>: null, <span class="str">"verified_at"</span>: null },
+    { <span class="str">"email"</span>: <span class="str">"vp@startup.io"</span>, <span class="str">"found"</span>: true, <span class="str">"validation_status"</span>: <span class="str">"risky"</span>, <span class="str">"verification_status"</span>: <span class="str">"rejected"</span>, <span class="str">"verified_at"</span>: <span class="str">"2026-03-14 08:00:00"</span> }
+  ],
+  <span class="str">"meta"</span>: { <span class="str">"requested"</span>: 3, <span class="str">"found"</span>: 2 }
+}</div>`,
+
+  'm-conn-search': `<h3>Connection Detail: MarketX → Refinery Contact Search</h3><p class="modal-sub">workflow-execution-processor.ts → /api/v1/contacts/search</p><hr>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Caller (MarketX)</h4>
+<div class="code-block" style="font-size:.75rem"><span class="cm">// File: apps/workers/src/processors/workflow-execution-processor.ts</span>
+<span class="cm">// Node type: resolve-icp (or custom output node)</span>
+<span class="cm">// Currently at line ~1200-1400 area</span>
+
+<span class="cm">// NEW: Will use refinery-client.ts wrapper</span>
+<span class="kw">import</span> { refineryClient } <span class="kw">from</span> <span class="str">'../services/refinery-client'</span>;
+
+<span class="kw">const</span> audience = <span class="kw">await</span> refineryClient.<span class="fn">searchContacts</span>({
+  filters: {
+    primary_industry: icpProfile.targetIndustry,
+    seniority_level: icpProfile.targetSeniority,
+    _verification_status: { not: <span class="str">'bounced'</span> }
+  },
+  per_page: 500
+});</div>
+<h4 style="margin:1rem 0 .5rem;font-size:.9rem">Receiver (Refinery)</h4>
+<div class="code-block" style="font-size:.75rem"><span class="cm">// File: refinery-backend/src/routes/v1/contacts.ts</span>
+<span class="cm">// Handler: router.post('/search', requireScope('contacts:read'), ...)</span>
+<span class="cm">// Builds ClickHouse WHERE clause from filters object</span>
+<span class="cm">// Returns paginated results from universal_person table</span></div>`
+};
+
+function openModal(id) {
+  const body = document.getElementById('modal-body');
+  body.innerHTML = modals[id] || '<p>Modal not found</p>';
+  document.getElementById('modal-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+
+</body>
+</html>

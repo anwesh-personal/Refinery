@@ -197,6 +197,50 @@ const SCHEMAS = [
   ) ENGINE = ReplacingMergeTree(updated_at)
     ORDER BY id`,
 
+  // ── Engagement Events (webhook data from MTAs) ──
+  `CREATE TABLE IF NOT EXISTS engagement_events (
+    id                String,
+    event_type        String,
+    email             String,
+    up_id             Nullable(String),
+    campaign_id       Nullable(String),
+    list_id           Nullable(String),
+    mta_provider      String DEFAULT 'mailwizz',
+    bounce_type       Nullable(String),
+    bounce_reason     Nullable(String),
+    link_url          Nullable(String),
+    user_agent        Nullable(String),
+    ip_address        Nullable(String),
+    raw_payload       Nullable(String),
+    event_id          Nullable(String),
+    received_at       DateTime DEFAULT now()
+  ) ENGINE = MergeTree()
+    PARTITION BY toYYYYMM(received_at)
+    ORDER BY (event_type, email, received_at)`,
+
+  // ── Campaigns (sent via MTA adapters) ──
+  `CREATE TABLE IF NOT EXISTS campaigns (
+    id                String,
+    name              String,
+    segment_id        Nullable(String),
+    mta_provider      String DEFAULT 'mailwizz',
+    mta_campaign_id   Nullable(String),
+    mta_list_id       Nullable(String),
+    subject           Nullable(String),
+    from_name         Nullable(String),
+    from_email        Nullable(String),
+    status            String DEFAULT 'draft',
+    total_recipients  UInt64 DEFAULT 0,
+    sent_count        UInt64 DEFAULT 0,
+    open_count        UInt64 DEFAULT 0,
+    click_count       UInt64 DEFAULT 0,
+    bounce_count      UInt64 DEFAULT 0,
+    reply_count       UInt64 DEFAULT 0,
+    created_at        DateTime DEFAULT now(),
+    updated_at        DateTime DEFAULT now()
+  ) ENGINE = ReplacingMergeTree(updated_at)
+    ORDER BY id`,
+
   // ── Pipeline Studio Jobs (async verification) ──
   `CREATE TABLE IF NOT EXISTS pipeline_jobs (
     id                String,
