@@ -69,7 +69,7 @@ export default function LogsPage() {
 
   // Auto-refresh every 5 seconds
   useEffect(() => {
-    const interval = setInterval(() => fetchLogs(true), 5000);
+    const interval = setInterval(() => fetchLogs(true), 30000);
     return () => clearInterval(interval);
   }, [fetchLogs]);
 
@@ -223,7 +223,7 @@ export default function LogsPage() {
             <span>{loading ? 'Loading...' : `${entries.length} entries`}</span>
             {entries.length > 0 && (
               <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}>
-                · last {lineCount} lines per file · auto-refresh 5s
+                · last {lineCount} lines per file · auto-refresh 30s
               </span>
             )}
           </div>

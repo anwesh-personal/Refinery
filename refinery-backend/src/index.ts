@@ -24,6 +24,7 @@ import ingestionRulesRoutes from './routes/ingestion-rules.js';
 import janitorRoutes from './routes/janitor.js';
 import verify550Routes from './routes/verify550.js';
 import logsRoutes from './routes/logs.js';
+import dashboardRoutes from './routes/dashboard.js';
 import { setupScheduler } from './services/ingestion-rules.js';
 import { ensureEnvServersRegistered } from './services/servers.js';
 
@@ -86,6 +87,7 @@ app.use('/api/ingestion-rules', ingestionRulesRoutes);
 app.use('/api/janitor', janitorRoutes);
 app.use('/api/v550', verify550Routes);
 app.use('/api/logs', logsRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // ── v1 API (machine-to-machine, API key authenticated) ──
 app.use('/api/v1/keys', v1KeysRoutes);

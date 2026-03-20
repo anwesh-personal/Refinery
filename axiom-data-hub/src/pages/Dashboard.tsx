@@ -1,12 +1,13 @@
 import {
-  CloudDownload, Database, ShieldCheck, TrendingUp, Filter, Send, Activity, Zap,
-  Loader2, CheckCircle2, AlertCircle, Clock,
+  CloudDownload, Database, ShieldCheck, Filter, Send, Activity, Zap,
+  Loader2, CheckCircle2, AlertCircle
 } from 'lucide-react';
 import { PageHeader, StatCard, GradientCard, ActionCard, SectionHeader, EmptyState } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiCall } from '../lib/api';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 
 interface DbStats {
   totalRows: string;
@@ -22,12 +23,31 @@ interface IngestionStats {
   pending: string;
 }
 
-interface IngestionJob {
-  id: string;
-  file_name: string;
+interface IngestionTrend {
+  day: string;
+  jobs: string;
+  rows: string;
+}
+
+interface VerificationTrend {
+  day: string;
+  batches: string;
+  valid: string;
+  invalid: string;
+  unknown: string;
+}
+
+interface SegmentBreakdown {
+  name: string;
+  lead_count: string;
+}
+
+interface RecentActivity {
+  type: 'ingestion' | 'verification' | 'segment' | 'target';
+  title: string;
+  detail: string;
   status: string;
-  rows_ingested: string;
-  started_at: string;
+  timestamp: string;
 }
 
 function formatNumber(n: string | number): string {
@@ -56,33 +76,61 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
+function formatDateShort(dateStr: string): string {
+  const [, m, d] = dateStr.split('-');
+  return `${m}/${d}`;
+}
+
 const statusColors: Record<string, string> = {
   complete: '#22c55e',
+  ready: '#22c55e',
   ingesting: '#3b82f6',
+  generating: '#3b82f6',
   downloading: '#f59e0b',
   uploading: '#8b5cf6',
+  pushed: '#a855f7',
   pending: '#6b7280',
   failed: '#ef4444',
 };
+
+const activityIcons: Record<string, any> = {
+  ingestion: CloudDownload,
+  verification: ShieldCheck,
+  segment: Filter,
+  target: Send,
+};
+
+const COLORS = ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444', '#ec4899', '#0ea5e9', '#6366f1'];
 
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [dbStats, setDbStats] = useState<DbStats | null>(null);
   const [ingestionStats, setIngestionStats] = useState<IngestionStats | null>(null);
-  const [recentJobs, setRecentJobs] = useState<IngestionJob[]>([]);
+  const [activities, setActivities] = useState<RecentActivity[]>([]);
+
+  const [ingestionTrends, setIngestionTrends] = useState<IngestionTrend[]>([]);
+  const [verificationTrends, setVerificationTrends] = useState<VerificationTrend[]>([]);
+  const [segmentBreakdown, setSegmentBreakdown] = useState<SegmentBreakdown[]>([]);
+
   const [loading, setLoading] = useState(true);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [db, ing, jobs] = await Promise.all([
+      const [db, ing, acts, ingTrends, verTrends, segBreak] = await Promise.all([
         apiCall<DbStats>('/api/database/stats').catch(() => null),
         apiCall<IngestionStats>('/api/ingestion/stats').catch(() => null),
-        apiCall<IngestionJob[]>('/api/ingestion/jobs').catch(() => []),
+        apiCall<RecentActivity[]>('/api/dashboard/activity').catch(() => []),
+        apiCall<IngestionTrend[]>('/api/dashboard/ingestion-trends').catch(() => []),
+        apiCall<VerificationTrend[]>('/api/dashboard/verification-trends').catch(() => []),
+        apiCall<SegmentBreakdown[]>('/api/dashboard/segment-breakdown').catch(() => []),
       ]);
       setDbStats(db);
       setIngestionStats(ing);
-      setRecentJobs(jobs.slice(0, 8));
+      setActivities(acts);
+      setIngestionTrends(ingTrends);
+      setVerificationTrends(verTrends);
+      setSegmentBreakdown(segBreak);
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
@@ -92,6 +140,42 @@ export default function DashboardPage() {
   const totalLeads = Number(dbStats?.totalRows || 0);
   const totalBytes = Number(dbStats?.totalBytes || 0);
   const pendingJobs = Number(ingestionStats?.pending || 0);
+
+  const mappedIngestionTrends = ingestionTrends.map(item => ({
+    ...item,
+    formattedDay: formatDateShort(item.day),
+    volume: Number(item.rows)
+  }));
+
+  const mappedVerificationTrends = verificationTrends.map(item => ({
+    ...item,
+    formattedDay: formatDateShort(item.day),
+    Valid: Number(item.valid),
+    Invalid: Number(item.invalid)
+  }));
+
+  const mappedSegments = segmentBreakdown.map((s, i) => ({
+    name: s.name,
+    value: Number(s.lead_count),
+    color: COLORS[i % COLORS.length]
+  }));
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '10px 14px', borderRadius: 8, fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100 }}>
+          <div style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>{label}</div>
+          {payload.map((entry: any, index: number) => (
+            <div key={index} style={{ color: entry.color, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: entry.color }}></span>
+              <span>{entry.name}: <strong>{formatNumber(entry.value)}</strong></span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <>
@@ -116,82 +200,184 @@ export default function DashboardPage() {
           label="Pending Jobs"
           value={loading ? '...' : String(pendingJobs)}
           sub={pendingJobs > 0 ? 'Ingestion in progress' : 'No active jobs'}
-          icon={<ShieldCheck size={18} />}
-          color="var(--green)"
-          colorMuted="var(--green-muted)"
+          icon={<CloudDownload size={18} />}
+          color="var(--blue)"
+          colorMuted="var(--blue-muted)"
           delay={0.06}
         />
         <StatCard
           label="Active Tables"
           value={loading ? '...' : formatNumber(dbStats?.tableCount || '0')}
           sub={`${formatNumber(dbStats?.queriesToday || '0')} queries today`}
-          icon={<Filter size={18} />}
-          color="var(--blue)"
-          colorMuted="var(--blue-muted)"
+          icon={<Database size={18} />}
+          color="var(--green)"
+          colorMuted="var(--green-muted)"
           delay={0.12}
         />
       </div>
 
-      {/* Quick actions */}
-      <SectionHeader title="Quick Actions" />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, marginBottom: 36 }}>
-        <ActionCard title="Start S3 Ingestion" sub="Download latest 5x5 Co-Op data" icon={<CloudDownload size={18} />} color="var(--accent)" colorMuted="var(--accent-muted)" delay={0.06} onClick={() => navigate('/ingestion')} />
-        <ActionCard title="Query ClickHouse" sub="Run segment queries on lead data" icon={<Database size={18} />} color="var(--blue)" colorMuted="var(--blue-muted)" delay={0.12} onClick={() => navigate('/database')} />
-        <ActionCard title="Create Segment" sub="Filter leads by industry, state, title" icon={<Filter size={18} />} color="var(--green)" colorMuted="var(--green-muted)" delay={0.18} onClick={() => navigate('/segments')} />
-        <ActionCard title="Verify Emails" sub="Batch-verify extracted segments" icon={<ShieldCheck size={18} />} color="var(--purple)" colorMuted="var(--purple-muted)" delay={0.24} onClick={() => navigate('/verification')} />
-        <ActionCard title="Export Targets" sub="Download clean lists as CSV" icon={<Send size={18} />} color="var(--cyan)" colorMuted="var(--cyan-muted)" delay={0.30} onClick={() => navigate('/targets')} />
-        <ActionCard title="View Pipeline" sub="Ingestion rates, verification yield" icon={<TrendingUp size={18} />} color="var(--yellow)" colorMuted="var(--yellow-muted)" delay={0.36} onClick={() => navigate('/ingestion')} />
+      {/* Charts Row */}
+      <div className="animate-fadeIn stagger-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 36 }}>
+
+        {/* Ingestion Area Chart */}
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, gridColumn: 'span 2' }}>
+          <h3 style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', marginBottom: 20 }}>Ingestion Volume (30 Days)</h3>
+          {mappedIngestionTrends.length > 0 ? (
+            <div style={{ height: 220, width: '100%' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={mappedIngestionTrends} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
+                  <XAxis dataKey="formattedDay" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} tickFormatter={(val) => formatNumber(val)} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area type="monotone" dataKey="volume" name="Ingested Rows" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorVolume)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)' }}>
+              {loading ? <Loader2 className="spin" size={24} /> : 'No recent ingestion data'}
+            </div>
+          )}
+        </div>
+
+        {/* Top Segments Donut Chart */}
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, display: 'flex', flexDirection: 'column' }}>
+          <h3 style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', marginBottom: 0 }}>Top Segments</h3>
+          {mappedSegments.length > 0 ? (
+            <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie
+                    data={mappedSegments}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={2}
+                    dataKey="value"
+                    stroke="var(--bg-card)"
+                    strokeWidth={2}
+                  >
+                    {mappedSegments.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{mappedSegments.length}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600 }}>Active</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)' }}>
+              {loading ? <Loader2 className="spin" size={24} /> : 'No active segments'}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Pipeline Activity */}
-      <SectionHeader title="Recent Pipeline Activity" action="View All" onAction={() => navigate('/ingestion')} />
-      <div
-        className="animate-fadeIn stagger-5"
-        style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}
-      >
-        {recentJobs.length > 0 ? (
-          <div style={{ padding: 8 }}>
-            {recentJobs.map((job) => (
-              <div
-                key={job.id}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '12px 18px', borderRadius: 10, marginBottom: 4,
-                  transition: 'background 0.15s',
-                }}
-                onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                onMouseOut={e => (e.currentTarget.style.background = '')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  {job.status === 'complete' ? <CheckCircle2 size={16} color="#22c55e" /> :
-                   job.status === 'failed' ? <AlertCircle size={16} color="#ef4444" /> :
-                   job.status === 'pending' ? <Clock size={16} color="#6b7280" /> :
-                   <Loader2 size={16} color="#3b82f6" className="spin" />}
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{job.file_name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                      {formatNumber(job.rows_ingested)} rows · {timeAgo(job.started_at)}
-                    </div>
-                  </div>
-                </div>
-                <span style={{
-                  fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-                  padding: '4px 10px', borderRadius: 6,
-                  color: statusColors[job.status] || '#6b7280',
-                  background: (statusColors[job.status] || '#6b7280') + '18',
-                }}>
-                  {job.status}
-                </span>
-              </div>
-            ))}
+      {/* Verification Trends Bar Chart */}
+      <div className="animate-fadeIn stagger-3" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 36 }}>
+        <h3 style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', marginBottom: 20 }}>Verification Yield (30 Days)</h3>
+        {mappedVerificationTrends.length > 0 ? (
+          <div style={{ height: 260, width: '100%' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={mappedVerificationTrends} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
+                <XAxis dataKey="formattedDay" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} tickFormatter={(val) => formatNumber(val)} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--bg-hover)' }} />
+                <Bar dataKey="Valid" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="Invalid" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         ) : (
-          <EmptyState
-            icon={<Activity size={24} />}
-            title={loading ? 'Loading...' : 'No pipeline activity yet'}
-            sub="Start an S3 ingestion to see jobs here"
-          />
+          <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-tertiary)' }}>
+            {loading ? <Loader2 className="spin" size={24} /> : 'No recent verification batches'}
+          </div>
         )}
+      </div>
+
+      {/* Two Column Layout (Actions / Activity) */}
+      <div className="animate-fadeIn stagger-4" style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(350px, 1fr)', gap: 36, marginBottom: 36 }}>
+
+        {/* Quick Actions (Left) */}
+        <div>
+          <SectionHeader title="Quick Actions" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <ActionCard title="Start S3 Ingestion" sub="Download latest data" icon={<CloudDownload size={18} />} color="var(--blue)" colorMuted="var(--blue-muted)" delay={0.06} onClick={() => navigate('/ingestion')} />
+            <ActionCard title="Create Segment" sub="Filter leads by conditions" icon={<Filter size={18} />} color="var(--purple)" colorMuted="var(--purple-muted)" delay={0.12} onClick={() => navigate('/segments')} />
+            <ActionCard title="Verify Emails" sub="Catch bounces & traps" icon={<ShieldCheck size={18} />} color="var(--green)" colorMuted="var(--green-muted)" delay={0.18} onClick={() => navigate('/verification')} />
+            <ActionCard title="Export Targets" sub="Dispatch to queue" icon={<Send size={18} />} color="var(--accent)" colorMuted="var(--accent-muted)" delay={0.24} onClick={() => navigate('/targets')} />
+          </div>
+        </div>
+
+        {/* Activity Feed (Right) */}
+        <div>
+          <SectionHeader title="Recent Activity" action="View All" onAction={() => navigate('/ingestion')} />
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', minHeight: 400 }}>
+            {activities.length > 0 ? (
+              <div style={{ padding: 8 }}>
+                {activities.map((act, idx) => {
+                  const Icon = activityIcons[act.type] || Activity;
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '12px 18px', borderRadius: 10, marginBottom: 4,
+                        transition: 'background 0.15s',
+                      }}
+                      onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseOut={e => (e.currentTarget.style.background = '')}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
+                          <Icon size={16} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {act.title}
+                            {act.status === 'failed' && <AlertCircle size={12} color="var(--red)" />}
+                            {act.status === 'complete' || act.status === 'ready' ? <CheckCircle2 size={12} color="var(--green)" /> : null}
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                            {act.detail} · {timeAgo(act.timestamp)}
+                          </div>
+                        </div>
+                      </div>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                        padding: '4px 8px', borderRadius: 6,
+                        color: statusColors[act.status] || 'var(--text-secondary)',
+                        background: statusColors[act.status] ? statusColors[act.status] + '15' : 'var(--bg-elevated)',
+                      }}>
+                        {act.status}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyState
+                icon={<Activity size={24} />}
+                title={loading ? 'Loading...' : 'No recent activity'}
+                sub="Your ecosystem activity feed will appear here"
+              />
+            )}
+          </div>
+        </div>
+
       </div>
     </>
   );
