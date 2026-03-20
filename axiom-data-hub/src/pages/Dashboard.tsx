@@ -189,11 +189,9 @@ export default function DashboardPage() {
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, marginBottom: 36 }}>
         <GradientCard
-          label="Total Clean Leads"
+          label="Total Records"
           value={loading ? '...' : formatNumber(totalLeads)}
-          sub={`${formatBytes(totalBytes)} on SSD`}
-          progress={Math.min(totalLeads / 10_000_000, 1)}
-          progressLabel={`${formatNumber(totalLeads)} of 10M capacity`}
+          sub={`${formatBytes(totalBytes)} stored on disk`}
           icon={<Zap size={28} />}
         />
         <StatCard
