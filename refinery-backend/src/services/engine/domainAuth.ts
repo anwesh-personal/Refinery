@@ -1,7 +1,7 @@
 import dns from 'dns/promises';
 
 // ═══════════════════════════════════════════════════════════════
-// SPF / DMARC / DKIM Record Checker
+// SPF / DMARC Record Checker
 //
 // Verifies that a domain has proper email authentication records.
 // Domains without SPF/DMARC are suspicious — legitimate businesses
@@ -10,7 +10,6 @@ import dns from 'dns/promises';
 // Checks:
 //   - SPF (TXT record starting with "v=spf1")
 //   - DMARC (_dmarc.domain TXT record starting with "v=DMARC1")
-//   - DKIM selector detection (common selectors like google, default)
 //
 // Results are cached per domain (1 hour TTL) to avoid repeated DNS lookups.
 // ═══════════════════════════════════════════════════════════════
@@ -48,9 +47,12 @@ const cache = new Map<string, CacheEntry>();
 export async function checkDomainAuth(domain: string): Promise<DomainAuthResult> {
     const d = domain.toLowerCase().trim();
 
-    // Cache hit
+    // Cache hit (only if not expired)
     const cached = cache.get(d);
     if (cached && cached.expiresAt > Date.now()) return cached.result;
+
+    // Remove stale entry if it existed
+    if (cached) cache.delete(d);
 
     const [spf, dmarc] = await Promise.all([
         checkSPF(d),
@@ -68,14 +70,21 @@ export async function checkDomainAuth(domain: string): Promise<DomainAuthResult>
 
     const result: DomainAuthResult = { spf, dmarc, authScore };
 
-    // Cache
+    // Evict if at capacity — first remove expired entries, then oldest if still full
     if (cache.size >= AUTH_CACHE_MAX) {
-        const toDelete = Math.floor(AUTH_CACHE_MAX * 0.2);
-        const keys = cache.keys();
-        for (let i = 0; i < toDelete; i++) {
-            const next = keys.next();
-            if (next.done) break;
-            cache.delete(next.value);
+        const now = Date.now();
+        for (const [key, entry] of cache) {
+            if (entry.expiresAt <= now) cache.delete(key);
+        }
+        // If still over capacity, drop the oldest 20%
+        if (cache.size >= AUTH_CACHE_MAX) {
+            const toDelete = Math.floor(AUTH_CACHE_MAX * 0.2);
+            const keys = cache.keys();
+            for (let i = 0; i < toDelete; i++) {
+                const next = keys.next();
+                if (next.done) break;
+                cache.delete(next.value);
+            }
         }
     }
     cache.set(d, { result, expiresAt: Date.now() + AUTH_CACHE_TTL });

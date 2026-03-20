@@ -50,10 +50,14 @@ const SeverityWeightsSchema = z.object({
   no_mx: z.number().min(0).max(100).optional(),
   smtp_invalid: z.number().min(0).max(100).optional(),
   smtp_risky: z.number().min(0).max(100).optional(),
+  smtp_greylisted: z.number().min(0).max(100).optional(),
+  smtp_mailbox_full: z.number().min(0).max(100).optional(),
   catch_all: z.number().min(0).max(100).optional(),
   role_based: z.number().min(0).max(100).optional(),
   free_provider: z.number().min(0).max(100).optional(),
   typo_detected: z.number().min(0).max(100).optional(),
+  no_spf: z.number().min(0).max(100).optional(),
+  no_dmarc: z.number().min(0).max(100).optional(),
 }).partial();
 
 const ThresholdsSchema = z.object({
@@ -123,7 +127,7 @@ router.post('/export', requireSuperadmin, async (req, res) => {
       return res.status(400).json({ error: 'results array is required' });
     }
 
-    const header = 'email,classification,risk_score,syntax,disposable,role_based,free_provider,mx_valid,smtp_status,catch_all\n';
+    const header = 'email,classification,risk_score,syntax,disposable,role_based,free_provider,mx_valid,spf,dmarc,smtp_status,starttls,catch_all\n';
     const rows = results.map(r => {
       const cols = [
         `"${r.email.replace(/"/g, '""')}"`,
@@ -134,7 +138,10 @@ router.post('/export', requireSuperadmin, async (req, res) => {
         r.checks.roleBased === null ? 'skipped' : (r.checks.roleBased.detected ? r.checks.roleBased.prefix : 'no'),
         r.checks.freeProvider === null ? 'skipped' : (r.checks.freeProvider.detected ? r.checks.freeProvider.category : 'no'),
         r.checks.mxValid === null ? 'skipped' : (r.checks.mxValid.valid ? 'valid' : 'invalid'),
+        r.checks.domainAuth ? (r.checks.domainAuth.spf ? 'yes' : 'no') : 'skipped',
+        r.checks.domainAuth ? (r.checks.domainAuth.dmarc ? 'yes' : 'no') : 'skipped',
         r.checks.smtpResult === null ? 'skipped' : r.checks.smtpResult.status,
+        r.checks.smtpResult === null ? 'skipped' : (r.checks.smtpResult.starttls ? 'yes' : 'no'),
         r.checks.catchAll === null ? 'skipped' : (r.checks.catchAll ? 'yes' : 'no'),
       ];
       return cols.join(',');
@@ -220,7 +227,7 @@ router.post('/async', requireSuperadmin, async (req, res) => {
             status = 'failed',
             error_message = '${(err.message || 'Unknown error').replace(/'/g, "\\'").substring(0, 500)}'
           WHERE id = '${jobId}'
-        `).catch(() => {});
+        `).catch(() => { });
       }
     })();
 

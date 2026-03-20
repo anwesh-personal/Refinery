@@ -6,49 +6,36 @@
 // Also supports runtime additions via addDomains().
 // ═══════════════════════════════════════════════════════════════
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 
-// Load 33k+ domains from npm package
+const require = createRequire(import.meta.url);
+
+// Load domains from the npm package (index.json is a JSON string[] array)
 let npmDomains: string[] = [];
 try {
-  // The package exports a JSON array of strings
-  const modPath = import.meta.resolve?.('disposable-email-domains')
-    || require.resolve('disposable-email-domains');
-  const resolved = typeof modPath === 'string' && modPath.startsWith('file://')
-    ? fileURLToPath(modPath)
-    : modPath;
-  const raw = fs.readFileSync(resolved as string, 'utf-8');
-  npmDomains = JSON.parse(raw);
-} catch {
-  try {
-    // Fallback: direct require
-    npmDomains = require('disposable-email-domains');
-  } catch {
-    console.warn('[DisposableDomains] Could not load npm package — using local list only.');
-  }
+  npmDomains = require('disposable-email-domains') as string[];
+} catch (err) {
+  console.warn('[DisposableDomains] Could not load npm package:', (err as Error).message);
 }
 
-// ── Local extension list (domains missed by the npm package) ──
-const LOCAL_EXTENSIONS = [
-  // Recently popular services not yet in the npm list
+// Curated extension list — domains known to be disposable but not yet
+// in the npm package at time of writing.
+const LOCAL_EXTENSIONS: readonly string[] = [
   'tempmailo.com', 'internxt.com', 'duck.com',
   'crazymailing.com', 'binkmail.com', 'chammy.info',
   'mt2015.com', 'rmqkr.net', 's0ny.net',
   'xoxy.net', 'superrito.com',
-];
+] as const;
 
-// Build the master Set
+// Build the master Set — single source of truth
 const DISPOSABLE_DOMAINS = new Set<string>(
-  [...npmDomains, ...LOCAL_EXTENSIONS].map(d => d.toLowerCase().trim())
+  [...npmDomains, ...LOCAL_EXTENSIONS].map(d => d.toLowerCase().trim()),
 );
 
 console.log(`[DisposableDomains] Loaded ${DISPOSABLE_DOMAINS.size.toLocaleString()} disposable domains.`);
 
 /**
  * Check if an email domain is a known disposable/throwaway service.
- * Domain should be lowercase.
  */
 export function isDisposable(domain: string): boolean {
   return DISPOSABLE_DOMAINS.has(domain.toLowerCase());

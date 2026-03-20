@@ -69,7 +69,7 @@ export function probeEmail(
     }, options.timeout);
 
     // ── Clean finish helper ──
-    function finish(result: Omit<SmtpProbeResult, 'starttls'> & { starttls?: boolean }): void {
+    function finish(result: SmtpProbeResult): void {
       if (resolved) return;
       resolved = true;
       clearTimeout(timer);
@@ -82,7 +82,7 @@ export function probeEmail(
       }
 
       socket.destroy();
-      resolve({ ...result, starttls: result.starttls ?? starttlsSupported });
+      resolve(result);
     }
 
     // ── Error handling ──
@@ -99,6 +99,10 @@ export function probeEmail(
     socket.on('timeout', () => {
       finish({ status: 'unknown', code: 0, response: 'Socket timeout', starttls: starttlsSupported });
     });
+
+    // Helper: always produce a complete SmtpProbeResult
+    const mkResult = (status: SmtpProbeResult['status'], code: number, response: string): SmtpProbeResult =>
+      ({ status, code, response, starttls: starttlsSupported });
 
     // ── Data handler (SMTP state machine) ──
     socket.on('data', (data: Buffer) => {
@@ -119,7 +123,7 @@ export function probeEmail(
             step = 'ehlo';
             socket.write(`EHLO ${options.heloDomain}\r\n`);
           } else {
-            finish({ status: 'unknown', code, response: `Server rejected connection: ${text}` });
+            finish(mkResult('unknown', code, `Server rejected connection: ${text}`));
           }
           break;
 
@@ -132,7 +136,7 @@ export function probeEmail(
             step = 'mail_from';
             socket.write(`MAIL FROM:<${options.fromEmail}>\r\n`);
           } else {
-            finish({ status: 'unknown', code, response: `EHLO rejected: ${text}` });
+            finish(mkResult('unknown', code, `EHLO rejected: ${text}`));
           }
           break;
 
@@ -141,28 +145,23 @@ export function probeEmail(
             step = 'rcpt_to';
             socket.write(`RCPT TO:<${targetEmail}>\r\n`);
           } else {
-            finish({ status: 'unknown', code, response: `MAIL FROM rejected: ${text}` });
+            finish(mkResult('unknown', code, `MAIL FROM rejected: ${text}`));
           }
           break;
 
         case 'rcpt_to':
           if (code >= 200 && code < 300) {
-            // 250 OK — mailbox exists and accepts mail
-            finish({ status: 'valid', code, response: text });
+            finish(mkResult('valid', code, text));
           } else if (code >= 500 && code < 600) {
-            // 550/551/552/553 — mailbox does not exist or is disabled
-            finish({ status: 'invalid', code, response: text });
+            finish(mkResult('invalid', code, text));
           } else if (code === 452) {
-            // 452 — mailbox full / insufficient storage
-            finish({ status: 'mailbox_full', code, response: text });
+            finish(mkResult('mailbox_full', code, text));
           } else if (code === 450 || code === 451) {
-            // 450/451 — greylisting or temporary deferral
-            finish({ status: 'greylisted', code, response: text });
+            finish(mkResult('greylisted', code, text));
           } else if (code >= 400 && code < 500) {
-            // Other 4xx — generic temporary failure
-            finish({ status: 'risky', code, response: text });
+            finish(mkResult('risky', code, text));
           } else {
-            finish({ status: 'unknown', code, response: text });
+            finish(mkResult('unknown', code, text));
           }
           break;
       }

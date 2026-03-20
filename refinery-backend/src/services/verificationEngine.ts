@@ -187,14 +187,14 @@ async function processDomain(
       const result = await probeWithFallback(mxRecords, entry.email, config);
 
       // Map granular SMTP statuses to VerificationResult format
-      const mappedStatus: VerificationResult['status'] =
-        result.status === 'greylisted' ? 'risky' :
-          result.status === 'mailbox_full' ? 'risky' :
-            (result.status as VerificationResult['status']);
+      const SMTP_TO_VERIFY: Record<string, VerificationResult['status']> = {
+        valid: 'valid', invalid: 'invalid', risky: 'risky',
+        greylisted: 'risky', mailbox_full: 'risky', unknown: 'unknown',
+      };
 
       results[entry.index] = {
         email: entry.email,
-        status: mappedStatus,
+        status: SMTP_TO_VERIFY[result.status] ?? 'unknown',
         reason: result.response.substring(0, 200),
       };
 
