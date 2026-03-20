@@ -1,7 +1,7 @@
 import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Edit2, Trash2, Folder, CheckSquare, Square, Layers, ArrowUpDown, Filter, ChevronUp, ChevronDown, Zap, Settings, RotateCw, Calendar, X } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { apiCall } from '../lib/api';
 
 /* ---------------- Interfaces ---------------- */
@@ -543,29 +543,93 @@ export default function IngestionPage() {
                   {activeJobs.length === 1 ? 'Ingestion in Progress' : `${activeJobs.length} Ingestions in Progress`}
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {activeJobs.map(j => (
-                    <div key={j.id} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 8,
-                      padding: '6px 12px', borderRadius: 8,
-                      background: 'var(--bg-hover)', border: '1px solid var(--border)',
-                      fontSize: 12, color: 'var(--text-secondary)',
-                    }}>
-                      <span style={{
-                        width: 6, height: 6, borderRadius: '50%',
-                        background: statusColors[j.status] || 'var(--yellow)',
-                        animation: 'ingestionDot 1.4s ease-in-out infinite',
-                        boxShadow: `0 0 6px ${statusColors[j.status] || 'var(--yellow)'}`,
-                      }} />
-                      <span style={{ fontWeight: 600, color: 'var(--text-primary)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.file_name}</span>
-                      <span style={{
-                        fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
-                        padding: '2px 6px', borderRadius: 4,
-                        color: statusColors[j.status] || 'var(--yellow)',
-                        background: (statusColors[j.status] || 'var(--yellow)') + '18',
-                      }}>{j.status}</span>
-                      {Number(j.rows_ingested) > 0 && <span style={{ fontFamily: 'monospace', fontSize: 11 }}>{formatNumber(j.rows_ingested)} rows</span>}
-                    </div>
-                  ))}
+                  {activeJobs.map(j => {
+                    const steps = ['pending', 'downloading', 'uploading', 'ingesting', 'complete'];
+                    const currentIdx = steps.indexOf(j.status);
+                    const fileSize = Number(j.file_size_bytes) || 0;
+                    const rowsIngested = Number(j.rows_ingested) || 0;
+                    const isFailed = j.status === 'failed';
+
+                    return (
+                      <div key={j.id} style={{
+                        padding: '10px 14px', borderRadius: 10,
+                        background: 'var(--bg-hover)', border: '1px solid var(--border)',
+                        fontSize: 12, minWidth: 280,
+                      }}>
+                        {/* File name + size */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <span style={{ fontWeight: 700, color: 'var(--text-primary)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.file_name}</span>
+                          {fileSize > 0 && <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>{formatBytes(fileSize)}</span>}
+                        </div>
+
+                        {/* Step pipeline */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
+                          {(['downloading', 'uploading', 'ingesting'] as const).map((step, i) => {
+                            const stepIdx = steps.indexOf(step);
+                            const isDone = currentIdx > stepIdx;
+                            const isCurrent = currentIdx === stepIdx;
+                            const stepLabels = { downloading: 'Download', uploading: 'Upload', ingesting: 'Ingest' };
+                            const stepColor = isDone ? 'var(--green)' : isCurrent ? statusColors[step] || 'var(--yellow)' : 'var(--text-tertiary)';
+
+                            return (
+                              <React.Fragment key={step}>
+                                {i > 0 && <div style={{ flex: 1, height: 2, background: isDone ? 'var(--green)' : 'var(--border)', borderRadius: 1, transition: 'background 0.3s' }} />}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                  {isDone ? (
+                                    <CheckCircle2 size={14} color="var(--green)" />
+                                  ) : isCurrent ? (
+                                    <span style={{
+                                      width: 8, height: 8, borderRadius: '50%',
+                                      background: stepColor,
+                                      animation: 'ingestionDot 1.4s ease-in-out infinite',
+                                      boxShadow: `0 0 6px ${stepColor}`,
+                                      display: 'inline-block',
+                                    }} />
+                                  ) : (
+                                    <span style={{ width: 8, height: 8, borderRadius: '50%', border: '1.5px solid var(--border)', display: 'inline-block' }} />
+                                  )}
+                                  <span style={{ fontSize: 10, fontWeight: isCurrent ? 700 : 400, color: stepColor, letterSpacing: '0.02em' }}>{stepLabels[step]}</span>
+                                </div>
+                              </React.Fragment>
+                            );
+                          })}
+                        </div>
+
+                        {/* Progress bar during ingesting phase */}
+                        {j.status === 'ingesting' && rowsIngested > 0 && (
+                          <div style={{ marginTop: 4 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 3 }}>
+                              <span>{formatNumber(rowsIngested)} rows</span>
+                              <span style={{ fontFamily: 'monospace' }}>inserting...</span>
+                            </div>
+                            <div style={{ width: '100%', height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+                              <div style={{
+                                height: '100%', borderRadius: 2,
+                                background: 'linear-gradient(90deg, var(--blue), var(--accent))',
+                                backgroundSize: '200% 100%',
+                                animation: 'ingestionShimmer 1.5s ease infinite',
+                                width: '100%',
+                              }} />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Row count for non-ingesting statuses */}
+                        {j.status !== 'ingesting' && rowsIngested > 0 && (
+                          <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                            {formatNumber(rowsIngested)} rows processed
+                          </div>
+                        )}
+
+                        {/* Failed state */}
+                        {isFailed && (
+                          <div style={{ fontSize: 10, color: 'var(--red)', marginTop: 4, fontWeight: 600 }}>
+                            ✗ {j.error_message || 'Failed'}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

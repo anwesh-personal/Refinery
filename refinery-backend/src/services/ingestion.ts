@@ -456,6 +456,8 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
     if (batch.length === 0) return;
     await insertRows('universal_person', batch);
     totalRows += batch.length;
+    // Update progress in the job record so the UI can show live row counts
+    await command(`ALTER TABLE ingestion_jobs UPDATE rows_ingested = ${totalRows} WHERE id = '${esc(jobId)}'`);
     if (totalRows % 100000 === 0) {
       console.log(`[Ingestion] ${jobId}: ${totalRows.toLocaleString()} rows inserted...`);
     }
