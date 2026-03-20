@@ -18,11 +18,13 @@ import EmailVerifierPage from './pages/EmailVerifier';
 import TutorialPage from './pages/Tutorial';
 import JanitorPage from './pages/Janitor';
 import ImpersonationBanner from './components/ImpersonationBanner';
+import { CommandPalette } from './components/CommandPalette';
 import { ServerProvider } from './components/ServerSelector';
 
 export default function App() {
   return (
     <BrowserRouter>
+      <CommandPalette />
       <ImpersonationBanner />
       <Routes>
         {/* Public */}

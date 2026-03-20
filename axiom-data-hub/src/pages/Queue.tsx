@@ -3,6 +3,7 @@ import { PageHeader, StatCard, Button } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
 import { useState, useEffect, useCallback } from 'react';
 import { apiCall } from '../lib/api';
+import { useToast } from '../components/Toast';
 
 /* ── Types ── */
 interface QueueJob {
@@ -99,6 +100,8 @@ export default function QueuePage() {
     setTimeout(() => setRefreshing(false), 500);
   };
 
+  const { success: toastSuccess, error: toastError } = useToast();
+
   const startJob = async () => {
     if (!selectedListId) { setError('Please select a target list'); return; }
     setStarting(true);
@@ -109,11 +112,13 @@ export default function QueuePage() {
         body: { targetListId: selectedListId },
       });
       setSuccess('Mail job queued successfully');
+      toastSuccess('Job Dispatched', 'Mail queue job has been started');
       setSelectedListId('');
       fetchData(true);
       setTimeout(() => setSuccess(null), 3000);
     } catch (e: any) {
       setError(e.message);
+      toastError('Queue Error', e.message);
     }
     setStarting(false);
   };

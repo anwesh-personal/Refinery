@@ -458,13 +458,49 @@ export function Button({ children, variant = 'primary', onClick, icon, full = fa
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
       style={{ ...variants[variant], ...style }}
-      onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.opacity = '0.9'; }}}
-      onMouseLeave={(e) => { if (!disabled) { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = '1'; }}}
+      onMouseEnter={(e) => { if (!disabled) { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.opacity = '0.9'; } }}
+      onMouseLeave={(e) => { if (!disabled) { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = '1'; } }}
       onMouseDown={(e) => { if (!disabled) e.currentTarget.style.transform = 'scale(0.97)'; }}
       onMouseUp={(e) => { if (!disabled) e.currentTarget.style.transform = 'scale(1.03)'; }}
     >
       {icon}
       {children}
     </button>
+  );
+}
+
+/* ═══════════════════════════════════════
+   SKELETON — shimmer loading placeholder
+   ═══════════════════════════════════════ */
+export function Skeleton({ width, height = 16, borderRadius = 8, style }: {
+  width?: number | string;
+  height?: number | string;
+  borderRadius?: number;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <div
+      className="skeleton"
+      style={{
+        width: width || '100%',
+        height,
+        borderRadius,
+        ...style,
+      }}
+    />
+  );
+}
+
+/** Skeleton row for stat cards */
+export function StatCardSkeleton() {
+  return (
+    <div style={{
+      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16,
+      padding: 24, display: 'flex', flexDirection: 'column', gap: 12,
+    }}>
+      <Skeleton width={90} height={12} />
+      <Skeleton width={120} height={32} />
+      <Skeleton width={160} height={12} />
+    </div>
   );
 }
