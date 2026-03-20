@@ -873,6 +873,15 @@ export default function DatabasePage() {
         </div>
       </div>
 
+      {activeTab === 'browse' && sortedRows.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12, padding: '8px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 11, color: 'var(--text-tertiary)' }}>
+          <span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Data Completeness</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} /> &gt;80% filled</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: '#eab308' }} /> 40–80% filled</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444' }} /> &lt;40% filled</span>
+        </div>
+      )}
+
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', minHeight: 400 }}>
         {loading && !result ? (
           <SkeletonTable />
