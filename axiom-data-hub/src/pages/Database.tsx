@@ -1,17 +1,21 @@
 import {
   Database, Table2, Rows3, HardDrive, Play, Copy, Download, RefreshCw,
   Loader2, AlertCircle, CheckCircle2, ChevronDown, ChevronUp,
-  Search, Columns, ChevronLeft, ChevronRight, Layers, X, Filter, Plus, Trash2
+  Search, Columns, ChevronLeft, ChevronRight, Layers, X, Filter, Plus, Trash2,
+  Save, BookmarkCheck, BarChart2, Sidebar, Square, CheckSquare
 } from 'lucide-react';
 import { PageHeader, StatCard, Button } from '../components/UI';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ServerSelector } from '../components/ServerSelector';
 import { apiCall } from '../lib/api';
+import { useToast } from '../components/Toast';
 
 // --- Interfaces ---
-interface DbStats { totalRows: string; totalBytes: string; tableCount: string; queriesToday: string; }
+interface DbStats { totalRows: string; totalBytes: string; tableCount: string; segmentCount: string; }
 interface TableInfo { table: string; rows: string; bytes_on_disk: string; last_modified: string; }
 interface QueryResult { rows: Record<string, unknown>[]; elapsed: number; total?: number; page?: number; pageSize?: number; }
+interface SavedQuery { name: string; sql: string; savedAt: number; }
+interface ColumnStat { value: string; count: string; }
 
 const PAGE_SIZES = [25, 50, 100, 200, 500, 1000, 5000];
 
@@ -56,6 +60,8 @@ function formatNumber(n: string | number): string { return Number(n).toLocaleStr
 
 // --- Main Component ---
 export default function DatabasePage() {
+  const { success: toastSuccess, error: toastError } = useToast();
+
   // Tabs: 'browse' or 'sql'
   const [activeTab, setActiveTab] = useState<'browse' | 'sql'>('browse');
 
@@ -75,6 +81,10 @@ export default function DatabasePage() {
   // --- SQL Editor State ---
   const [query, setQuery] = useState('SELECT * FROM universal_person LIMIT 100');
   const [showTables, setShowTables] = useState(false);
+  const [savedQueries, setSavedQueries] = useState<SavedQuery[]>(() => {
+    try { return JSON.parse(localStorage.getItem('refinery_saved_queries') || '[]'); } catch { return []; }
+  });
+  const [showSavedQueries, setShowSavedQueries] = useState(false);
 
   // --- Browse (Data Explorer State) ---
   const [search, setSearch] = useState('');
@@ -87,14 +97,14 @@ export default function DatabasePage() {
   const colPickerBtnRef = useRef<HTMLButtonElement>(null);
 
   // Data source options for filter
-  const [dataSourceOptions, setDataSourceOptions] = useState<{id: string; label: string}[]>([]);
+  const [dataSourceOptions, setDataSourceOptions] = useState<{ id: string; label: string }[]>([]);
 
-  // Row detail modal
+  // Row detail drawer
   const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
-  
+
   // Available filters populated from backend limit 200
   const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({});
-  
+
   // Dynamic columns from backend
   const [allColumns, setAllColumns] = useState<string[]>([]);
   const [availableFilters, setAvailableFilters] = useState<string[]>([]);
@@ -105,6 +115,15 @@ export default function DatabasePage() {
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilterUI[]>([]);
   const [showAdvFilters, setShowAdvFilters] = useState(false);
   let filterIdCounter = useRef(0);
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  // Column stats popup
+  const [columnStats, setColumnStats] = useState<ColumnStat[]>([]);
+  const [statsColumn, setStatsColumn] = useState<string | null>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
 
   // --- Data Fetching ---
   const fetchStats = useCallback(async () => {
@@ -156,13 +175,13 @@ export default function DatabasePage() {
     } catch { /* ignore */ }
   }, [availableFilters]);
 
-  useEffect(() => { 
+  useEffect(() => {
     fetchStats();
     fetchColumns();
     // Fetch data source options (ingestion job IDs)
-    apiCall<{id: string; label: string}[]>('/api/ingestion/sources').then(sources => {
+    apiCall<{ id: string; label: string }[]>('/api/ingestion/sources').then(sources => {
       if (sources) setDataSourceOptions(sources.map((s: any) => ({ id: s.id, label: s.label || s.id })));
-    }).catch(() => {});
+    }).catch(() => { });
   }, [fetchStats, fetchColumns]);
 
   useEffect(() => {
@@ -173,7 +192,7 @@ export default function DatabasePage() {
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (colPickerRef.current && !colPickerRef.current.contains(event.target as Node) &&
-          colPickerBtnRef.current && !colPickerBtnRef.current.contains(event.target as Node)) {
+        colPickerBtnRef.current && !colPickerBtnRef.current.contains(event.target as Node)) {
         setShowColPicker(false);
       }
     }
@@ -194,7 +213,7 @@ export default function DatabasePage() {
     try {
       const activeFilters = Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== ''));
       const activeCols = Object.entries(visibleCols).filter(([_, v]) => v).map(([k]) => k);
-      
+
       // Build advanced filter payload
       const afPayload = advancedFilters
         .filter(f => f.column && f.operator)
@@ -224,21 +243,21 @@ export default function DatabasePage() {
   // Single effect for Browse tab (handles both search debounce and other filters)
   useEffect(() => {
     if (activeTab !== 'browse') return;
-    
+
     const isSearchChange = search !== searchRef.current;
-    
+
     // If it's a search change, debounce. Otherwise, run immediately.
     let timer: ReturnType<typeof setTimeout>;
     if (isSearchChange) {
-       timer = setTimeout(() => runBrowse(search), 400);
+      timer = setTimeout(() => runBrowse(search), 400);
     } else {
-       if (!loading) runBrowse(searchRef.current);
+      if (!loading) runBrowse(searchRef.current);
     }
 
     return () => {
       if (timer) clearTimeout(timer);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, filters, page, sortCol, sortDir, visibleCols, activeTab, advancedFilters]);
 
 
@@ -266,6 +285,60 @@ export default function DatabasePage() {
     }
   };
 
+  const saveCurrentQuery = () => {
+    if (!query.trim()) return;
+    const name = prompt('Enter a name for this saved query:');
+    if (!name) return;
+
+    // Store in localStorage
+    const newSaved = [...savedQueries, { name, sql: query.trim(), savedAt: Date.now() }];
+    setSavedQueries(newSaved);
+    try { localStorage.setItem('refinery_saved_queries', JSON.stringify(newSaved)); } catch { /* ignore */ }
+    toastSuccess(`Query "${name}" saved`);
+  };
+
+  const removeSavedQuery = (index: number) => {
+    if (!confirm('Delete this saved query?')) return;
+    const newSaved = savedQueries.filter((_, i) => i !== index);
+    setSavedQueries(newSaved);
+    try { localStorage.setItem('refinery_saved_queries', JSON.stringify(newSaved)); } catch { /* ignore */ }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Are you absolutely sure you want to permanently delete ${selectedIds.size} rows? This cannot be undone.`)) return;
+
+    setBulkDeleting(true);
+    try {
+      const res = await apiCall<{ deleted: number }>('/api/database/bulk-delete', {
+        method: 'POST',
+        body: { upIds: Array.from(selectedIds) }
+      });
+      toastSuccess(`Successfully deleted ${res.deleted} rows`);
+      setSelectedIds(new Set()); // clear selection
+      runBrowse(); // refresh data
+    } catch (e: any) {
+      toastError(e.message || 'Failed to delete rows');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const showColumnStats = async (col: string) => {
+    setStatsColumn(col);
+    setColumnStats([]);
+    setLoadingStats(true);
+    try {
+      const res = await apiCall<ColumnStat[]>(`/api/database/column-stats/${col}?limit=20`);
+      setColumnStats(res || []);
+    } catch (e: any) {
+      toastError(`Failed to load stats for ${col}`);
+      setStatsColumn(null);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
   // --- UI Helpers ---
   const downloadCSV = () => {
     if (!result?.rows.length) return;
@@ -289,7 +362,7 @@ export default function DatabasePage() {
 
   // Sorting
   const resultCols = result?.rows.length ? Object.keys(result.rows[0]) : [];
-  
+
   // For SQL mode, we sort locally. For Browse mode, backend sorts, but we can do local sort for currently displayed page too
   const sortedRows = result?.rows ? [...result.rows].sort((a, b) => {
     if (!sortCol) return 0;
@@ -317,14 +390,14 @@ export default function DatabasePage() {
   const SkeletonTable = () => (
     <div style={{ padding: 20 }}>
       {Array.from({ length: 15 }).map((_, i) => (
-         <div key={i} style={{ 
-           height: 32, 
-           background: 'var(--bg-card-hover)', 
-           borderRadius: 4, 
-           marginBottom: 8,
-           opacity: 1 - (i * 0.05), // Fades out
-           animation: 'pulse 1.5s infinite ease-in-out'
-         }} />
+        <div key={i} style={{
+          height: 32,
+          background: 'var(--bg-card-hover)',
+          borderRadius: 4,
+          marginBottom: 8,
+          opacity: 1 - (i * 0.05), // Fades out
+          animation: 'pulse 1.5s infinite ease-in-out'
+        }} />
       ))}
       <style>{`
         @keyframes pulse {
@@ -349,21 +422,21 @@ export default function DatabasePage() {
         <StatCard label="Total Rows" value={statsLoading ? '...' : formatNumber(stats?.totalRows || '0')} sub="Leads in database" icon={<Rows3 size={18} />} color="var(--blue)" colorMuted="var(--blue-muted)" delay={0.06} />
         <StatCard label="Tables" value={statsLoading ? '...' : formatNumber(stats?.tableCount || '0')} sub="Active tables" icon={<Table2 size={18} />} color="var(--purple)" colorMuted="var(--purple-muted)" delay={0.12} />
         <StatCard label="DB Size" value={statsLoading ? '...' : formatBytes(Number(stats?.totalBytes || 0))} sub="on SSD" icon={<HardDrive size={18} />} color="var(--cyan)" colorMuted="var(--cyan-muted)" delay={0.18} />
-        <StatCard label="Queries Today" value={statsLoading ? '...' : formatNumber(stats?.queriesToday || '0')} sub="Executed queries" icon={<Database size={18} />} color="var(--accent)" colorMuted="var(--accent-muted)" delay={0.24} />
+        <StatCard label="Segments" value={statsLoading ? '...' : formatNumber(stats?.segmentCount || '0')} sub="Created segments" icon={<Database size={18} />} color="var(--accent)" colorMuted="var(--accent-muted)" delay={0.24} />
       </div>
 
       {/* TABS */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
-        <Button 
-          variant={activeTab === 'browse' ? 'primary' : 'ghost'} 
-          icon={<Search size={14} />} 
+        <Button
+          variant={activeTab === 'browse' ? 'primary' : 'ghost'}
+          icon={<Search size={14} />}
           onClick={() => { setActiveTab('browse'); setResult(null); setSortCol('last_name'); }}
         >
           Data Explorer
         </Button>
-        <Button 
-          variant={activeTab === 'sql' ? 'primary' : 'ghost'} 
-          icon={<Database size={14} />} 
+        <Button
+          variant={activeTab === 'sql' ? 'primary' : 'ghost'}
+          icon={<Database size={14} />}
           onClick={() => { setActiveTab('sql'); setResult(null); setSortCol(null); }}
         >
           Advanced SQL Editor
@@ -393,13 +466,13 @@ export default function DatabasePage() {
                   onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
                 />
               </div>
-              
+
               <div style={{ position: 'relative' }}>
                 {/* 
                   Use generic button element here and capture ref, 
                   so we can cleanly attach ref without breaking UI.Button constraints
                 */}
-                <button 
+                <button
                   ref={colPickerBtnRef}
                   onClick={() => setShowColPicker(!showColPicker)}
                   style={{
@@ -458,7 +531,7 @@ export default function DatabasePage() {
                   </div>
                 )}
               </div>
-              
+
               <Button variant="secondary" icon={<RefreshCw size={14} />} onClick={() => runBrowse()}>Refresh</Button>
             </div>
 
@@ -641,10 +714,34 @@ export default function DatabasePage() {
               onFocus={e => e.currentTarget.style.borderColor = 'var(--accent)'}
               onBlur={e => e.currentTarget.style.borderColor = 'var(--border)'}
             />
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <Button icon={loading ? <Loader2 size={14} className="spin" /> : <Play size={14} />} onClick={executeSQL} disabled={loading}>{loading ? 'Running...' : 'Execute SQL (⌘+Enter)'}</Button>
-              <Button variant="ghost" icon={<Copy size={14} />} onClick={() => { navigator.clipboard.writeText(query); setSuccess('Copied!'); setTimeout(()=>setSuccess(null),2000); }}>Copy SQL</Button>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <Button icon={loading ? <Loader2 size={14} className="spin" /> : <Play size={14} />} onClick={executeSQL} disabled={loading}>{loading ? 'Running...' : 'Execute SQL (⌘+Enter)'}</Button>
+                <Button variant="ghost" icon={<Copy size={14} />} onClick={() => { navigator.clipboard.writeText(query); setSuccess('Copied!'); setTimeout(() => setSuccess(null), 2000); }}>Copy SQL</Button>
+                <Button variant="secondary" icon={<Save size={14} />} onClick={saveCurrentQuery}>Save Query</Button>
+              </div>
+              <Button variant="ghost" icon={<BookmarkCheck size={14} />} onClick={() => setShowSavedQueries(!showSavedQueries)}>
+                Saved Queries ({savedQueries.length})
+              </Button>
             </div>
+            {showSavedQueries && savedQueries.length > 0 && (
+              <div className="animate-slideDown" style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Saved Queries</h4>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {savedQueries.map((sq, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg-app)', border: '1px solid var(--border)', borderRadius: 8 }}>
+                      <div style={{ cursor: 'pointer', flex: 1 }} onClick={() => setQuery(sq.sql)}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>{sq.name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 400 }}>{sq.sql}</div>
+                      </div>
+                      <button onClick={() => removeSavedQuery(i)} style={{ color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -665,13 +762,13 @@ export default function DatabasePage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
           {activeTab === 'browse' ? (
-            loading && !result ? (<span><Loader2 size={14} className="spin" style={{ display: 'inline', marginRight: 8 }}/> Loading data...</span>) : 
-            result ? `Showing ${formatNumber(result.total || 0)} results (${result.elapsed}ms)` : 'Data Results'
+            loading && !result ? (<span><Loader2 size={14} className="spin" style={{ display: 'inline', marginRight: 8 }} /> Loading data...</span>) :
+              result ? `Showing ${formatNumber(result.total || 0)} results (${result.elapsed}ms)` : 'Data Results'
           ) : (
             `Query Results ${result ? `(${result.rows.length} rows, ${result.elapsed}ms)` : ''}`
           )}
         </h3>
-        
+
         {/* Pagination & Export for Browse OR just Export for SQL */}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           {activeTab === 'browse' && result && (result.total || 0) > 0 && (() => {
@@ -706,7 +803,7 @@ export default function DatabasePage() {
 
                 {/* Page nav */}
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <Button variant="ghost" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={{ padding: '6px 10px' }}><ChevronLeft size={16}/></Button>
+                  <Button variant="ghost" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={{ padding: '6px 10px' }}><ChevronLeft size={16} /></Button>
                   <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
                     Page
                     <input
@@ -729,7 +826,7 @@ export default function DatabasePage() {
                     />
                     of {totalPages.toLocaleString()}
                   </span>
-                  <Button variant="ghost" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 10px' }}><ChevronRight size={16}/></Button>
+                  <Button variant="ghost" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 10px' }}><ChevronRight size={16} /></Button>
                 </div>
               </>
             );
@@ -766,6 +863,11 @@ export default function DatabasePage() {
                   setError(`Export failed: ${e.message}`);
                 }
               }}>Export All ({formatNumber(result.total || 0)})</Button>
+              {selectedIds.size > 0 && (
+                <Button variant="primary" icon={<Trash2 size={14} />} onClick={handleBulkDelete} disabled={bulkDeleting} style={{ background: 'var(--red)', borderColor: 'var(--red)' }}>
+                  {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedIds.size})`}
+                </Button>
+              )}
             </>
           ) : null}
         </div>
@@ -779,40 +881,78 @@ export default function DatabasePage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead style={{ position: 'sticky', top: 0, background: 'var(--bg-card)', zIndex: 10, borderBottom: '1px solid var(--border)' }}>
                 <tr>
+                  {activeTab === 'browse' && (
+                    <th style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', width: 40 }}>
+                      <div style={{ cursor: 'pointer', color: 'var(--text-tertiary)' }} onClick={() => {
+                        if (selectedIds.size === sortedRows.length) setSelectedIds(new Set());
+                        else setSelectedIds(new Set(sortedRows.map(r => String(r.up_id || r.id)).filter(Boolean)));
+                      }}>
+                        {selectedIds.size === sortedRows.length && sortedRows.length > 0 ? <CheckSquare size={16} color="var(--accent)" /> : <Square size={16} />}
+                      </div>
+                    </th>
+                  )}
                   {resultCols.map(col => (
-                    <th key={col} onClick={() => toggleSort(col)}
+                    <th key={col}
                       style={{
                         padding: '12px 16px', textAlign: 'left', fontWeight: 700,
                         fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em',
                         color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)',
-                        cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap',
-                        background: sortCol === col ? 'var(--bg-hover)' : 'transparent',
+                        whiteSpace: 'nowrap', background: sortCol === col ? 'var(--bg-hover)' : 'transparent',
+                        position: 'relative',
                       }}
                     >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {col.replace(/_/g, ' ')}
-                        {sortCol === col && (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', flex: 1 }} onClick={() => toggleSort(col)}>
+                          {col.replace(/_/g, ' ')}
+                          {sortCol === col && (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+                        </span>
+                        {activeTab === 'browse' && (
+                          <BarChart2 size={12} style={{ cursor: 'pointer', opacity: 0.5 }} onClick={() => showColumnStats(col)} />
+                        )}
+                      </div>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {sortedRows.map((row, i) => (
-                  <tr key={i} style={{ transition: 'background 0.1s', cursor: 'pointer' }}
-                    onClick={() => setSelectedRow(row)}
-                    onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                    onMouseOut={e => (e.currentTarget.style.background = '')}>
-                    {resultCols.map(col => {
-                      const val = row[col];
-                      return (
-                        <td key={col} style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }} title={String(val ?? '')}>
-                          {val === null || val === undefined ? <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>—</span> : String(val)}
+                {sortedRows.map((row, i) => {
+                  const rowId = String(row.up_id || row.id);
+                  const isSelected = selectedIds.has(rowId);
+
+                  // Simple completeness score based on string length of all values
+                  const values = Object.values(row).filter(v => v !== null && v !== '');
+                  const score = values.length / resultCols.length;
+                  const completenessColor = score > 0.8 ? '#22c55e' : score > 0.4 ? '#eab308' : '#ef4444';
+
+                  return (
+                    <tr key={i} style={{ transition: 'background 0.1s', cursor: 'pointer', background: isSelected ? 'var(--bg-hover)' : 'transparent' }}
+                      onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseOut={e => (e.currentTarget.style.background = isSelected ? 'var(--bg-hover)' : 'transparent')}>
+
+                      {activeTab === 'browse' && (
+                        <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', verticalAlign: 'middle' }}
+                          onClick={(e) => { e.stopPropagation(); const newIds = new Set(selectedIds); if (isSelected) newIds.delete(rowId); else newIds.add(rowId); setSelectedIds(newIds); }}>
+                          <div style={{ color: isSelected ? 'var(--accent)' : 'var(--border)' }}>
+                            {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                          </div>
                         </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                      )}
+
+                      {resultCols.map((col, cIdx) => {
+                        const val = row[col];
+                        return (
+                          <td key={col} onClick={() => setSelectedRow(row)}
+                            style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }} title={String(val ?? '')}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {cIdx === 0 && <span style={{ width: 6, height: 6, borderRadius: '50%', background: completenessColor, flexShrink: 0 }} title={`Data Completeness`} />}
+                              <span>{val === null || val === undefined ? <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>—</span> : String(val)}</span>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -825,77 +965,114 @@ export default function DatabasePage() {
         )}
       </div>
 
-      {/* Row Detail Modal */}
+      {/* Column Stats Popover */}
+      {statsColumn && (
+        <div onClick={() => setStatsColumn(null)} style={{ position: 'fixed', inset: 0, zIndex: 150, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="animate-scaleIn" onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-card)', width: 400, borderRadius: 16, border: '1px solid var(--border)', overflow: 'hidden', boxShadow: 'var(--shadow-xl)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h4 style={{ margin: 0, fontSize: 13, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-primary)' }}>Top {statsColumn.replace(/_/g, ' ')}</h4>
+              <X size={16} style={{ cursor: 'pointer', color: 'var(--text-tertiary)' }} onClick={() => setStatsColumn(null)} />
+            </div>
+            <div style={{ padding: 20, maxHeight: 400, overflowY: 'auto' }}>
+              {loadingStats ? <div style={{ textAlign: 'center', padding: 20 }}><Loader2 size={24} className="spin" style={{ color: 'var(--accent)' }} /></div> : (
+                columnStats.length === 0 ? <div style={{ color: 'var(--text-tertiary)', textAlign: 'center', padding: 20 }}>No common values found</div> :
+                  columnStats.map((s, idx) => {
+                    const maxCount = parseInt(columnStats[0].count);
+                    const pct = (parseInt(s.count) / maxCount) * 100;
+                    return (
+                      <div key={idx} style={{ marginBottom: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                          <span style={{ color: 'var(--text-primary)', fontWeight: 600, maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.value}>{s.value}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>{formatNumber(s.count)}</span>
+                        </div>
+                        <div style={{ width: '100%', height: 6, background: 'var(--bg-app)', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 3 }} />
+                        </div>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Row Detail Drawer (Slide from Right) */}
       {selectedRow && (
-        <div
-          onClick={(e) => { if (e.target === e.currentTarget) setSelectedRow(null); }}
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
-          }}
-        >
-          <div className="animate-scaleIn" style={{
-            background: 'var(--bg-app)', border: '1px solid var(--border)',
-            borderRadius: 20, width: '100%', maxWidth: 600, maxHeight: '80vh',
-            boxShadow: 'var(--shadow-lg)', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        <>
+          <div onClick={() => setSelectedRow(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)', zIndex: 200, animation: 'fadeIn 0.2s' }} />
+          <div className="animate-slideIn" style={{
+            position: 'fixed', top: 0, right: 0, bottom: 0, width: '100%', maxWidth: 500,
+            background: 'var(--bg-app)', borderLeft: '1px solid var(--border)', boxShadow: '-10px 0 25px rgba(0,0,0,0.2)',
+            zIndex: 210, display: 'flex', flexDirection: 'column',
           }}>
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '20px 24px', borderBottom: '1px solid var(--border)',
+              padding: '24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)'
             }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>Row Detail</h3>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Sidebar size={18} style={{ color: 'var(--accent)' }} /> Profile Viewer
+                </h3>
+                <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                  ID: {String(selectedRow.up_id || selectedRow.id || 'Unknown')}
+                </div>
+              </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(JSON.stringify(selectedRow, null, 2));
+                    toastSuccess('JSON copied to clipboard');
                   }}
                   style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px',
-                    borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                    background: 'var(--bg-card-hover)', border: '1px solid var(--border)',
-                    color: 'var(--text-secondary)',
-                  }}
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 36, height: 36, borderRadius: 10, cursor: 'pointer',
+                    background: 'var(--bg-hover)', border: '1px solid var(--border)', color: 'var(--text-secondary)',
+                  }} title="Copy JSON"
                 >
-                  <Copy size={12} /> Copy JSON
+                  <Copy size={16} />
                 </button>
                 <button
                   onClick={() => setSelectedRow(null)}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    width: 32, height: 32, borderRadius: 8, cursor: 'pointer',
-                    background: 'transparent', border: 'none', color: 'var(--text-tertiary)',
-                  }}
+                    width: 36, height: 36, borderRadius: 10, cursor: 'pointer',
+                    background: 'var(--bg-hover)', border: 'none', color: 'var(--text-tertiary)',
+                  }} title="Close"
                 >
                   <X size={18} />
                 </button>
               </div>
             </div>
-            <div style={{ overflowY: 'auto', padding: '16px 24px 24px' }}>
-              {Object.entries(selectedRow).map(([key, value]) => (
-                <div key={key} style={{
-                  display: 'flex', gap: 16, padding: '10px 0',
-                  borderBottom: '1px solid var(--border)',
-                }}>
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-                    letterSpacing: '0.05em', color: 'var(--text-tertiary)',
-                    minWidth: 160, flexShrink: 0, paddingTop: 2,
-                  }}>
-                    {String(key).replace(/_/g, ' ')}
-                  </span>
-                  <span style={{
-                    fontSize: 13, color: value === null || value === undefined ? 'var(--text-tertiary)' : 'var(--text-primary)',
-                    fontStyle: value === null || value === undefined ? 'italic' : 'normal',
-                    wordBreak: 'break-all', lineHeight: 1.5,
-                  }}>
-                    {value === null || value === undefined ? '—' : String(value)}
-                  </span>
-                </div>
-              ))}
+
+            <div style={{ overflowY: 'auto', padding: '24px', flex: 1 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {Object.entries(selectedRow).map(([key, value]) => {
+                  const isEmpty = value === null || value === undefined || value === '';
+                  return (
+                    <div key={key} style={{
+                      background: 'var(--bg-card)', padding: '12px 16px', borderRadius: 12,
+                      border: '1px solid var(--border)', borderLeft: isEmpty ? '3px solid var(--border)' : '3px solid var(--accent)'
+                    }}>
+                      <div style={{
+                        fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                        letterSpacing: '0.05em', color: 'var(--text-tertiary)', marginBottom: 6
+                      }}>
+                        {String(key).replace(/_/g, ' ')}
+                      </div>
+                      <div style={{
+                        fontSize: 14, color: isEmpty ? 'var(--text-tertiary)' : 'var(--text-primary)',
+                        fontStyle: isEmpty ? 'italic' : 'normal', wordBreak: 'break-all', fontWeight: 500,
+                      }}>
+                        {isEmpty ? 'Not provided' : String(value)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </>
   );

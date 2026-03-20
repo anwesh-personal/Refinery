@@ -240,3 +240,34 @@ export async function getFilterableColumns(): Promise<string[]> {
   return allColumns.filter(c => !INTERNAL_COLS.has(c));
 }
 
+/** Get column stats — top N distinct values with counts */
+export async function getColumnStats(column: string, limit = 20): Promise<{ value: string; count: string }[]> {
+  const safeCol = column.replace(/[^a-zA-Z0-9_]/g, '');
+  return query<{ value: string; count: string }>(`
+    SELECT toString(${safeCol}) as value, count() as count
+    FROM universal_person
+    WHERE ${safeCol} IS NOT NULL AND toString(${safeCol}) != ''
+    GROUP BY value
+    ORDER BY count DESC
+    LIMIT ${limit}
+  `);
+}
+
+/** Bulk delete rows by up_id list */
+export async function bulkDeleteRows(upIds: string[]): Promise<number> {
+  if (!upIds.length || upIds.length > 10000) throw new Error('Invalid selection (max 10,000)');
+  const escaped = upIds.map(id => `'${id.replace(/'/g, "\\'")}'`).join(',');
+  await command(`ALTER TABLE universal_person DELETE WHERE up_id IN (${escaped})`);
+  return upIds.length;
+}
+
+/** Get columns for a specific table */
+export async function getTableColumnsFor(tableName: string): Promise<string[]> {
+  const safeName = tableName.replace(/[^a-zA-Z0-9_]/g, '');
+  const rows = await query<{ name: string }>(`
+    SELECT name FROM system.columns
+    WHERE database = currentDatabase() AND table = '${safeName}'
+    ORDER BY position
+  `);
+  return rows.map(r => r.name);
+}

@@ -110,4 +110,37 @@ router.post('/export', async (req, res) => {
   }
 });
 
+// GET /api/database/column-stats/:column
+router.get('/column-stats/:column', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 20;
+    const stats = await dbService.getColumnStats(req.params.column, limit);
+    res.json(stats);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/database/bulk-delete  { upIds: string[] }
+router.post('/bulk-delete', async (req, res) => {
+  try {
+    const { upIds } = req.body;
+    if (!Array.isArray(upIds)) return res.status(400).json({ error: 'upIds must be an array' });
+    const count = await dbService.bulkDeleteRows(upIds);
+    res.json({ deleted: count });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/database/table-columns/:table
+router.get('/table-columns/:table', async (req, res) => {
+  try {
+    const cols = await dbService.getTableColumnsFor(req.params.table);
+    res.json(cols);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
