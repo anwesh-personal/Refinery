@@ -18,10 +18,28 @@ function parseLine(line: string, source: string): LogEntry | null {
     const trimmed = line.trim();
     if (!trimmed) return null;
 
-    let level: LogEntry['level'] = 'info';
-    if (/\berr(or)?\b/i.test(trimmed) || /\bfatal\b/i.test(trimmed)) level = 'error';
-    else if (/\bwarn(ing)?\b/i.test(trimmed)) level = 'warn';
-    else if (/\bdebug\b/i.test(trimmed)) level = 'debug';
+    // Determine level from the PM2 log file name first:
+    // -error.log files are stderr → everything is at least a warning
+    const isErrorFile = source.endsWith('-error');
+
+    let level: LogEntry['level'] = isErrorFile ? 'error' : 'info';
+
+    if (!isErrorFile) {
+        // For stdout logs, look for STRUCTURED log markers only.
+        // Do NOT match random occurrences of 'error' in URLs, payloads, etc.
+        // Match: [ERROR], [WARN], ERROR:, WARN:, [DEBUG], etc.
+        const isMorganAccessLog = /^\d+\.\d+\.\d+\.\d+\s+-\s+(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+/.test(trimmed);
+        if (isMorganAccessLog) {
+            // HTTP access logs are always info-level regardless of URL content
+            level = 'info';
+        } else if (/\[ERROR\]|ERROR:|FATAL:|fatal:|\bfatal\b/i.test(trimmed)) {
+            level = 'error';
+        } else if (/\[WARN\]|WARN:|WARNING:/i.test(trimmed)) {
+            level = 'warn';
+        } else if (/\[DEBUG\]|DEBUG:/i.test(trimmed)) {
+            level = 'debug';
+        }
+    }
 
     // Try to extract ISO timestamp from common formats
     const tsMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})/);
