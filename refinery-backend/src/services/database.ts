@@ -36,16 +36,15 @@ export async function getDatabaseStats() {
     WHERE database = currentDatabase() AND active
   `);
 
-  const [queryCount] = await query<{ cnt: string }>(`
-    SELECT count() as cnt FROM system.query_log
-    WHERE event_date = today() AND type = 'QueryFinish'
+  const [segmentCount] = await query<{ cnt: string }>(`
+    SELECT count() as cnt FROM segments FINAL
   `).catch(() => [{ cnt: '0' }]);
 
   return {
     totalRows: tableStats?.total_rows || '0',
     totalBytes: tableStats?.total_bytes || '0',
     tableCount: tableStats?.table_count || '0',
-    queriesToday: queryCount?.cnt || '0',
+    segmentCount: segmentCount?.cnt || '0',
   };
 }
 
@@ -176,14 +175,14 @@ export async function browseData(params: BrowseParams) {
     const col = `\`${af.column}\``;
     const escaped = (af.value || '').replace(/'/g, "\\'");
     switch (af.operator) {
-      case 'equals':       conditions.push(`${col} = '${escaped}'`); break;
-      case 'not_equals':   conditions.push(`${col} != '${escaped}'`); break;
-      case 'contains':     conditions.push(`lower(coalesce(toString(${col}), '')) LIKE lower('%${escaped}%')`); break;
-      case 'not_contains':  conditions.push(`lower(coalesce(toString(${col}), '')) NOT LIKE lower('%${escaped}%')`); break;
-      case 'starts_with':  conditions.push(`lower(coalesce(toString(${col}), '')) LIKE lower('${escaped}%')`); break;
-      case 'ends_with':    conditions.push(`lower(coalesce(toString(${col}), '')) LIKE lower('%${escaped}')`); break;
-      case 'is_null':      conditions.push(`(${col} IS NULL OR toString(${col}) = '')`); break;
-      case 'is_not_null':  conditions.push(`(${col} IS NOT NULL AND toString(${col}) != '')`); break;
+      case 'equals': conditions.push(`${col} = '${escaped}'`); break;
+      case 'not_equals': conditions.push(`${col} != '${escaped}'`); break;
+      case 'contains': conditions.push(`lower(coalesce(toString(${col}), '')) LIKE lower('%${escaped}%')`); break;
+      case 'not_contains': conditions.push(`lower(coalesce(toString(${col}), '')) NOT LIKE lower('%${escaped}%')`); break;
+      case 'starts_with': conditions.push(`lower(coalesce(toString(${col}), '')) LIKE lower('${escaped}%')`); break;
+      case 'ends_with': conditions.push(`lower(coalesce(toString(${col}), '')) LIKE lower('%${escaped}')`); break;
+      case 'is_null': conditions.push(`(${col} IS NULL OR toString(${col}) = '')`); break;
+      case 'is_not_null': conditions.push(`(${col} IS NOT NULL AND toString(${col}) != '')`); break;
     }
   }
 

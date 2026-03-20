@@ -13,7 +13,7 @@ interface DbStats {
   totalRows: string;
   totalBytes: string;
   tableCount: string;
-  queriesToday: string;
+  segmentCount: string;
 }
 
 interface IngestionStats {
@@ -206,7 +206,7 @@ export default function DashboardPage() {
         <StatCard
           label="Active Tables"
           value={loading ? '...' : formatNumber(dbStats?.tableCount || '0')}
-          sub={`${formatNumber(dbStats?.queriesToday || '0')} queries today`}
+          sub={`${formatNumber(dbStats?.segmentCount || '0')} segments created`}
           icon={<Database size={18} />}
           color="var(--green)"
           colorMuted="var(--green-muted)"
