@@ -22,6 +22,43 @@ function esc(v: string): string {
   return v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Concurrency-Controlled Ingestion Queue
+//
+// Limits parallel pipelines to MAX_CONCURRENT to prevent OOM,
+// bandwidth saturation, and ClickHouse write contention.
+// Queue depth is unlimited — submit 5,000 files if you want.
+// ═══════════════════════════════════════════════════════════════
+const MAX_CONCURRENT = 5;
+let activeCount = 0;
+const waitQueue: Array<{ resolve: () => void }> = [];
+
+async function acquirePipelineSlot(): Promise<void> {
+  if (activeCount < MAX_CONCURRENT) {
+    activeCount++;
+    return;
+  }
+  // Wait until a slot opens
+  return new Promise<void>((resolve) => {
+    waitQueue.push({ resolve });
+  });
+}
+
+function releasePipelineSlot(): void {
+  if (waitQueue.length > 0) {
+    // Hand slot to next waiting job
+    const next = waitQueue.shift()!;
+    next.resolve();
+  } else {
+    activeCount = Math.max(0, activeCount - 1);
+  }
+}
+
+/** Get current queue status — useful for monitoring */
+export function getQueueStatus(): { active: number; queued: number; maxConcurrent: number } {
+  return { active: activeCount, queued: waitQueue.length, maxConcurrent: MAX_CONCURRENT };
+}
+
 /** Detect file format from extension */
 type FileFormat = 'csv' | 'csv.gz' | 'parquet' | 'unknown';
 function detectFormat(fileName: string): FileFormat {
@@ -216,7 +253,8 @@ export async function getIngestionStats() {
       (SELECT count() FROM ingestion_jobs WHERE status IN ('pending','downloading','uploading','ingesting')) as pending,
       (SELECT file_name FROM ingestion_jobs ORDER BY started_at DESC LIMIT 1) as latest_file
   `);
-  return row || { total_rows: '0', total_bytes: '0', pending: '0', latest_file: '' };
+  const stats = row || { total_rows: '0', total_bytes: '0', pending: '0', latest_file: '' };
+  return { ...stats, queue: getQueueStatus() };
 }
 
 /**
@@ -257,15 +295,23 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string): P
     status: 'downloading',
   }]);
 
-  // Run the actual pipeline in the background (non-blocking)
-  runIngestionPipeline(jobId, sourceKey, fileName, format, sourceClient, sourceBucket).catch(async (err) => {
-    console.error(`[Ingestion] Job ${jobId} failed:`, err.message);
-    await command(`
-      ALTER TABLE ingestion_jobs UPDATE 
-        status = 'failed', error_message = '${esc(String(err.message || 'Unknown error'))}'
-      WHERE id = '${esc(jobId)}'
-    `);
-  });
+  // Run the actual pipeline in the background with concurrency control
+  (async () => {
+    await acquirePipelineSlot();
+    console.log(`[Ingestion] ${jobId}: Slot acquired (${activeCount}/${MAX_CONCURRENT} active, ${waitQueue.length} queued)`);
+    try {
+      await runIngestionPipeline(jobId, sourceKey, fileName, format, sourceClient, sourceBucket);
+    } catch (err: any) {
+      console.error(`[Ingestion] Job ${jobId} failed:`, err.message);
+      await command(`
+        ALTER TABLE ingestion_jobs UPDATE 
+          status = 'failed', error_message = '${esc(String(err.message || 'Unknown error'))}'
+        WHERE id = '${esc(jobId)}'
+      `);
+    } finally {
+      releasePipelineSlot();
+    }
+  })();
 
   return jobId;
 }
@@ -430,7 +476,7 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
       await reader.close();
     } finally {
       // Clean up temp files
-      await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
     }
   }
 
