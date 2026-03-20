@@ -882,7 +882,7 @@ export default function DatabasePage() {
         </div>
       </div>
 
-      {activeTab === 'browse' && sortedRows.length > 0 && (
+      {activeTab === 'browse' && (result?.rows?.length ?? 0) > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12, padding: '8px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 11, color: 'var(--text-tertiary)' }}>
           <span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Data Completeness</span>
           {(['all', 'high', 'medium', 'low'] as const).map(level => {
