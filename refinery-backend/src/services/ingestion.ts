@@ -523,11 +523,13 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
     if (!firstResult.done) {
       const row = firstResult.value as Record<string, unknown>;
       row._ingestion_job_id = jobId;
+      row._source_file_name = fileName;
       batch.push(row);
     }
 
     for await (const row of csvStream) {
       (row as Record<string, unknown>)._ingestion_job_id = jobId;
+      (row as Record<string, unknown>)._source_file_name = fileName;
       batch.push(row as Record<string, unknown>);
       if (batch.length >= BATCH_SIZE) {
         await flushBatch(batch);
@@ -565,7 +567,7 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
 
       while ((record = await cursor.next() as Record<string, unknown> | null)) {
         // Normalize keys to lowercase
-        const normalized: Record<string, unknown> = { _ingestion_job_id: jobId };
+        const normalized: Record<string, unknown> = { _ingestion_job_id: jobId, _source_file_name: fileName };
         for (const [key, val] of Object.entries(record)) {
           normalized[key.toLowerCase().trim()] = val != null ? String(val) : null;
         }
@@ -593,3 +595,116 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
   console.log(`[Ingestion] ${jobId}: Complete — ${totalRows.toLocaleString()} rows ingested (${format}).`);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Rollback & Archive
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Rollback a job — instantly delete all leads ingested by this job
+ * and mark the job as 'rolled_back'.
+ * Returns the number of rows deleted.
+ */
+export async function rollbackJob(jobId: string): Promise<{ rowsDeleted: number; fileName: string }> {
+  const id = esc(jobId);
+
+  // Get job info
+  const [job] = await query<{ file_name: string; rows_ingested: string; status: string }>(
+    `SELECT file_name, rows_ingested, status FROM ingestion_jobs WHERE id = '${id}' LIMIT 1`
+  );
+  if (!job) throw new Error(`Job ${jobId} not found`);
+  if (job.status === 'rolled_back') throw new Error(`Job ${jobId} has already been rolled back`);
+
+  // Count rows that will be deleted
+  const [countResult] = await query<{ cnt: string }>(
+    `SELECT count() as cnt FROM universal_person WHERE _ingestion_job_id = '${id}'`
+  );
+  const rowsToDelete = Number(countResult?.cnt || 0);
+
+  // Delete the leads
+  if (rowsToDelete > 0) {
+    await command(`ALTER TABLE universal_person DELETE WHERE _ingestion_job_id = '${id}'`);
+  }
+
+  // Mark job as rolled back
+  await command(`
+    ALTER TABLE ingestion_jobs UPDATE
+      status = 'rolled_back',
+      error_message = 'Rolled back — ${rowsToDelete} rows deleted'
+    WHERE id = '${id}'
+  `);
+
+  console.log(`[Ingestion] Rollback ${jobId}: Deleted ${rowsToDelete} rows from ${job.file_name}`);
+  return { rowsDeleted: rowsToDelete, fileName: job.file_name };
+}
+
+/**
+ * Archive a job — schedule its leads for deletion after `days` days.
+ * The leads remain queryable until the TTL expires, then cleanupArchivedJobs() purges them.
+ */
+export async function archiveJob(jobId: string, days: number = 7): Promise<{ deleteAfter: string; fileName: string }> {
+  const id = esc(jobId);
+
+  const [job] = await query<{ file_name: string; status: string }>(
+    `SELECT file_name, status FROM ingestion_jobs WHERE id = '${id}' LIMIT 1`
+  );
+  if (!job) throw new Error(`Job ${jobId} not found`);
+  if (job.status === 'rolled_back') throw new Error(`Job ${jobId} has already been rolled back`);
+  if (job.status === 'archived') throw new Error(`Job ${jobId} is already archived`);
+
+  const deleteAfter = new Date(Date.now() + days * 86400000)
+    .toISOString().replace('T', ' ').slice(0, 19);
+
+  await command(`
+    ALTER TABLE ingestion_jobs UPDATE
+      status = 'archived',
+      archived_at = now(),
+      delete_after = '${deleteAfter}'
+    WHERE id = '${id}'
+  `);
+
+  console.log(`[Ingestion] Archived ${jobId} (${job.file_name}) — will delete after ${deleteAfter}`);
+  return { deleteAfter, fileName: job.file_name };
+}
+
+/**
+ * Cleanup archived jobs whose TTL has expired.
+ * Deletes the leads from universal_person and marks the job as rolled_back.
+ * Intended to run on a schedule (hourly).
+ */
+export async function cleanupArchivedJobs(): Promise<number> {
+  const expiredJobs = await query<{ id: string; file_name: string }>(
+    `SELECT id, file_name FROM ingestion_jobs
+     WHERE status = 'archived' AND delete_after IS NOT NULL AND delete_after <= now()`
+  );
+
+  if (expiredJobs.length === 0) return 0;
+
+  let totalDeleted = 0;
+  for (const job of expiredJobs) {
+    try {
+      const result = await rollbackJob(job.id);
+      totalDeleted += result.rowsDeleted;
+      console.log(`[Ingestion] Auto-cleaned archived job ${job.id} (${job.file_name}): ${result.rowsDeleted} rows deleted`);
+    } catch (e: any) {
+      console.error(`[Ingestion] Failed to clean archived job ${job.id}:`, e.message);
+    }
+  }
+
+  return totalDeleted;
+}
+
+/** Start the hourly archive cleanup scheduler */
+export function startArchiveCleanupScheduler(): void {
+  const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  setInterval(async () => {
+    try {
+      const cleaned = await cleanupArchivedJobs();
+      if (cleaned > 0) {
+        console.log(`[Ingestion] Archive cleanup: ${cleaned} rows purged from expired archives`);
+      }
+    } catch (e: any) {
+      console.error('[Ingestion] Archive cleanup error:', e.message);
+    }
+  }, INTERVAL_MS);
+  console.log('[Ingestion] Archive cleanup scheduler started (runs hourly)');
+}

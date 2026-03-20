@@ -5,7 +5,7 @@ import morgan from 'morgan';
 import { env } from './config/env.js';
 import { initDatabase } from './db/init.js';
 import { recoverOrphanedBatches } from './services/verification.js';
-import { recoverStaleIngestionJobs } from './services/ingestion.js';
+import { recoverStaleIngestionJobs, startArchiveCleanupScheduler } from './services/ingestion.js';
 
 // Routes
 import ingestionRoutes from './routes/ingestion.js';
@@ -143,6 +143,9 @@ async function start() {
     // Initialize auto-ingestion scheduler
     await setupScheduler();
     console.log('[Server] ✓ Auto-ingestion scheduler initialized');
+
+    // Start archive cleanup scheduler (hourly)
+    startArchiveCleanupScheduler();
 
     // Register env-configured servers into Supabase
     await ensureEnvServersRegistered();

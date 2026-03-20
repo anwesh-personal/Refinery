@@ -71,6 +71,7 @@ const SCHEMAS = [
     work_history                       Nullable(String),
     education_history                  Nullable(String),
     _ingestion_job_id                  Nullable(String),
+    _source_file_name                  Nullable(String),
     _ingested_at                       DateTime DEFAULT now(),
     _segment_ids                       Array(String) DEFAULT [],
     _verification_status               Nullable(String),
@@ -90,6 +91,8 @@ const SCHEMAS = [
     rows_ingested     UInt64 DEFAULT 0,
     status            String DEFAULT 'pending',
     error_message     Nullable(String),
+    archived_at       Nullable(DateTime),
+    delete_after      Nullable(DateTime),
     started_at        DateTime DEFAULT now(),
     completed_at      Nullable(DateTime)
   ) ENGINE = MergeTree()

@@ -112,7 +112,7 @@ function timeAgo(dateStr: string): string {
 const statusColors: Record<string, string> = {
   complete: 'var(--green)', ingesting: 'var(--blue)', downloading: 'var(--yellow)',
   uploading: 'var(--purple)', pending: 'var(--text-secondary)', failed: 'var(--red)',
-  cancelled: 'var(--yellow)',
+  cancelled: 'var(--yellow)', rolled_back: 'var(--red)', archived: 'var(--purple)',
 };
 
 type FileFormat = 'csv' | 'gz' | 'parquet' | 'other';
@@ -1154,6 +1154,7 @@ export default function IngestionPage() {
                       </th>
                     ))}
                     <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>Size</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1165,10 +1166,52 @@ export default function IngestionPage() {
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.file_name}</td>
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>{formatNumber(job.rows_ingested)}</td>
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', padding: '4px 10px', borderRadius: 6, color: statusColors[job.status] || 'var(--text-secondary)', background: (statusColors[job.status] || 'var(--text-secondary)') + '18' }}>{job.status}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', padding: '4px 10px', borderRadius: 6, color: statusColors[job.status] || 'var(--text-secondary)', background: (statusColors[job.status] || 'var(--text-secondary)') + '18' }}>{job.status.replace('_', ' ')}</span>
+                        {job.status === 'archived' && (job as any).delete_after && (
+                          <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 6 }}>expires {timeAgo((job as any).delete_after)}</span>
+                        )}
                       </td>
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{timeAgo(job.started_at)}</td>
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{formatBytes(Number(job.file_size_bytes))}</td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          {(job.status === 'complete' || job.status === 'archived') && (
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`Delete ALL ${formatNumber(job.rows_ingested)} leads from "${job.file_name}"? This cannot be undone.`)) return;
+                                try {
+                                  const r = await apiCall<{ rowsDeleted: number }>(`/api/ingestion/${job.id}/rollback`, { method: 'POST' });
+                                  setSuccess(`Rolled back: ${formatNumber(r.rowsDeleted)} rows deleted from ${job.file_name}`);
+                                  fetchData();
+                                  setTimeout(() => setSuccess(null), 5000);
+                                } catch (e: any) { setError(e.message); }
+                              }}
+                              style={{ padding: '3px 8px', fontSize: 10, fontWeight: 700, borderRadius: 5, cursor: 'pointer', border: '1px solid var(--red)', background: 'transparent', color: 'var(--red)', transition: 'all 0.15s' }}
+                              onMouseOver={e => { e.currentTarget.style.background = 'var(--red)'; e.currentTarget.style.color = '#fff'; }}
+                              onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--red)'; }}
+                            >Rollback</button>
+                          )}
+                          {job.status === 'complete' && (
+                            <button
+                              onClick={async () => {
+                                const daysStr = prompt('Archive and auto-delete leads after how many days?', '7');
+                                if (!daysStr) return;
+                                const days = Number(daysStr);
+                                if (isNaN(days) || days < 1) { alert('Enter a valid number of days'); return; }
+                                try {
+                                  const r = await apiCall<{ deleteAfter: string }>(`/api/ingestion/${job.id}/archive`, { method: 'POST', body: { days } });
+                                  setSuccess(`Archived ${job.file_name} — leads will auto-delete after ${r.deleteAfter}`);
+                                  fetchData();
+                                  setTimeout(() => setSuccess(null), 5000);
+                                } catch (e: any) { setError(e.message); }
+                              }}
+                              style={{ padding: '3px 8px', fontSize: 10, fontWeight: 700, borderRadius: 5, cursor: 'pointer', border: '1px solid var(--purple)', background: 'transparent', color: 'var(--purple)', transition: 'all 0.15s' }}
+                              onMouseOver={e => { e.currentTarget.style.background = 'var(--purple)'; e.currentTarget.style.color = '#fff'; }}
+                              onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--purple)'; }}
+                            >Archive</button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

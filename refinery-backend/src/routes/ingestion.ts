@@ -183,4 +183,25 @@ router.post('/cancel-running', async (req, res) => {
   }
 });
 
+// POST /api/ingestion/:id/rollback — instantly delete all leads from this job
+router.post('/:id/rollback', async (req, res) => {
+  try {
+    const result = await ingestionService.rollbackJob(req.params.id);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/ingestion/:id/archive  { days?: number }
+router.post('/:id/archive', async (req, res) => {
+  try {
+    const days = Number(req.body.days) || 7;
+    const result = await ingestionService.archiveJob(req.params.id, days);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
