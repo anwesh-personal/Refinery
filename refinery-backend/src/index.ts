@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import { env } from './config/env.js';
 import { initDatabase } from './db/init.js';
 import { recoverOrphanedBatches } from './services/verification.js';
+import { recoverStaleIngestionJobs } from './services/ingestion.js';
 
 // Routes
 import ingestionRoutes from './routes/ingestion.js';
@@ -130,7 +131,13 @@ async function start() {
     // Recover any batches orphaned by a prior crash/restart
     const recovered = await recoverOrphanedBatches();
     if (recovered > 0) {
-      console.log(`[Server] ✓ Recovered ${recovered} orphaned batch(es)`);
+      console.log(`[Server] ✓ Recovered ${recovered} orphaned verification batch(es)`);
+    }
+
+    // Recover stale ingestion jobs from prior crash/restart
+    const staleJobs = await recoverStaleIngestionJobs();
+    if (staleJobs > 0) {
+      console.log(`[Server] ✓ Recovered ${staleJobs} stale ingestion job(s)`);
     }
 
     // Initialize auto-ingestion scheduler

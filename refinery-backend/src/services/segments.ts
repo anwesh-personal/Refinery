@@ -8,8 +8,77 @@ export interface SegmentInput {
   filterQuery: string;
 }
 
+interface SegmentRow {
+  id: string;
+  name: string;
+  niche: string | null;
+  client_name: string | null;
+  filter_query: string;
+  lead_count: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Filter Query Validation
+//
+// Before running any user-provided WHERE clause against ClickHouse,
+// we validate it with a dry-run EXPLAIN. This catches:
+//   - Unquoted string values (primary_industry = finance)
+//   - Syntax errors (missing operators, mismatched parens)
+//   - Invalid column names
+//   - SQL injection attempts
+//
+// The query is NEVER executed — only parsed and validated.
+// ═══════════════════════════════════════════════════════════════
+
+async function validateFilterQuery(filterQuery: string): Promise<{ valid: boolean; error?: string }> {
+  const trimmed = filterQuery.trim();
+  if (!trimmed) return { valid: false, error: 'Filter query is empty' };
+
+  // Block dangerous operations
+  const dangerous = /\b(DROP|TRUNCATE|ALTER|CREATE|INSERT|DELETE|ATTACH|DETACH|RENAME|GRANT|REVOKE)\b/i;
+  if (dangerous.test(trimmed)) {
+    return { valid: false, error: 'Filter query contains disallowed operations' };
+  }
+
+  // Dry-run with EXPLAIN to parse without executing
+  try {
+    await query(`EXPLAIN SELECT 1 FROM universal_person WHERE ${trimmed} LIMIT 0`);
+    return { valid: true };
+  } catch (e: any) {
+    // Extract useful error from ClickHouse's verbose message
+    const msg = String(e.message || '');
+
+    // Common: unquoted string value
+    if (msg.includes('Expected one of:') || msg.includes('Syntax error')) {
+      return {
+        valid: false,
+        error: `Syntax error in filter query. Make sure string values are quoted: e.g. primary_industry = 'finance' (not primary_industry = finance). Full error: ${msg.substring(0, 200)}`,
+      };
+    }
+
+    // Unknown column
+    if (msg.includes('Missing columns') || msg.includes('Unknown identifier')) {
+      return {
+        valid: false,
+        error: `Unknown column in filter query. ${msg.substring(0, 200)}`,
+      };
+    }
+
+    return { valid: false, error: `Invalid filter query: ${msg.substring(0, 300)}` };
+  }
+}
+
 /** Create a new segment */
 export async function createSegment(input: SegmentInput): Promise<string> {
+  // Validate filter before persisting
+  const validation = await validateFilterQuery(input.filterQuery);
+  if (!validation.valid) {
+    throw new Error(validation.error);
+  }
+
   const id = genId();
 
   await insertRows('segments', [{
@@ -25,18 +94,25 @@ export async function createSegment(input: SegmentInput): Promise<string> {
 }
 
 /** List all segments */
-export async function listSegments() {
-  return query('SELECT * FROM segments FINAL ORDER BY created_at DESC');
+export async function listSegments(): Promise<SegmentRow[]> {
+  return query<SegmentRow>('SELECT * FROM segments FINAL ORDER BY created_at DESC');
 }
 
 /** Get a single segment by ID */
-export async function getSegment(id: string) {
-  const rows = await query(`SELECT * FROM segments FINAL WHERE id = '${id}' LIMIT 1`);
+export async function getSegment(id: string): Promise<SegmentRow | null> {
+  const escaped = id.replace(/'/g, "\\'");
+  const rows = await query<SegmentRow>(`SELECT * FROM segments FINAL WHERE id = '${escaped}' LIMIT 1`);
   return rows[0] || null;
 }
 
 /** Preview a segment — returns the count of matching leads WITHOUT saving */
 export async function previewSegment(filterQuery: string): Promise<{ count: number; sample: Record<string, unknown>[] }> {
+  // Validate first
+  const validation = await validateFilterQuery(filterQuery);
+  if (!validation.valid) {
+    throw new Error(validation.error);
+  }
+
   // Count
   const [countResult] = await query<{ cnt: string }>(
     `SELECT count() as cnt FROM universal_person WHERE ${filterQuery}`,
@@ -57,7 +133,13 @@ export async function executeSegment(id: string): Promise<number> {
   const seg = await getSegment(id);
   if (!seg) throw new Error(`Segment ${id} not found`);
 
-  const filterQuery = (seg as any).filter_query;
+  const filterQuery = seg.filter_query;
+
+  // Re-validate (filter may have been created before validation was added)
+  const validation = await validateFilterQuery(filterQuery);
+  if (!validation.valid) {
+    throw new Error(`Segment has invalid filter query: ${validation.error}`);
+  }
 
   // Count first
   const [countResult] = await query<{ cnt: string }>(
@@ -66,23 +148,24 @@ export async function executeSegment(id: string): Promise<number> {
   const count = Number(countResult?.cnt || 0);
 
   // Tag rows (append segment ID to _segment_ids array)
+  const escapedId = id.replace(/'/g, "\\'");
   await command(`
     ALTER TABLE universal_person UPDATE
-      _segment_ids = arrayConcat(_segment_ids, ['${id}'])
+      _segment_ids = arrayConcat(_segment_ids, ['${escapedId}'])
     WHERE ${filterQuery}
-      AND NOT has(_segment_ids, '${id}')
+      AND NOT has(_segment_ids, '${escapedId}')
   `);
 
   // Update segment with count and status
   await insertRows('segments', [{
     id,
-    name: (seg as any).name,
-    niche: (seg as any).niche,
-    client_name: (seg as any).client_name,
+    name: seg.name,
+    niche: seg.niche,
+    client_name: seg.client_name,
     filter_query: filterQuery,
     lead_count: count,
     status: 'active',
-    created_at: (seg as any).created_at,
+    created_at: seg.created_at,
     updated_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
   }]);
 
@@ -94,15 +177,23 @@ export async function updateSegment(id: string, input: Partial<SegmentInput>): P
   const seg = await getSegment(id);
   if (!seg) throw new Error(`Segment ${id} not found`);
 
+  // Validate new filter if provided
+  if (input.filterQuery) {
+    const validation = await validateFilterQuery(input.filterQuery);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+  }
+
   await insertRows('segments', [{
     id,
-    name: input.name || (seg as any).name,
-    niche: input.niche !== undefined ? (input.niche || null) : (seg as any).niche,
-    client_name: input.clientName !== undefined ? (input.clientName || null) : (seg as any).client_name,
-    filter_query: input.filterQuery || (seg as any).filter_query,
-    lead_count: (seg as any).lead_count || 0,
-    status: (seg as any).status,
-    created_at: (seg as any).created_at,
+    name: input.name || seg.name,
+    niche: input.niche !== undefined ? (input.niche || null) : seg.niche,
+    client_name: input.clientName !== undefined ? (input.clientName || null) : seg.client_name,
+    filter_query: input.filterQuery || seg.filter_query,
+    lead_count: seg.lead_count || 0,
+    status: seg.status,
+    created_at: seg.created_at,
     updated_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
   }]);
 }
@@ -111,7 +202,7 @@ export async function updateSegment(id: string, input: Partial<SegmentInput>): P
 export async function exportSegmentLeads(id: string): Promise<Record<string, unknown>[]> {
   const seg = await getSegment(id);
   if (!seg) throw new Error(`Segment ${id} not found`);
-  const filterQuery = (seg as any).filter_query;
+  const filterQuery = seg.filter_query;
 
   return query(`
     SELECT * FROM universal_person
@@ -122,5 +213,6 @@ export async function exportSegmentLeads(id: string): Promise<Record<string, unk
 
 /** Delete a segment */
 export async function deleteSegment(id: string): Promise<void> {
-  await command(`ALTER TABLE segments DELETE WHERE id = '${id}'`);
+  const escaped = id.replace(/'/g, "\\'");
+  await command(`ALTER TABLE segments DELETE WHERE id = '${escaped}'`);
 }

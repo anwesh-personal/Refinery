@@ -59,6 +59,35 @@ export function getQueueStatus(): { active: number; queued: number; maxConcurren
   return { active: activeCount, queued: waitQueue.length, maxConcurrent: MAX_CONCURRENT };
 }
 
+/**
+ * Recover stale ingestion jobs on startup.
+ *
+ * When PM2 restarts the process, any in-flight background workers are killed
+ * but their ClickHouse job records still say "downloading" / "uploading" etc.
+ * This function marks them as failed so they don't appear as perpetually "in progress".
+ *
+ * Returns the number of jobs recovered.
+ */
+export async function recoverStaleIngestionJobs(): Promise<number> {
+  const staleStatuses = ['pending', 'downloading', 'uploading', 'ingesting'];
+  const [countResult] = await query<{ cnt: string }>(
+    `SELECT count() as cnt FROM ingestion_jobs WHERE status IN ('${staleStatuses.join("','")}')`
+  );
+  const count = Number(countResult?.cnt || 0);
+
+  if (count > 0) {
+    await command(`
+      ALTER TABLE ingestion_jobs UPDATE
+        status = 'failed',
+        error_message = 'Interrupted by server restart — re-ingest to retry'
+      WHERE status IN ('${staleStatuses.join("','")}')
+    `);
+    console.log(`[Ingestion] ⚠ Recovered ${count} stale job(s) — marked as failed.`);
+  }
+
+  return count;
+}
+
 /** Detect file format from extension */
 type FileFormat = 'csv' | 'csv.gz' | 'parquet' | 'unknown';
 function detectFormat(fileName: string): FileFormat {
