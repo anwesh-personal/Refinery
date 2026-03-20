@@ -316,6 +316,79 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string): P
   return jobId;
 }
 
+/**
+ * Bulk ingestion — batch-insert all job records in ONE ClickHouse call,
+ * then fire background workers. No file count limit.
+ * This avoids the socket hang up caused by 500+ sequential insertRows calls.
+ */
+export async function startBulkIngestion(sourceKeys: string[], sourceId?: string): Promise<string[]> {
+  // Resolve S3 source once (not per file)
+  let sourceBucket: string;
+  let sourceClient: S3Client;
+
+  if (sourceId) {
+    const src = await s3Sources.getSource(sourceId);
+    if (!src) throw new Error(`S3 source '${sourceId}' not found`);
+    sourceBucket = src.bucket;
+    sourceClient = s3Sources.buildClient(src);
+  } else {
+    sourceBucket = env.s3Source.bucket;
+    sourceClient = getSourceClient();
+  }
+
+  // Prepare all job records
+  const jobs: Array<{ id: string; key: string; fileName: string; format: FileFormat }> = [];
+  const rows: Array<Record<string, any>> = [];
+
+  for (const key of sourceKeys) {
+    const fileName = key.split('/').pop() || key;
+    const format = detectFormat(fileName);
+    if (format === 'unknown') continue; // skip unsupported files silently
+
+    const jobId = genId();
+    jobs.push({ id: jobId, key, fileName, format });
+    rows.push({
+      id: jobId,
+      source_bucket: sourceBucket,
+      source_key: key,
+      file_name: fileName,
+      status: 'pending',
+    });
+  }
+
+  if (rows.length === 0) {
+    throw new Error('No supported files found in the provided list.');
+  }
+
+  // Single batch insert — all jobs at once
+  await insertRows('ingestion_jobs', rows);
+
+  console.log(`[Ingestion] Bulk: Created ${jobs.length} jobs in one batch. Firing background workers.`);
+
+  // Fire background workers (concurrency queue handles throttling)
+  for (const job of jobs) {
+    (async () => {
+      await acquirePipelineSlot();
+      console.log(`[Ingestion] ${job.id}: Slot acquired (${activeCount}/${MAX_CONCURRENT} active, ${waitQueue.length} queued)`);
+      try {
+        await command(`ALTER TABLE ingestion_jobs UPDATE status = 'downloading' WHERE id = '${esc(job.id)}'`);
+        await runIngestionPipeline(job.id, job.key, job.fileName, job.format, sourceClient, sourceBucket);
+      } catch (err: any) {
+        console.error(`[Ingestion] Job ${job.id} failed:`, err.message);
+        await command(`
+          ALTER TABLE ingestion_jobs UPDATE 
+            status = 'failed', error_message = '${esc(String(err.message || 'Unknown error'))}'
+          WHERE id = '${esc(job.id)}'
+        `);
+      } finally {
+        releasePipelineSlot();
+      }
+    })();
+  }
+
+  return jobs.map(j => j.id);
+}
+
 async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: string, format: FileFormat, sourceClient: S3Client, sourceBucket: string) {
   const storageClient = getStorageClient();
   const BATCH_SIZE = 10000;

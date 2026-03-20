@@ -52,11 +52,9 @@ router.post('/start-bulk', async (req, res) => {
     if (!sourceKeys || !Array.isArray(sourceKeys) || sourceKeys.length === 0) {
       return res.status(400).json({ error: 'sourceKeys array is required' });
     }
-    const jobIds: string[] = [];
-    for (const key of sourceKeys) {
-      const jobId = await ingestionService.startIngestionJob(key, sourceId);
-      jobIds.push(jobId);
-    }
+
+    // Respond immediately with job count — actual processing is async
+    const jobIds = await ingestionService.startBulkIngestion(sourceKeys, sourceId);
     res.json({ jobIds, count: jobIds.length });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -129,11 +127,10 @@ router.post('/start-bulk-daterange', async (req, res) => {
       return res.json({ jobIds: [], count: 0, message: 'No files found in the specified date range.' });
     }
 
-    const jobIds: string[] = [];
-    for (const file of matchingFiles) {
-      const jobId = await ingestionService.startIngestionJob(file.key, sourceId);
-      jobIds.push(jobId);
-    }
+    const jobIds = await ingestionService.startBulkIngestion(
+      matchingFiles.map(f => f.key),
+      sourceId,
+    );
 
     res.json({ jobIds, count: jobIds.length, filesMatched: matchingFiles.length });
   } catch (e: any) {

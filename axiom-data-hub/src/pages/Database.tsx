@@ -93,6 +93,7 @@ export default function DatabasePage() {
   const [showColPicker, setShowColPicker] = useState(false);
   const [pageSize, setPageSize] = useState(50);
   const [dataSourceFilter, setDataSourceFilter] = useState<string>('');
+  const [completenessFilter, setCompletenessFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const colPickerRef = useRef<HTMLDivElement>(null);
   const colPickerBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -364,14 +365,22 @@ export default function DatabasePage() {
   const resultCols = result?.rows.length ? Object.keys(result.rows[0]) : [];
 
   // For SQL mode, we sort locally. For Browse mode, backend sorts, but we can do local sort for currently displayed page too
-  const sortedRows = result?.rows ? [...result.rows].sort((a, b) => {
+  const sortedRows = (result?.rows ? [...result.rows].sort((a, b) => {
     if (!sortCol) return 0;
     const aVal = String(a[sortCol] ?? '');
     const bVal = String(b[sortCol] ?? '');
     const numA = Number(aVal), numB = Number(bVal);
     if (!isNaN(numA) && !isNaN(numB)) return sortDir === 'asc' ? numA - numB : numB - numA;
     return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-  }) : [];
+  }) : []).filter(row => {
+    if (completenessFilter === 'all') return true;
+    const totalCols = resultCols.length || 1;
+    const filled = Object.values(row).filter(v => v !== null && v !== '').length;
+    const score = filled / totalCols;
+    if (completenessFilter === 'high') return score > 0.8;
+    if (completenessFilter === 'medium') return score > 0.4 && score <= 0.8;
+    return score <= 0.4; // low
+  });
 
   const toggleSort = (col: string) => {
     if (sortCol === col) {
@@ -876,9 +885,22 @@ export default function DatabasePage() {
       {activeTab === 'browse' && sortedRows.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12, padding: '8px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 11, color: 'var(--text-tertiary)' }}>
           <span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Data Completeness</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} /> &gt;80% filled</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: '#eab308' }} /> 40–80% filled</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444' }} /> &lt;40% filled</span>
+          {(['all', 'high', 'medium', 'low'] as const).map(level => {
+            const colors: Record<string, string> = { all: 'var(--text-secondary)', high: '#22c55e', medium: '#eab308', low: '#ef4444' };
+            const labels: Record<string, string> = { all: 'All', high: '>80%', medium: '40–80%', low: '<40%' };
+            const isActive = completenessFilter === level;
+            return (
+              <button key={level} onClick={() => setCompletenessFilter(level)} style={{
+                display: 'flex', alignItems: 'center', gap: 5, background: isActive ? 'var(--bg-hover)' : 'transparent',
+                border: isActive ? `1px solid ${colors[level]}` : '1px solid transparent', borderRadius: 6,
+                padding: '3px 8px', cursor: 'pointer', color: isActive ? colors[level] : 'var(--text-tertiary)',
+                fontWeight: isActive ? 700 : 400, fontSize: 11, transition: 'all 0.15s'
+              }}>
+                {level !== 'all' && <span style={{ width: 7, height: 7, borderRadius: '50%', background: colors[level] }} />}
+                {labels[level]}
+              </button>
+            );
+          })}
         </div>
       )}
 
