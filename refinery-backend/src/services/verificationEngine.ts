@@ -186,14 +186,20 @@ async function processDomain(
     try {
       const result = await probeWithFallback(mxRecords, entry.email, config);
 
+      // Map granular SMTP statuses to VerificationResult format
+      const mappedStatus: VerificationResult['status'] =
+        result.status === 'greylisted' ? 'risky' :
+          result.status === 'mailbox_full' ? 'risky' :
+            (result.status as VerificationResult['status']);
+
       results[entry.index] = {
         email: entry.email,
-        status: result.status,
+        status: mappedStatus,
         reason: result.response.substring(0, 200),
       };
 
       // Adaptive backoff on 4xx responses
-      if (result.status === 'risky' && result.code >= 400 && result.code < 500) {
+      if (['risky', 'greylisted', 'mailbox_full'].includes(result.status) && result.code >= 400 && result.code < 500) {
         applyBackoff(domain);
       } else if (result.status === 'valid' || result.status === 'invalid') {
         resetBackoff(domain);
@@ -256,7 +262,7 @@ async function probeWithFallback(
   email: string,
   config: EngineConfig,
 ): Promise<SmtpProbeResult> {
-  let lastResult: SmtpProbeResult = { status: 'unknown', code: 0, response: 'No MX hosts reachable' };
+  let lastResult: SmtpProbeResult = { status: 'unknown', code: 0, response: 'No MX hosts reachable', starttls: false };
 
   for (const mx of mxRecords) {
     try {

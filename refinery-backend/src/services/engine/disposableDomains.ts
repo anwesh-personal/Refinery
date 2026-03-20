@@ -1,196 +1,50 @@
 // ═══════════════════════════════════════════════════════════════
-// Disposable Domain Database — Known temporary/throwaway email providers
+// Disposable Domain Database — 33,000+ disposable email domains
 //
-// Emails from these domains are classified as 'disposable' without
-// performing any SMTP check (saves time and protects IP reputation).
-//
-// This is a curated list of the most commonly used disposable email
-// services. It can be extended at runtime via addDomains().
+// Uses the community-maintained `disposable-email-domains` package
+// (updated weekly) plus a curated local extension list.
+// Also supports runtime additions via addDomains().
 // ═══════════════════════════════════════════════════════════════
 
-const DISPOSABLE_DOMAINS = new Set<string>([
-  // ── Tier 1: Extremely popular (millions of monthly users) ──
-  'mailinator.com',
-  'guerrillamail.com',
-  'guerrillamail.de',
-  'guerrillamail.net',
-  'guerrillamail.org',
-  'tempmail.com',
-  'temp-mail.org',
-  'temp-mail.io',
-  'yopmail.com',
-  'yopmail.fr',
-  'yopmail.net',
-  'throwaway.email',
-  '10minutemail.com',
-  '10minutemail.net',
-  'minutemail.com',
-  'sharklasers.com',
-  'guerrillamailblock.com',
-  'grr.la',
-  'maildrop.cc',
-  'discard.email',
-  'getnada.com',
-  'emailondeck.com',
-  'mohmal.com',
-  'tempail.com',
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-  // ── Tier 2: Well-known disposable services ──
-  'trashmail.com',
-  'trashmail.me',
-  'trashmail.net',
-  'trashmail.org',
-  'trashmail.io',
-  'trashmail.at',
-  'trashymail.com',
-  'trashymail.net',
-  'dispostable.com',
-  'mailnesia.com',
-  'fakeinbox.com',
-  'spamgourmet.com',
-  'mytrashmail.com',
-  'mailcatch.com',
-  'mailexpire.com',
-  'mailmoat.com',
-  'mailnull.com',
-  'jetable.org',
-  'deadaddress.com',
-  'devnullmail.com',
-  'inboxbear.com',
-  'spamfree24.org',
-  'spamfree24.com',
+// Load 33k+ domains from npm package
+let npmDomains: string[] = [];
+try {
+  // The package exports a JSON array of strings
+  const modPath = import.meta.resolve?.('disposable-email-domains')
+    || require.resolve('disposable-email-domains');
+  const resolved = typeof modPath === 'string' && modPath.startsWith('file://')
+    ? fileURLToPath(modPath)
+    : modPath;
+  const raw = fs.readFileSync(resolved as string, 'utf-8');
+  npmDomains = JSON.parse(raw);
+} catch {
+  try {
+    // Fallback: direct require
+    npmDomains = require('disposable-email-domains');
+  } catch {
+    console.warn('[DisposableDomains] Could not load npm package — using local list only.');
+  }
+}
 
-  // ── Tier 3: Moderately used ──
-  'tempr.email',
-  'tempmail.ninja',
-  'bugmenot.com',
-  'filzmail.com',
-  'harakirimail.com',
-  'hidemail.de',
-  'incognitomail.org',
-  'lookugly.com',
-  'mailbidon.com',
-  'mailbucket.org',
-  'mailforspam.com',
-  'mailhazard.com',
-  'mailimate.com',
-  'mailinater.com',
-  'mailinator2.com',
-  'mailincubator.com',
-  'mailismagic.com',
-  'mailme.lv',
-  'mailmetrash.com',
-  'mailscrap.com',
-  'mailshell.com',
-  'mailsiphon.com',
-  'mailslite.com',
-  'mailzilla.com',
-  'mintemail.com',
-  'mytempemail.com',
-  'mytempmail.com',
-  'neverbox.com',
-  'no-spam.ws',
-  'nobulk.com',
-  'noclickemail.com',
-  'nomail2me.com',
-  'nomorespamemails.com',
-  'notmailinator.com',
-  'nowmymail.com',
-  'oneoffmail.com',
-  'onewaymail.com',
-  'pookmail.com',
-  'privacy.net',
-  'proxymail.eu',
-  'quickinbox.com',
-  'rejectmail.com',
-  'safe-mail.net',
-  'safetymail.info',
-  'selfdestructingmail.com',
-  'sendspamhere.com',
-  'shiftmail.com',
-  'shortmail.net',
-  'slopsbox.com',
-  'spambox.us',
-  'spambox.info',
-  'spamcannon.com',
-  'spamcero.com',
-  'spamcowboy.com',
-  'spamday.com',
-  'spamex.com',
-  'spamfighter.cf',
-  'spamfree.eu',
-  'spamgoes.in',
-  'spamhole.com',
-  'spamify.com',
-  'spaml.com',
-  'spammotel.com',
-  'spamoff.de',
-  'spamslicer.com',
-  'spamspot.com',
-  'spamstack.net',
-  'spamtrail.com',
-  'spamtrap.ro',
-  'teleworm.us',
-  'thankyou2010.com',
-  'thisisnotmyrealemail.com',
-  'throwawayemail.net',
-  'tizi.com',
-  'wegwerfmail.de',
-  'wegwerfmail.net',
-  'wegwerfmail.org',
-  'willselfdestruct.com',
-  'yapped.net',
-  'zehnminutenmail.de',
-  'zippymail.info',
-  'zoaxe.com',
-  'zoemail.org',
+// ── Local extension list (domains missed by the npm package) ──
+const LOCAL_EXTENSIONS = [
+  // Recently popular services not yet in the npm list
+  'tempmailo.com', 'internxt.com', 'duck.com',
+  'crazymailing.com', 'binkmail.com', 'chammy.info',
+  'mt2015.com', 'rmqkr.net', 's0ny.net',
+  'xoxy.net', 'superrito.com',
+];
 
-  // ── Tier 4: Emerging/regional ──
-  'crazymailing.com',
-  'mailsac.com',
-  'meltmail.com',
-  'binkmail.com',
-  'bobmail.info',
-  'chammy.info',
-  'courrieltemporaire.com',
-  'dingbone.com',
-  'einrot.com',
-  'emailigo.de',
-  'emailisvalid.com',
-  'emailsensei.com',
-  'emailtemporario.com.br',
-  'ephemail.net',
-  'fleckens.hu',
-  'get2mail.fr',
-  'getairmail.com',
-  'getonemail.com',
-  'guerrillamail.biz',
-  'haltospam.com',
-  'kurzepost.de',
-  'lackmail.net',
-  'lroid.com',
-  'mt2015.com',
-  'netmails.com',
-  'objectmail.com',
-  'rcpt.at',
-  'rmqkr.net',
-  'royal.net',
-  's0ny.net',
-  'shitmail.me',
-  'spam.la',
-  'spam.su',
-  'spam4.me',
-  'spamavert.com',
-  'spamobox.com',
-  'superrito.com',
-  'trash-mail.at',
-  'trash-mail.com',
-  'trash-mail.de',
-  'trashdevil.com',
-  'trashmailer.com',
-  'whyspam.me',
-  'xoxy.net',
-]);
+// Build the master Set
+const DISPOSABLE_DOMAINS = new Set<string>(
+  [...npmDomains, ...LOCAL_EXTENSIONS].map(d => d.toLowerCase().trim())
+);
+
+console.log(`[DisposableDomains] Loaded ${DISPOSABLE_DOMAINS.size.toLocaleString()} disposable domains.`);
 
 /**
  * Check if an email domain is a known disposable/throwaway service.

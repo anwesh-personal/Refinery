@@ -3,9 +3,10 @@ import { isDisposable } from './engine/disposableDomains.js';
 import { detectRole } from './engine/roleDetector.js';
 import { isFreeProvider, classifyProvider } from './engine/freeProviders.js';
 import { resolveMx } from './engine/mxResolver.js';
-import { probeEmail } from './engine/smtpProbe.js';
+import { probeEmail, type SmtpProbeResult } from './engine/smtpProbe.js';
+import { checkDomainAuth, type DomainAuthResult } from './engine/domainAuth.js';
 import { acquireSlot, releaseSlot, applyBackoff, resetBackoff, setLimits } from './engine/rateLimiter.js';
-import { genId } from '../utils/helpers.js';
+import { genId, sleep } from '../utils/helpers.js';
 
 // ═══════════════════════════════════════════════════════════════
 // Standalone Verification Pipeline — Direct email list processing
@@ -80,10 +81,14 @@ export interface SeverityWeights {
   no_mx: number;              // Default: 85
   smtp_invalid: number;       // Default: 100 (instant reject)
   smtp_risky: number;         // Default: 50
+  smtp_greylisted: number;    // Default: 40 (after retry)
+  smtp_mailbox_full: number;  // Default: 60
   catch_all: number;          // Default: 30
   role_based: number;         // Default: 20
   free_provider: number;      // Default: 10
   typo_detected: number;      // Default: 5 (after fix)
+  no_spf: number;             // Default: 15
+  no_dmarc: number;           // Default: 10
 }
 
 export const DEFAULT_SEVERITY_WEIGHTS: SeverityWeights = {
@@ -92,10 +97,14 @@ export const DEFAULT_SEVERITY_WEIGHTS: SeverityWeights = {
   no_mx: 85,
   smtp_invalid: 100,
   smtp_risky: 50,
+  smtp_greylisted: 40,
+  smtp_mailbox_full: 60,
   catch_all: 30,
   role_based: 20,
   free_provider: 10,
   typo_detected: 5,
+  no_spf: 15,
+  no_dmarc: 10,
 };
 
 /** Severity thresholds — what score maps to what classification */
@@ -133,8 +142,9 @@ export interface EmailCheckResult {
     roleBased: { detected: boolean; prefix: string | null } | null;
     freeProvider: { detected: boolean; category: string | null } | null;
     mxValid: { valid: boolean; mxCount: number; primaryMx: string | null } | null;
-    smtpResult: { status: string; code: number; response: string } | null;
+    smtpResult: { status: string; code: number; response: string; starttls: boolean } | null;
     catchAll: boolean | null;
+    domainAuth: { spf: boolean; dmarc: boolean; authScore: number } | null;
   };
 }
 
@@ -225,6 +235,7 @@ export async function runPipeline(
         mxValid: null,
         smtpResult: null,
         catchAll: null,
+        domainAuth: null,
       },
     };
 
@@ -361,32 +372,47 @@ async function processDomainChecks(
   smtp: SmtpConfig,
   weights: SeverityWeights,
 ): Promise<void> {
-  // ── MX Lookup ──
+  // ── Parallel: MX Lookup + SPF/DMARC ──
   let mxRecords: { exchange: string; priority: number }[] = [];
+  let authResult: DomainAuthResult | null = null;
 
+  const [mxRes, authRes] = await Promise.allSettled([
+    cfg.mxLookup ? resolveMx(domain) : Promise.resolve([]),
+    checkDomainAuth(domain),
+  ]);
+
+  // MX results
+  if (mxRes.status === 'fulfilled') {
+    mxRecords = mxRes.value;
+  }
   if (cfg.mxLookup) {
-    try {
-      mxRecords = await resolveMx(domain);
-      for (const idx of indices) {
-        results[idx].checks.mxValid = {
-          valid: mxRecords.length > 0,
-          mxCount: mxRecords.length,
-          primaryMx: mxRecords[0]?.exchange || null,
-        };
-        if (mxRecords.length === 0) {
-          results[idx].riskScore += weights.no_mx;
-        }
-      }
-    } catch {
-      for (const idx of indices) {
-        results[idx].checks.mxValid = { valid: false, mxCount: 0, primaryMx: null };
+    for (const idx of indices) {
+      results[idx].checks.mxValid = {
+        valid: mxRecords.length > 0,
+        mxCount: mxRecords.length,
+        primaryMx: mxRecords[0]?.exchange || null,
+      };
+      if (mxRecords.length === 0) {
         results[idx].riskScore += weights.no_mx;
       }
     }
   }
 
+  // SPF/DMARC results
+  if (authRes.status === 'fulfilled') {
+    authResult = authRes.value;
+    for (const idx of indices) {
+      results[idx].checks.domainAuth = {
+        spf: authResult.spf.exists,
+        dmarc: authResult.dmarc.exists,
+        authScore: authResult.authScore,
+      };
+      if (!authResult.spf.exists) results[idx].riskScore += weights.no_spf;
+      if (!authResult.dmarc.exists) results[idx].riskScore += weights.no_dmarc;
+    }
+  }
+
   if (mxRecords.length === 0 && (cfg.smtpVerify || cfg.catchAll)) {
-    // Can't do SMTP without MX records
     return;
   }
 
@@ -412,27 +438,25 @@ async function processDomainChecks(
         }
       }
 
-      // If catch-all, skip individual SMTP — we already know the domain accepts everything
       if (isCatchAll) {
         releaseSlot(domain);
         return;
       }
     } catch {
       for (const idx of indices) {
-        results[idx].checks.catchAll = null; // Unknown
+        results[idx].checks.catchAll = null;
       }
     } finally {
       releaseSlot(domain);
     }
   }
 
-  // ── Individual SMTP Verification ──
+  // ── Individual SMTP Verification (with greylisting retry) ──
   if (cfg.smtpVerify && mxRecords.length > 0) {
     for (const idx of indices) {
       await acquireSlot(domain);
       try {
-        // Try each MX host in priority order
-        let lastResult: { status: 'valid' | 'invalid' | 'risky' | 'unknown'; code: number; response: string } = { status: 'unknown', code: 0, response: 'No MX reachable' };
+        let lastResult: SmtpProbeResult = { status: 'unknown', code: 0, response: 'No MX reachable', starttls: false };
 
         for (const mx of mxRecords) {
           try {
@@ -443,6 +467,22 @@ async function processDomainChecks(
               port: smtp.port,
             });
             lastResult = result;
+
+            // Greylisting retry: if 450/451, wait 30s and try once more
+            if (result.status === 'greylisted') {
+              releaseSlot(domain);
+              await sleep(30_000);
+              await acquireSlot(domain);
+              const retry = await probeEmail(mx.exchange, results[idx].email, {
+                heloDomain: smtp.heloDomain,
+                fromEmail: smtp.fromEmail,
+                timeout: smtp.timeout,
+                port: smtp.port,
+              });
+              lastResult = retry;
+              // If still greylisted after retry, keep that status
+            }
+
             if (result.status === 'valid' || result.status === 'invalid') break;
           } catch {
             continue;
@@ -453,16 +493,21 @@ async function processDomainChecks(
           status: lastResult.status,
           code: lastResult.code,
           response: lastResult.response.substring(0, 200),
+          starttls: lastResult.starttls,
         };
 
         if (lastResult.status === 'invalid') {
           results[idx].riskScore += weights.smtp_invalid;
+        } else if (lastResult.status === 'greylisted') {
+          results[idx].riskScore += weights.smtp_greylisted;
+        } else if (lastResult.status === 'mailbox_full') {
+          results[idx].riskScore += weights.smtp_mailbox_full;
         } else if (lastResult.status === 'risky') {
           results[idx].riskScore += weights.smtp_risky;
         }
 
         // Adaptive backoff
-        if (lastResult.status === 'risky' && lastResult.code >= 400 && lastResult.code < 500) {
+        if (['risky', 'greylisted', 'mailbox_full'].includes(lastResult.status) && lastResult.code >= 400 && lastResult.code < 500) {
           applyBackoff(domain);
         } else if (lastResult.status === 'valid' || lastResult.status === 'invalid') {
           resetBackoff(domain);

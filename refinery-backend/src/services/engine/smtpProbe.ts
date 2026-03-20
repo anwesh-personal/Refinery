@@ -19,9 +19,11 @@ import * as net from 'net';
 // ═══════════════════════════════════════════════════════════════
 
 export interface SmtpProbeResult {
-  status: 'valid' | 'invalid' | 'risky' | 'unknown';
+  status: 'valid' | 'invalid' | 'risky' | 'greylisted' | 'mailbox_full' | 'unknown';
   code: number;
   response: string;
+  /** Whether the server advertised STARTTLS support */
+  starttls: boolean;
 }
 
 export interface SmtpProbeOptions {
@@ -57,16 +59,17 @@ export function probeEmail(
     let resolved = false;
     let buffer = '';
     let step: 'banner' | 'ehlo' | 'mail_from' | 'rcpt_to' = 'banner';
+    let starttlsSupported = false;
 
     const socket = new net.Socket();
 
     // ── Global timeout ──
     const timer = setTimeout(() => {
-      finish({ status: 'unknown', code: 0, response: 'Connection timeout' });
+      finish({ status: 'unknown', code: 0, response: 'Connection timeout', starttls: starttlsSupported });
     }, options.timeout);
 
     // ── Clean finish helper ──
-    function finish(result: SmtpProbeResult): void {
+    function finish(result: Omit<SmtpProbeResult, 'starttls'> & { starttls?: boolean }): void {
       if (resolved) return;
       resolved = true;
       clearTimeout(timer);
@@ -79,22 +82,22 @@ export function probeEmail(
       }
 
       socket.destroy();
-      resolve(result);
+      resolve({ ...result, starttls: result.starttls ?? starttlsSupported });
     }
 
     // ── Error handling ──
     socket.on('error', (err: Error) => {
-      finish({ status: 'unknown', code: 0, response: `Socket error: ${err.message}` });
+      finish({ status: 'unknown', code: 0, response: `Socket error: ${err.message}`, starttls: starttlsSupported });
     });
 
     socket.on('close', () => {
       if (!resolved) {
-        finish({ status: 'unknown', code: 0, response: 'Connection closed unexpectedly' });
+        finish({ status: 'unknown', code: 0, response: 'Connection closed unexpectedly', starttls: starttlsSupported });
       }
     });
 
     socket.on('timeout', () => {
-      finish({ status: 'unknown', code: 0, response: 'Socket timeout' });
+      finish({ status: 'unknown', code: 0, response: 'Socket timeout', starttls: starttlsSupported });
     });
 
     // ── Data handler (SMTP state machine) ──
@@ -122,6 +125,10 @@ export function probeEmail(
 
         case 'ehlo':
           if (code >= 200 && code < 300) {
+            // Detect STARTTLS support from EHLO response
+            if (text.toUpperCase().includes('STARTTLS')) {
+              starttlsSupported = true;
+            }
             step = 'mail_from';
             socket.write(`MAIL FROM:<${options.fromEmail}>\r\n`);
           } else {
@@ -145,8 +152,14 @@ export function probeEmail(
           } else if (code >= 500 && code < 600) {
             // 550/551/552/553 — mailbox does not exist or is disabled
             finish({ status: 'invalid', code, response: text });
+          } else if (code === 452) {
+            // 452 — mailbox full / insufficient storage
+            finish({ status: 'mailbox_full', code, response: text });
+          } else if (code === 450 || code === 451) {
+            // 450/451 — greylisting or temporary deferral
+            finish({ status: 'greylisted', code, response: text });
           } else if (code >= 400 && code < 500) {
-            // 450/451/452 — greylisting, rate limiting, or temporary failure
+            // Other 4xx — generic temporary failure
             finish({ status: 'risky', code, response: text });
           } else {
             finish({ status: 'unknown', code, response: text });
