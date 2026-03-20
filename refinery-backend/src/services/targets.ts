@@ -1,4 +1,4 @@
-import { query, insertRows } from '../db/clickhouse.js';
+import { query, insertRows, command } from '../db/clickhouse.js';
 import { genId } from '../utils/helpers.js';
 import { stringify } from 'csv-stringify/sync';
 
@@ -98,4 +98,9 @@ export async function getTargetStats() {
     FROM target_lists
   `);
   return stats;
+}
+
+/** Delete a target list */
+export async function deleteTargetList(id: string): Promise<void> {
+  await command(`ALTER TABLE target_lists DELETE WHERE id = '${id}'`);
 }

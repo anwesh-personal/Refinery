@@ -47,4 +47,14 @@ router.get('/:id/export', async (req, res) => {
   }
 });
 
+// DELETE /api/targets/:id
+router.delete('/:id', async (req, res) => {
+  try {
+    await targetService.deleteTargetList(req.params.id);
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;

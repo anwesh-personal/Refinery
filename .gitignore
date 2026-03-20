@@ -41,5 +41,6 @@ npm-debug.log*
 # .agent/ is INTENTIONALLY tracked — carries project knowledge for any AI/IDE
 # EXCEPT credentials — NEVER commit these
 .agent/creds*
+agent/creds*
 .agents/
 *.png
