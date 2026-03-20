@@ -30,6 +30,8 @@ interface SeverityWeights {
   typo_detected: number;
   no_spf: number;
   no_dmarc: number;
+  dnsbl_listed: number;
+  new_domain: number;
 }
 
 interface Thresholds {
@@ -64,6 +66,8 @@ interface EmailCheckResult {
     smtpResult: { status: string; code: number; response: string; starttls?: boolean } | null;
     catchAll: boolean | null;
     domainAuth?: { spf: boolean; dmarc: boolean; authScore: number } | null;
+    dnsbl?: { listed: boolean; listings: string[]; ip: string } | null;
+    domainAge?: { ageDays: number; isNew: boolean; createdAt: string | null } | null;
   };
 }
 
@@ -108,6 +112,8 @@ const DEFAULT_WEIGHTS: SeverityWeights = {
   typo_detected: 5,
   no_spf: 15,
   no_dmarc: 10,
+  dnsbl_listed: 70,
+  new_domain: 40,
 };
 
 const DEFAULT_THRESHOLDS: Thresholds = {
@@ -378,6 +384,8 @@ export default function EmailVerifierPage() {
       r.checks.catchAll === null ? 'skipped' : (r.checks.catchAll ? 'yes' : 'no'),
       r.checks.domainAuth === null || !r.checks.domainAuth ? 'skipped' : (r.checks.domainAuth.spf ? 'yes' : 'no'),
       r.checks.domainAuth === null || !r.checks.domainAuth ? 'skipped' : (r.checks.domainAuth.dmarc ? 'yes' : 'no'),
+      !r.checks.dnsbl ? 'skipped' : (r.checks.dnsbl.listed ? r.checks.dnsbl.listings.join(';') : 'clean'),
+      !r.checks.domainAge ? 'skipped' : (r.checks.domainAge.ageDays >= 0 ? String(r.checks.domainAge.ageDays) : 'unknown'),
       r.checks.smtpResult === null ? 'skipped' : r.checks.smtpResult.status,
       r.checks.smtpResult === null ? 'skipped' : `"${r.checks.smtpResult.response.replace(/"/g, '""')}"`
     ]);
@@ -759,10 +767,12 @@ export default function EmailVerifierPage() {
                         <td style={{ padding: '12px 12px', color: 'var(--text-secondary)' }}>
                           {r.checks.syntax?.passed === false ? 'Syntax Error' :
                             r.checks.disposable ? 'Disposable Domain' :
-                              r.checks.roleBased?.detected ? `Role: ${r.checks.roleBased.prefix}` :
-                                r.checks.catchAll ? 'Catch-All' :
-                                  r.checks.smtpResult?.response ? <span title={r.checks.smtpResult.response} style={{ cursor: 'help', borderBottom: '1px dotted var(--text-tertiary)' }}>{r.checks.smtpResult.response.substring(0, 24)}...</span> :
-                                    'Clear'}
+                              r.checks.dnsbl?.listed ? <span style={{ color: 'var(--red)' }} title={r.checks.dnsbl.listings.join(', ')}>DNSBL: {r.checks.dnsbl.listings[0]}</span> :
+                                r.checks.domainAge?.isNew ? <span style={{ color: 'var(--yellow)' }}>New Domain ({r.checks.domainAge.ageDays}d)</span> :
+                                  r.checks.roleBased?.detected ? `Role: ${r.checks.roleBased.prefix}` :
+                                    r.checks.catchAll ? 'Catch-All' :
+                                      r.checks.smtpResult?.response ? <span title={r.checks.smtpResult.response} style={{ cursor: 'help', borderBottom: '1px dotted var(--text-tertiary)' }}>{r.checks.smtpResult.response.substring(0, 24)}...</span> :
+                                        'Clear'}
                         </td>
                       </tr>
                     ))}

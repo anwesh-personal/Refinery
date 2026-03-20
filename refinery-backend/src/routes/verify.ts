@@ -58,6 +58,8 @@ const SeverityWeightsSchema = z.object({
   typo_detected: z.number().min(0).max(100).optional(),
   no_spf: z.number().min(0).max(100).optional(),
   no_dmarc: z.number().min(0).max(100).optional(),
+  dnsbl_listed: z.number().min(0).max(100).optional(),
+  new_domain: z.number().min(0).max(100).optional(),
 }).partial();
 
 const ThresholdsSchema = z.object({
@@ -127,8 +129,8 @@ router.post('/export', requireSuperadmin, async (req, res) => {
       return res.status(400).json({ error: 'results array is required' });
     }
 
-    const header = 'email,classification,risk_score,syntax,disposable,role_based,free_provider,mx_valid,spf,dmarc,smtp_status,starttls,catch_all\n';
-    const rows = results.map(r => {
+    const header = 'email,classification,risk_score,syntax,disposable,role_based,free_provider,mx_valid,spf,dmarc,dnsbl_listed,domain_age_days,smtp_status,starttls,catch_all\n';
+    const rows = results.map((r: any) => {
       const cols = [
         `"${r.email.replace(/"/g, '""')}"`,
         r.classification,
@@ -140,6 +142,8 @@ router.post('/export', requireSuperadmin, async (req, res) => {
         r.checks.mxValid === null ? 'skipped' : (r.checks.mxValid.valid ? 'valid' : 'invalid'),
         r.checks.domainAuth ? (r.checks.domainAuth.spf ? 'yes' : 'no') : 'skipped',
         r.checks.domainAuth ? (r.checks.domainAuth.dmarc ? 'yes' : 'no') : 'skipped',
+        r.checks.dnsbl ? (r.checks.dnsbl.listed ? r.checks.dnsbl.listings.join(';') : 'clean') : 'skipped',
+        r.checks.domainAge ? (r.checks.domainAge.ageDays >= 0 ? r.checks.domainAge.ageDays : 'unknown') : 'skipped',
         r.checks.smtpResult === null ? 'skipped' : r.checks.smtpResult.status,
         r.checks.smtpResult === null ? 'skipped' : (r.checks.smtpResult.starttls ? 'yes' : 'no'),
         r.checks.catchAll === null ? 'skipped' : (r.checks.catchAll ? 'yes' : 'no'),

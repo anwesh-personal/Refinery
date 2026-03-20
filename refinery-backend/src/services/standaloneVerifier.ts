@@ -5,6 +5,8 @@ import { isFreeProvider, classifyProvider } from './engine/freeProviders.js';
 import { resolveMx } from './engine/mxResolver.js';
 import { probeEmail, type SmtpProbeResult } from './engine/smtpProbe.js';
 import { checkDomainAuth, type DomainAuthResult } from './engine/domainAuth.js';
+import { checkMxDnsbl, type DnsblResult } from './engine/dnsbl.js';
+import { checkDomainAge, type DomainAgeResult } from './engine/domainAge.js';
 import { acquireSlot, releaseSlot, applyBackoff, resetBackoff, setLimits } from './engine/rateLimiter.js';
 import { genId, sleep } from '../utils/helpers.js';
 
@@ -89,6 +91,8 @@ export interface SeverityWeights {
   typo_detected: number;      // Default: 5 (after fix)
   no_spf: number;             // Default: 15
   no_dmarc: number;           // Default: 10
+  dnsbl_listed: number;       // Default: 70
+  new_domain: number;         // Default: 40
 }
 
 export const DEFAULT_SEVERITY_WEIGHTS: SeverityWeights = {
@@ -105,6 +109,8 @@ export const DEFAULT_SEVERITY_WEIGHTS: SeverityWeights = {
   typo_detected: 5,
   no_spf: 15,
   no_dmarc: 10,
+  dnsbl_listed: 70,
+  new_domain: 40,
 };
 
 /** Severity thresholds — what score maps to what classification */
@@ -145,6 +151,8 @@ export interface EmailCheckResult {
     smtpResult: { status: string; code: number; response: string; starttls: boolean } | null;
     catchAll: boolean | null;
     domainAuth: { spf: boolean; dmarc: boolean; authScore: number } | null;
+    dnsbl: { listed: boolean; listings: string[]; ip: string } | null;
+    domainAge: { ageDays: number; isNew: boolean; createdAt: string | null } | null;
   };
 }
 
@@ -236,6 +244,8 @@ export async function runPipeline(
         smtpResult: null,
         catchAll: null,
         domainAuth: null,
+        dnsbl: null,
+        domainAge: null,
       },
     };
 
@@ -372,13 +382,15 @@ async function processDomainChecks(
   smtp: SmtpConfig,
   weights: SeverityWeights,
 ): Promise<void> {
-  // ── Parallel: MX Lookup + SPF/DMARC ──
+  // ── Parallel: MX Lookup + SPF/DMARC + Domain Age ──
   let mxRecords: { exchange: string; priority: number }[] = [];
   let authResult: DomainAuthResult | null = null;
+  let ageResult: DomainAgeResult | null = null;
 
-  const [mxRes, authRes] = await Promise.allSettled([
+  const [mxRes, authRes, ageRes] = await Promise.allSettled([
     cfg.mxLookup ? resolveMx(domain) : Promise.resolve([]),
     checkDomainAuth(domain),
+    checkDomainAge(domain),
   ]);
 
   // MX results
@@ -409,6 +421,36 @@ async function processDomainChecks(
       };
       if (!authResult.spf.exists) results[idx].riskScore += weights.no_spf;
       if (!authResult.dmarc.exists) results[idx].riskScore += weights.no_dmarc;
+    }
+  }
+
+  // Domain age results
+  if (ageRes.status === 'fulfilled') {
+    ageResult = ageRes.value;
+    for (const idx of indices) {
+      results[idx].checks.domainAge = {
+        ageDays: ageResult.ageDays,
+        isNew: ageResult.isNew,
+        createdAt: ageResult.createdAt,
+      };
+      if (ageResult.isNew) results[idx].riskScore += weights.new_domain;
+    }
+  }
+
+  // ── DNSBL check (needs MX IP) ──
+  if (mxRecords.length > 0) {
+    try {
+      const dnsblResult = await checkMxDnsbl(mxRecords[0].exchange);
+      for (const idx of indices) {
+        results[idx].checks.dnsbl = {
+          listed: dnsblResult.listed,
+          listings: dnsblResult.listings,
+          ip: dnsblResult.ip,
+        };
+        if (dnsblResult.listed) results[idx].riskScore += weights.dnsbl_listed;
+      }
+    } catch {
+      // DNSBL check failed — don't penalize
     }
   }
 
