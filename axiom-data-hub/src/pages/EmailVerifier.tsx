@@ -22,10 +22,14 @@ interface SeverityWeights {
   no_mx: number;
   smtp_invalid: number;
   smtp_risky: number;
+  smtp_greylisted: number;
+  smtp_mailbox_full: number;
   catch_all: number;
   role_based: number;
   free_provider: number;
   typo_detected: number;
+  no_spf: number;
+  no_dmarc: number;
 }
 
 interface Thresholds {
@@ -57,8 +61,9 @@ interface EmailCheckResult {
     roleBased: { detected: boolean; prefix: string | null } | null;
     freeProvider: { detected: boolean; category: string | null } | null;
     mxValid: { valid: boolean; mxCount: number; primaryMx: string | null } | null;
-    smtpResult: { status: string; code: number; response: string } | null;
+    smtpResult: { status: string; code: number; response: string; starttls?: boolean } | null;
     catchAll: boolean | null;
+    domainAuth?: { spf: boolean; dmarc: boolean; authScore: number } | null;
   };
 }
 
@@ -95,10 +100,14 @@ const DEFAULT_WEIGHTS: SeverityWeights = {
   no_mx: 85,
   smtp_invalid: 100,
   smtp_risky: 50,
+  smtp_greylisted: 40,
+  smtp_mailbox_full: 60,
   catch_all: 30,
   role_based: 20,
   free_provider: 10,
   typo_detected: 5,
+  no_spf: 15,
+  no_dmarc: 10,
 };
 
 const DEFAULT_THRESHOLDS: Thresholds = {
@@ -159,16 +168,16 @@ export default function EmailVerifierPage() {
 
   const processedResults = React.useMemo(() => {
     if (!result?.results) return [];
-    
+
     let filtered = result.results;
     if (filterClass !== 'all') {
       filtered = filtered.filter(r => r.classification === filterClass);
     }
-    
+
     filtered.sort((a, b) => {
       let valA: any = a[sortCol as keyof EmailCheckResult];
       let valB: any = b[sortCol as keyof EmailCheckResult];
-      
+
       if (sortCol === 'mxValid') {
         valA = a.checks.mxValid?.valid ? 1 : a.checks.mxValid === null ? -1 : 0;
         valB = b.checks.mxValid?.valid ? 1 : b.checks.mxValid === null ? -1 : 0;
@@ -184,7 +193,7 @@ export default function EmailVerifierPage() {
       if (valA > valB) return sortDir === 'asc' ? 1 : -1;
       return 0;
     });
-    
+
     return filtered;
   }, [result, filterClass, sortCol, sortDir]);
 
@@ -349,6 +358,8 @@ export default function EmailVerifierPage() {
       'Free Provider',
       'MX Valid',
       'Catch All',
+      'SPF Authenticated',
+      'DMARC Authenticated',
       'SMTP Status',
       'SMTP Response'
     ];
@@ -365,6 +376,8 @@ export default function EmailVerifierPage() {
       r.checks.freeProvider === null ? 'skipped' : (r.checks.freeProvider.detected ? r.checks.freeProvider.category : 'no'),
       r.checks.mxValid === null ? 'skipped' : (r.checks.mxValid.valid ? 'yes' : 'no'),
       r.checks.catchAll === null ? 'skipped' : (r.checks.catchAll ? 'yes' : 'no'),
+      r.checks.domainAuth === null || !r.checks.domainAuth ? 'skipped' : (r.checks.domainAuth.spf ? 'yes' : 'no'),
+      r.checks.domainAuth === null || !r.checks.domainAuth ? 'skipped' : (r.checks.domainAuth.dmarc ? 'yes' : 'no'),
       r.checks.smtpResult === null ? 'skipped' : r.checks.smtpResult.status,
       r.checks.smtpResult === null ? 'skipped' : `"${r.checks.smtpResult.response.replace(/"/g, '""')}"`
     ]);
@@ -383,11 +396,11 @@ export default function EmailVerifierPage() {
   }, [result]);
 
   const CheckToggle = ({ id, label, info, disabled = false }: { id: keyof CheckConfig; label: string; info: string; disabled?: boolean }) => (
-    <div 
+    <div
       className="animate-fadeIn"
-      style={{ 
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', 
-        padding: '12px 16px', background: 'var(--bg-app)', borderRadius: 12, 
+      style={{
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+        padding: '12px 16px', background: 'var(--bg-app)', borderRadius: 12,
         border: '1px solid var(--border)', transition: 'border-color 0.2s', opacity: disabled ? 0.6 : 1
       }}
     >
@@ -397,16 +410,16 @@ export default function EmailVerifierPage() {
       </div>
       <div
         onClick={() => !disabled && setChecks(prev => ({ ...prev, [id]: !prev[id] }))}
-        style={{ 
+        style={{
           width: 40, height: 22, borderRadius: 11, flexShrink: 0,
-          background: checks[id] ? 'var(--blue)' : 'var(--border)', 
-          cursor: disabled ? 'not-allowed' : 'pointer', position: 'relative', transition: 'background .3s' 
+          background: checks[id] ? 'var(--blue)' : 'var(--border)',
+          cursor: disabled ? 'not-allowed' : 'pointer', position: 'relative', transition: 'background .3s'
         }}
       >
-        <div style={{ 
-          width: 16, height: 16, borderRadius: '50%', background: '#fff', 
-          position: 'absolute', top: 3, left: checks[id] ? 21 : 3, 
-          transition: 'left .3s', boxShadow: '0 1px 3px rgba(0,0,0,.2)' 
+        <div style={{
+          width: 16, height: 16, borderRadius: '50%', background: '#fff',
+          position: 'absolute', top: 3, left: checks[id] ? 21 : 3,
+          transition: 'left .3s', boxShadow: '0 1px 3px rgba(0,0,0,.2)'
         }} />
       </div>
     </div>
@@ -449,10 +462,10 @@ export default function EmailVerifierPage() {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 24, alignItems: 'flex-start' }}>
-        
+
         {/* Left Column - Input and Results */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          
+
           {/* Input Unit */}
           <div style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', padding: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -468,7 +481,7 @@ export default function EmailVerifierPage() {
                 >CSV Upload</button>
               </div>
             </div>
-            
+
             {inputType === 'text' ? (
               <div className="animate-fadeIn" style={{ position: 'relative' }}>
                 <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
@@ -497,8 +510,8 @@ export default function EmailVerifierPage() {
                 <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 0 }}>
                   Upload a CSV file and select the column containing email addresses. Max 50,000 rows.
                 </p>
-                <input 
-                  type="file" 
+                <input
+                  type="file"
                   accept=".csv"
                   onChange={handleFileUpload}
                   style={{ fontSize: 13, background: 'var(--bg-input)', padding: 12, borderRadius: 8, border: '1px dashed var(--border)', color: 'var(--text-primary)', width: '100%' }}
@@ -507,8 +520,8 @@ export default function EmailVerifierPage() {
                 {csvHeaders.length > 0 && (
                   <div className="animate-fadeIn">
                     <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>Select Email Column:</label>
-                    <select 
-                      value={selectedColumn} 
+                    <select
+                      value={selectedColumn}
                       onChange={e => setSelectedColumn(e.target.value)}
                       style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', outline: 'none' }}
                     >
@@ -550,9 +563,9 @@ export default function EmailVerifierPage() {
               <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
                 Processing via <strong>Native Node API</strong> (no external credits used).
               </div>
-              <Button 
-                onClick={handleRunPipeline} 
-                disabled={loading || (inputType === 'text' && emailsRaw.trim().length === 0) || (inputType === 'csv' && (!csvFile || !selectedColumn))} 
+              <Button
+                onClick={handleRunPipeline}
+                disabled={loading || (inputType === 'text' && emailsRaw.trim().length === 0) || (inputType === 'csv' && (!csvFile || !selectedColumn))}
                 icon={<Zap size={16} className={loading ? 'animate-pulse' : ''} />}
               >
                 {loading ? 'Running Pipeline...' : 'Run Pipeline'}
@@ -621,13 +634,13 @@ export default function EmailVerifierPage() {
           {/* Results Unit */}
           {result && (
             <div className="animate-fadeIn stagger-2" style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', padding: 24, overflow: 'hidden' }}>
-              <SectionHeader 
-                title="Pipeline Results" 
-                action="Export CSV" 
-                onAction={handleExportCSV} 
+              <SectionHeader
+                title="Pipeline Results"
+                action="Export CSV"
+                onAction={handleExportCSV}
               />
-              
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
                 <div style={{ padding: 16, borderRadius: 12, background: 'var(--green-muted)', border: '1px solid rgba(34,197,94,0.2)' }}>
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--green)', letterSpacing: '0.05em', marginBottom: 4 }}>Safe</div>
                   <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--green)' }}>{result.safe.toLocaleString()}</div>
@@ -646,18 +659,28 @@ export default function EmailVerifierPage() {
                 </div>
               </div>
 
+              {/* Visual Breakdown Bar */}
+              {result.totalProcessed > 0 && (
+                <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 24, background: 'var(--bg-card)' }}>
+                  {result.safe > 0 && <div style={{ width: `${(result.safe / result.totalProcessed) * 100}%`, background: 'var(--green)' }} title={`Safe: ${result.safe}`} />}
+                  {result.uncertain > 0 && <div style={{ width: `${(result.uncertain / result.totalProcessed) * 100}%`, background: 'var(--blue)' }} title={`Uncertain: ${result.uncertain}`} />}
+                  {result.risky > 0 && <div style={{ width: `${(result.risky / result.totalProcessed) * 100}%`, background: 'var(--yellow)' }} title={`Risky: ${result.risky}`} />}
+                  {result.rejected > 0 && <div style={{ width: `${(result.rejected / result.totalProcessed) * 100}%`, background: 'var(--red)' }} title={`Rejected: ${result.rejected}`} />}
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 24, paddingBottom: 20, borderBottom: '1px solid var(--border)', marginBottom: 20, fontSize: 12, color: 'var(--text-secondary)' }}>
-                <div>Duplicates Removed: <strong style={{color: 'var(--text-primary)'}}>{result.duplicatesRemoved}</strong></div>
-                <div>Typos Auto-fixed: <strong style={{color: 'var(--text-primary)'}}>{result.typosFixed}</strong></div>
-                <div>Total Processed: <strong style={{color: 'var(--text-primary)'}}>{result.totalProcessed}</strong></div>
-                <div>Latency: <strong style={{color: 'var(--text-primary)'}}>{(new Date(result.completedAt).getTime() - new Date(result.startedAt).getTime())}ms</strong></div>
+                <div>Duplicates Removed: <strong style={{ color: 'var(--text-primary)' }}>{result.duplicatesRemoved}</strong></div>
+                <div>Typos Auto-fixed: <strong style={{ color: 'var(--text-primary)' }}>{result.typosFixed}</strong></div>
+                <div>Total Processed: <strong style={{ color: 'var(--text-primary)' }}>{result.totalProcessed}</strong></div>
+                <div>Latency: <strong style={{ color: 'var(--text-primary)' }}>{(new Date(result.completedAt).getTime() - new Date(result.startedAt).getTime())}ms</strong></div>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12 }}>
                   <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Filter:</span>
-                  <select 
-                    value={filterClass} 
+                  <select
+                    value={filterClass}
                     onChange={e => setFilterClass(e.target.value)}
                     style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', outline: 'none' }}
                   >
@@ -680,12 +703,13 @@ export default function EmailVerifierPage() {
                       {[
                         { id: 'email', label: 'Email Address' },
                         { id: 'classification', label: 'Classification' },
-                        { id: 'mxValid', label: 'MX Valid' },
+                        { id: 'mxValid', label: 'MX' },
+                        { id: 'auth', label: 'Auth (SPF/DMARC)' },
                         { id: 'smtpStatus', label: 'SMTP Status' },
                         { id: 'keyTrigger', label: 'Key Trigger' }
                       ].map(col => (
-                        <th 
-                          key={col.id} 
+                        <th
+                          key={col.id}
                           onClick={() => {
                             if (sortCol === col.id) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
                             else { setSortCol(col.id); setSortDir('asc'); }
@@ -702,30 +726,43 @@ export default function EmailVerifierPage() {
                       <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                         <td style={{ padding: '12px 12px', fontWeight: 500 }}>
                           {r.email}
-                          {r.email !== r.originalEmail && <span style={{display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2}}>(was: {r.originalEmail})</span>}
+                          {r.email !== r.originalEmail && <span style={{ display: 'block', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>(was: {r.originalEmail})</span>}
                         </td>
                         <td style={{ padding: '12px 12px' }}>{getClassificationBadge(r.classification, r.riskScore)}</td>
                         <td style={{ padding: '12px 12px' }}>
-                          {r.checks.mxValid === null ? <span style={{color: 'var(--text-tertiary)'}}>-</span> : 
-                           (r.checks.mxValid.valid ? <CheckCircle size={14} color="var(--green)"/> : <XCircle size={14} color="var(--red)"/>)}
+                          {r.checks.mxValid === null ? <span style={{ color: 'var(--text-tertiary)' }}>-</span> :
+                            (r.checks.mxValid.valid ? <CheckCircle size={14} color="var(--green)" /> : <XCircle size={14} color="var(--red)" />)}
                         </td>
                         <td style={{ padding: '12px 12px' }}>
-                          {r.checks.smtpResult === null ? <span style={{color: 'var(--text-tertiary)'}}>-</span> : 
-                           <span style={{
-                             color: r.checks.smtpResult.status === 'valid' ? 'var(--green)' : 
-                                    r.checks.smtpResult.status === 'invalid' ? 'var(--red)' : 
-                                    r.checks.smtpResult.status === 'risky' ? 'var(--yellow)' : 'var(--text-secondary)'
-                           }}>
-                             {r.checks.smtpResult.status} ({r.checks.smtpResult.code})
-                           </span>}
+                          {r.checks.domainAuth == null ? <span style={{ color: 'var(--text-tertiary)' }}>-</span> :
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <Badge label="SPF" color={r.checks.domainAuth.spf ? "var(--green)" : "var(--red)"} colorMuted={r.checks.domainAuth.spf ? "var(--green-muted)" : "var(--red-muted)"} />
+                              <Badge label="DMARC" color={r.checks.domainAuth.dmarc ? "var(--green)" : "var(--red)"} colorMuted={r.checks.domainAuth.dmarc ? "var(--green-muted)" : "var(--red-muted)"} />
+                            </div>
+                          }
+                        </td>
+                        <td style={{ padding: '12px 12px' }}>
+                          {r.checks.smtpResult === null ? <span style={{ color: 'var(--text-tertiary)' }}>-</span> :
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <span style={{
+                                color: r.checks.smtpResult.status === 'valid' ? 'var(--green)' :
+                                  r.checks.smtpResult.status === 'invalid' ? 'var(--red)' :
+                                    r.checks.smtpResult.status === 'greylisted' ? 'var(--yellow)' :
+                                      r.checks.smtpResult.status === 'mailbox_full' ? 'var(--yellow)' :
+                                        r.checks.smtpResult.status === 'risky' ? 'var(--yellow)' : 'var(--text-secondary)'
+                              }}>
+                                {r.checks.smtpResult.status} ({r.checks.smtpResult.code})
+                              </span>
+                              {r.checks.smtpResult.starttls && <span style={{ fontSize: 9, padding: '2px 4px', background: 'var(--blue-muted)', color: 'var(--blue)', borderRadius: 4, alignSelf: 'flex-start', fontWeight: 700 }}>STARTTLS</span>}
+                            </div>}
                         </td>
                         <td style={{ padding: '12px 12px', color: 'var(--text-secondary)' }}>
-                           {r.checks.syntax?.passed === false ? 'Syntax Error' :
+                          {r.checks.syntax?.passed === false ? 'Syntax Error' :
                             r.checks.disposable ? 'Disposable Domain' :
-                            r.checks.roleBased?.detected ? `Role: ${r.checks.roleBased.prefix}` :
-                            r.checks.catchAll ? 'Catch-All' :
-                            r.checks.smtpResult?.response ? <span title={r.checks.smtpResult.response} style={{cursor: 'help', borderBottom: '1px dotted var(--text-tertiary)'}}>{r.checks.smtpResult.response.substring(0, 24)}...</span> :
-                            'Clear'}
+                              r.checks.roleBased?.detected ? `Role: ${r.checks.roleBased.prefix}` :
+                                r.checks.catchAll ? 'Catch-All' :
+                                  r.checks.smtpResult?.response ? <span title={r.checks.smtpResult.response} style={{ cursor: 'help', borderBottom: '1px dotted var(--text-tertiary)' }}>{r.checks.smtpResult.response.substring(0, 24)}...</span> :
+                                    'Clear'}
                         </td>
                       </tr>
                     ))}
@@ -737,13 +774,13 @@ export default function EmailVerifierPage() {
                       Showing {(page - 1) * rowsPerPage + 1} to {Math.min(page * rowsPerPage, processedResults.length)} of {processedResults.length}
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button 
-                        onClick={() => setPage(p => Math.max(1, p - 1))} 
+                      <button
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
                         disabled={page === 1}
                         style={{ padding: '6px 12px', fontSize: 12, borderRadius: 8, cursor: page === 1 ? 'not-allowed' : 'pointer', border: '1px solid var(--border)', background: 'var(--bg-input)', color: page === 1 ? 'var(--text-tertiary)' : 'var(--text-primary)' }}
                       >Previous</button>
-                      <button 
-                        onClick={() => setPage(p => Math.min(totalPages, p + 1))} 
+                      <button
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                         disabled={page === totalPages}
                         style={{ padding: '6px 12px', fontSize: 12, borderRadius: 8, cursor: page === totalPages ? 'not-allowed' : 'pointer', border: '1px solid var(--border)', background: 'var(--bg-input)', color: page === totalPages ? 'var(--text-tertiary)' : 'var(--text-primary)' }}
                       >Next</button>
@@ -757,13 +794,13 @@ export default function EmailVerifierPage() {
 
         {/* Right Column - Config */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          
+
           <div style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', padding: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
               <Network size={18} style={{ color: 'var(--blue)' }} />
               <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Pipeline Stages</h3>
             </div>
-            
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <CheckToggle id="syntax" label="Syntax Check" info="RFC 5322 regex validation." />
               <CheckToggle id="typoFix" label="Typo Auto-fix" info="Corrects common domain typos." />
@@ -783,7 +820,7 @@ export default function EmailVerifierPage() {
                 <ShieldAlert size={18} style={{ color: 'var(--purple, #A855F7)' }} />
                 <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Scoring Rules</h3>
               </div>
-              <button 
+              <button
                 onClick={() => setShowAdvanced(!showAdvanced)}
                 style={{ background: 'transparent', border: 'none', color: 'var(--blue)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
               >
@@ -823,8 +860,8 @@ export default function EmailVerifierPage() {
                 {Object.entries(weights).map(([key, val]) => (
                   <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
-                    <input 
-                      type="number" min="0" max="100" 
+                    <input
+                      type="number" min="0" max="100"
                       value={val}
                       onChange={e => setWeights(prev => ({ ...prev, [key]: parseInt(e.target.value) || 0 }))}
                       style={{ width: 60, padding: '4px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12, outline: 'none' }}
@@ -840,38 +877,38 @@ export default function EmailVerifierPage() {
               <Network size={18} style={{ color: 'var(--blue)' }} />
               <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>SMTP Configuration</h3>
             </div>
-            
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 12 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>HELO Domain</label>
-                  <input type="text" value={smtp.heloDomain} onChange={e => setSmtp(p => ({...p, heloDomain: e.target.value}))} style={{ width: '100%', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
+                  <input type="text" value={smtp.heloDomain} onChange={e => setSmtp(p => ({ ...p, heloDomain: e.target.value }))} style={{ width: '100%', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>MAIL FROM</label>
-                  <input type="text" value={smtp.fromEmail} onChange={e => setSmtp(p => ({...p, fromEmail: e.target.value}))} style={{ width: '100%', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
+                  <input type="text" value={smtp.fromEmail} onChange={e => setSmtp(p => ({ ...p, fromEmail: e.target.value }))} style={{ width: '100%', padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 8 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>Port</label>
-                  <input type="number" value={smtp.port} onChange={e => setSmtp(p => ({...p, port: parseInt(e.target.value)||25}))} style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
+                  <input type="number" value={smtp.port} onChange={e => setSmtp(p => ({ ...p, port: parseInt(e.target.value) || 25 }))} style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>Timeout(ms)</label>
-                  <input type="number" value={smtp.timeout} onChange={e => setSmtp(p => ({...p, timeout: parseInt(e.target.value)||15000}))} style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
+                  <input type="number" value={smtp.timeout} onChange={e => setSmtp(p => ({ ...p, timeout: parseInt(e.target.value) || 15000 }))} style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>Min Invl(ms)</label>
-                  <input type="number" value={smtp.minIntervalMs} onChange={e => setSmtp(p => ({...p, minIntervalMs: parseInt(e.target.value)||1000}))} style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
+                  <input type="number" value={smtp.minIntervalMs} onChange={e => setSmtp(p => ({ ...p, minIntervalMs: parseInt(e.target.value) || 1000 }))} style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>Max / Dom</label>
-                  <input type="number" value={smtp.maxConcurrentPerDomain} onChange={e => setSmtp(p => ({...p, maxConcurrentPerDomain: parseInt(e.target.value)||2}))} style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
+                  <input type="number" value={smtp.maxConcurrentPerDomain} onChange={e => setSmtp(p => ({ ...p, maxConcurrentPerDomain: parseInt(e.target.value) || 2 }))} style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>Global Max</label>
-                  <input type="number" value={smtp.concurrency} onChange={e => setSmtp(p => ({...p, concurrency: parseInt(e.target.value)||10}))} style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
+                  <input type="number" value={smtp.concurrency} onChange={e => setSmtp(p => ({ ...p, concurrency: parseInt(e.target.value) || 10 }))} style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
                 </div>
               </div>
             </div>
