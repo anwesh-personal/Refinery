@@ -81,16 +81,16 @@ function formatDateShort(dateStr: string): string {
   return `${m}/${d}`;
 }
 
-const statusColors: Record<string, string> = {
-  complete: '#22c55e',
-  ready: '#22c55e',
-  ingesting: '#3b82f6',
-  generating: '#3b82f6',
-  downloading: '#f59e0b',
-  uploading: '#8b5cf6',
-  pushed: '#a855f7',
-  pending: '#6b7280',
-  failed: '#ef4444',
+const statusStyles: Record<string, { color: string; bg: string }> = {
+  complete: { color: 'var(--green)', bg: 'var(--green-muted)' },
+  ready: { color: 'var(--green)', bg: 'var(--green-muted)' },
+  ingesting: { color: 'var(--blue)', bg: 'var(--blue-muted)' },
+  generating: { color: 'var(--blue)', bg: 'var(--blue-muted)' },
+  downloading: { color: 'var(--yellow)', bg: 'var(--yellow-muted)' },
+  uploading: { color: 'var(--purple)', bg: 'var(--purple-muted)' },
+  pushed: { color: 'var(--purple)', bg: 'var(--purple-muted)' },
+  pending: { color: 'var(--text-tertiary)', bg: 'var(--bg-elevated)' },
+  failed: { color: 'var(--red)', bg: 'var(--red-muted)' },
 };
 
 const activityIcons: Record<string, any> = {
@@ -357,8 +357,8 @@ export default function DashboardPage() {
                       <span style={{
                         fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
                         padding: '4px 8px', borderRadius: 6,
-                        color: statusColors[act.status] || 'var(--text-secondary)',
-                        background: statusColors[act.status] ? statusColors[act.status] + '15' : 'var(--bg-elevated)',
+                        color: (statusStyles[act.status] || statusStyles.pending).color,
+                        background: (statusStyles[act.status] || statusStyles.pending).bg,
                       }}>
                         {act.status}
                       </span>
