@@ -63,24 +63,24 @@ export default function LoginPage() {
         }}
       >
         {/* Logo */}
-        <div style={{ 
-          display: 'flex', 
+        <div style={{
+          display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center', 
-          justifyContent: 'center', 
-          marginBottom: 48, 
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 48,
           width: '100%',
         }}>
-          <img 
-            src={mode === 'dark' ? '/logo-dark.png' : '/logo-light.png'} 
+          <img
+            src={mode === 'dark' ? '/logo-dark-v3.png' : '/logo-light-v3.png'}
             alt="Refinery Nexus"
-            style={{ 
+            style={{
               width: '100%',
               maxWidth: 320,
-              height: 'auto', 
+              height: 'auto',
               objectFit: 'contain',
-              filter: mode === 'dark' 
-                ? 'drop-shadow(0 4px 20px rgba(99,102,241,0.25))' 
+              filter: mode === 'dark'
+                ? 'drop-shadow(0 4px 20px rgba(99,102,241,0.25))'
                 : 'drop-shadow(0 4px 16px rgba(0,0,0,0.12))',
               marginBottom: 12,
             }}

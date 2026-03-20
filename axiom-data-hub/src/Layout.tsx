@@ -115,20 +115,20 @@ export default function Layout({ children }: LayoutProps) {
         className="sidebar-desktop"
       >
         {/* Logo */}
-        <div style={{ 
-          padding: '32px 20px 28px', 
+        <div style={{
+          padding: '32px 20px 28px',
           borderBottom: '1px solid var(--border)',
-          display: 'flex', 
-          alignItems: 'center', 
+          display: 'flex',
+          alignItems: 'center',
           justifyContent: 'center',
         }}>
-          <img 
-            src={mode === 'dark' ? '/logo-dark.png' : '/logo-light.png'} 
+          <img
+            src={mode === 'dark' ? '/logo-dark-v3.png' : '/logo-light-v3.png'}
             alt="Refinery Nexus"
-            style={{ 
-              width: '100%', 
+            style={{
+              width: '100%',
               maxWidth: 220,
-              height: 'auto', 
+              height: 'auto',
               objectFit: 'contain',
               filter: 'var(--logo-glow)',
               transition: 'filter 0.4s ease',
