@@ -141,4 +141,47 @@ router.post('/start-bulk-daterange', async (req, res) => {
   }
 });
 
+// POST /api/ingestion/clear-jobs  { status: "failed" | "complete" | "all" }
+router.post('/clear-jobs', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const db = 'refinery';
+    let condition: string;
+
+    if (status === 'failed') {
+      condition = "status = 'failed'";
+    } else if (status === 'complete') {
+      condition = "status = 'complete'";
+    } else if (status === 'all') {
+      condition = "status IN ('failed', 'complete', 'cancelled')";
+    } else {
+      return res.status(400).json({ error: 'status must be "failed", "complete", or "all"' });
+    }
+
+    // Count first
+    const { query: q } = await import('../db/clickhouse.js');
+    const [{ cnt }] = await q<{ cnt: string }>(`SELECT count() as cnt FROM ingestion_jobs WHERE ${condition}`);
+
+    // Delete
+    const { command: cmd } = await import('../db/clickhouse.js');
+    await cmd(`ALTER TABLE ingestion_jobs DELETE WHERE ${condition}`);
+
+    res.json({ deleted: Number(cnt), status });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/ingestion/cancel-running — mark all in-flight jobs as cancelled
+router.post('/cancel-running', async (req, res) => {
+  try {
+    const { command: cmd, query: q } = await import('../db/clickhouse.js');
+    const [{ cnt }] = await q<{ cnt: string }>(`SELECT count() as cnt FROM ingestion_jobs WHERE status IN ('pending', 'downloading', 'uploading', 'ingesting')`);
+    await cmd(`ALTER TABLE ingestion_jobs UPDATE status = 'cancelled', error_message = 'Cancelled by user' WHERE status IN ('pending', 'downloading', 'uploading', 'ingesting')`);
+    res.json({ cancelled: Number(cnt) });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;

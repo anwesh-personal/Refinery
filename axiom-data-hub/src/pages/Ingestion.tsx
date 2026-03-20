@@ -134,38 +134,38 @@ export default function IngestionPage() {
   const [stats, setStats] = useState<IngestionStats | null>(null);
   const [jobs, setJobs] = useState<IngestionJob[]>([]);
   const [sources, setSources] = useState<S3Source[]>([]);
-  
+
   // Browsing state
   const [folders, setFolders] = useState<string[]>([]);
   const [sourceFiles, setSourceFiles] = useState<SourceFile[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string>(''); // empty means use legacy env
   const [prefix, setPrefix] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  
+
   // Sort & filter state
   const [fileSortKey, setFileSortKey] = useState<FileSortKey>('date');
   const [fileSortAsc, setFileSortAsc] = useState(false); // default: latest first
   const [fileTypeFilter, setFileTypeFilter] = useState<FileFormat | 'all'>('all');
   const [jobSortKey, setJobSortKey] = useState<JobSortKey>('date');
   const [jobSortAsc, setJobSortAsc] = useState(false);
-  
+
   // Auto-ingest rules
   const [rules, setRules] = useState<IngestionRule[]>([]);
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [editingRule, setEditingRule] = useState<Partial<IngestionRule> | null>(null);
   const [runningRuleId, setRunningRuleId] = useState<string | null>(null);
-  
+
   // Loading states
   const [loading, setLoading] = useState(true);
   const [browsing, setBrowsing] = useState(false);
   const [ingesting, setIngesting] = useState<string | null>(null);
   const [ingestingBulk, setIngestingBulk] = useState(false);
-  
+
   // Source Modal state
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [editingSource, setEditingSource] = useState<Partial<S3Source> | null>(null);
   const [testingCreds, setTestingCreds] = useState(false);
-  const [testCredsResult, setTestCredsResult] = useState<{ok: boolean, msg: string} | null>(null);
+  const [testCredsResult, setTestCredsResult] = useState<{ ok: boolean, msg: string } | null>(null);
 
   // Global messages
   const [error, setError] = useState<string | null>(null);
@@ -260,7 +260,7 @@ export default function IngestionPage() {
     if (selectedSourceId) {
       browseFilesForSource(selectedSourceId, '');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSourceId]);
 
   // Auto-refresh jobs
@@ -288,7 +288,7 @@ export default function IngestionPage() {
         endpoint_url: editingSource.endpoint_url || null,
         prefix: editingSource.prefix || ''
       };
-      
+
       if (editingSource.id) {
         await apiCall(`/api/s3-sources/${editingSource.id}`, { method: 'PUT', body: payload });
         setSuccess('Source updated successfully.');
@@ -322,7 +322,7 @@ export default function IngestionPage() {
     setTestingCreds(true);
     setTestCredsResult(null);
     try {
-      const res = await apiCall<{ok: boolean, fileCount?: number, error?: string}>('/api/s3-sources/test-credentials', {
+      const res = await apiCall<{ ok: boolean, fileCount?: number, error?: string }>('/api/s3-sources/test-credentials', {
         method: 'POST',
         body: {
           bucket: editingSource.bucket,
@@ -334,12 +334,12 @@ export default function IngestionPage() {
         }
       });
       if (res.ok) {
-        setTestCredsResult({ ok: true, msg: `Success! Found ${res.fileCount} files in prefix.`});
+        setTestCredsResult({ ok: true, msg: `Success! Found ${res.fileCount} files in prefix.` });
       } else {
-        setTestCredsResult({ ok: false, msg: `Failed: ${res.error}`});
+        setTestCredsResult({ ok: false, msg: `Failed: ${res.error}` });
       }
     } catch (e) {
-      setTestCredsResult({ ok: false, msg: `Error: ${e instanceof Error ? e.message : String(e)}`});
+      setTestCredsResult({ ok: false, msg: `Error: ${e instanceof Error ? e.message : String(e)}` });
     }
     setTestingCreds(false);
   };
@@ -358,8 +358,8 @@ export default function IngestionPage() {
       if (currentPrefix) params.set('prefix', currentPrefix);
       params.set('sourceId', srcId);
       const url = `/api/ingestion/source-files?${params.toString()}`;
-      
-      const res = await apiCall<{folders: string[], files: SourceFile[], prefix: string}>(url);
+
+      const res = await apiCall<{ folders: string[], files: SourceFile[], prefix: string }>(url);
       setFolders(res.folders || []);
       setSourceFiles(res.files || []);
       setPrefix(res.prefix || '');
@@ -609,12 +609,12 @@ export default function IngestionPage() {
       <div className="animate-fadeIn stagger-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16, marginBottom: 36 }}>
 
         {sources.map(src => (
-          <div 
+          <div
             key={src.id}
             onClick={() => { setSelectedSourceId(src.id); setPrefix(''); }}
-            style={{ 
-              background: selectedSourceId === src.id ? 'var(--bg-hover)' : 'var(--bg-card)', 
-              border: `1px solid ${selectedSourceId === src.id ? 'var(--accent)' : 'var(--border)'}`, 
+            style={{
+              background: selectedSourceId === src.id ? 'var(--bg-hover)' : 'var(--bg-card)',
+              border: `1px solid ${selectedSourceId === src.id ? 'var(--accent)' : 'var(--border)'}`,
               borderRadius: 12, padding: 20, cursor: 'pointer', transition: 'all 0.2s', position: 'relative',
               boxShadow: selectedSourceId === src.id ? '0 0 0 1px var(--accent)' : 'none'
             }}
@@ -624,9 +624,9 @@ export default function IngestionPage() {
                 <HardDrive size={18} color={selectedSourceId === src.id ? 'var(--accent)' : 'var(--text-tertiary)'} />
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{src.label}</div>
               </div>
-              
+
               <div style={{ display: 'flex', gap: 8 }}>
-                <button 
+                <button
                   onClick={(e) => { e.stopPropagation(); setEditingSource(src); setTestCredsResult(null); setShowSourceModal(true); }}
                   style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 4, borderRadius: 6, transition: 'color 0.2s' }}
                   onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
@@ -634,7 +634,7 @@ export default function IngestionPage() {
                 >
                   <Edit2 size={14} />
                 </button>
-                <button 
+                <button
                   onClick={(e) => { e.stopPropagation(); handleDeleteSource(src.id); }}
                   style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 4, borderRadius: 6, transition: 'color 0.2s' }}
                   onMouseEnter={e => (e.currentTarget.style.color = 'var(--red)')}
@@ -645,9 +645,9 @@ export default function IngestionPage() {
               </div>
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              <strong>Bucket:</strong> {src.bucket} <br/>
+              <strong>Bucket:</strong> {src.bucket} <br />
               <strong>Region:</strong> {src.region}
-              {src.prefix ? <><br/><strong>Prefix:</strong> {src.prefix}</> : null}
+              {src.prefix ? <><br /><strong>Prefix:</strong> {src.prefix}</> : null}
             </div>
           </div>
         ))}
@@ -696,16 +696,16 @@ export default function IngestionPage() {
 
         {/* Breadcrumbs */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 16, padding: '8px 12px', background: 'var(--bg-hover)', borderRadius: 8 }}>
-          <button onClick={() => { setPrefix(''); browseFiles(''); }} style={{ background:'none', border:'none', color: !prefix ? 'var(--text-primary)' : 'var(--text-tertiary)', fontWeight: !prefix ? 600 : 400, cursor:'pointer' }}>Root</button>
+          <button onClick={() => { setPrefix(''); browseFiles(''); }} style={{ background: 'none', border: 'none', color: !prefix ? 'var(--text-primary)' : 'var(--text-tertiary)', fontWeight: !prefix ? 600 : 400, cursor: 'pointer' }}>Root</button>
           {prefix.split('/').filter(Boolean).map((p, i, arr) => {
-            const currentPath = arr.slice(0, i+1).join('/') + '/';
+            const currentPath = arr.slice(0, i + 1).join('/') + '/';
             const isLast = i === arr.length - 1;
             return (
               <span key={currentPath} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ color: 'var(--text-tertiary)' }}>/</span>
-                <button 
+                <button
                   onClick={() => { setPrefix(currentPath); browseFiles(currentPath); }}
-                  style={{ background:'none', border:'none', color: isLast ? 'var(--text-primary)' : 'var(--text-tertiary)', fontWeight: isLast ? 600 : 400, cursor:'pointer', padding: '2px 4px', borderRadius: 4 }}
+                  style={{ background: 'none', border: 'none', color: isLast ? 'var(--text-primary)' : 'var(--text-tertiary)', fontWeight: isLast ? 600 : 400, cursor: 'pointer', padding: '2px 4px', borderRadius: 4 }}
                   onMouseOver={e => e.currentTarget.style.background = 'var(--bg-card)'}
                   onMouseOut={e => e.currentTarget.style.background = 'none'}
                 >
@@ -729,137 +729,139 @@ export default function IngestionPage() {
           const formatCounts = sourceFiles.reduce((acc, f) => { const fmt = getFileFormat(f.key.split('/').pop() || ''); acc[fmt] = (acc[fmt] || 0) + 1; return acc; }, {} as Record<string, number>);
 
           return (
-          <div style={{ borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-            {/* Sort & Filter Toolbar */}
-            {sourceFiles.length > 0 && (
-              <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <button onClick={toggleSelectAll} style={{ background:'none', border:'none', cursor:'pointer', padding: 0, color: selectedFiles.size === sourceFiles.length ? 'var(--accent)' : 'var(--text-tertiary)' }}>
-                    {selectedFiles.size > 0 && selectedFiles.size === sourceFiles.length ? <CheckSquare size={16} /> : <Square size={16} />}
-                  </button>
-                  <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)' }}>
-                    {filtered.length} file{filtered.length !== 1 ? 's' : ''}{fileTypeFilter !== 'all' ? ` (${fileTypeFilter.toUpperCase()})` : ''}
-                    {folders.length > 0 ? ` · ${folders.length} folder${folders.length !== 1 ? 's' : ''}` : ''}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {/* Type filter */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <Filter size={12} color="var(--text-tertiary)" />
-                    <select value={fileTypeFilter} onChange={e => setFileTypeFilter(e.target.value as FileFormat | 'all')} style={{
-                      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
-                      color: 'var(--text-primary)', fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
-                    }}>
-                      <option value="all">All Types</option>
-                      {formatCounts['csv'] && <option value="csv">CSV ({formatCounts['csv']})</option>}
-                      {formatCounts['gz'] && <option value="gz">GZ ({formatCounts['gz']})</option>}
-                      {formatCounts['parquet'] && <option value="parquet">Parquet ({formatCounts['parquet']})</option>}
-                      {formatCounts['other'] && <option value="other">Other ({formatCounts['other']})</option>}
-                    </select>
-                  </div>
-                  {/* Sort */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <ArrowUpDown size={12} color="var(--text-tertiary)" />
-                    <select value={fileSortKey} onChange={e => setFileSortKey(e.target.value as FileSortKey)} style={{
-                      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
-                      color: 'var(--text-primary)', fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
-                    }}>
-                      <option value="date">Date</option>
-                      <option value="name">Name</option>
-                      <option value="size">Size</option>
-                    </select>
-                    <button onClick={() => setFileSortAsc(!fileSortAsc)} style={{
-                      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
-                      cursor: 'pointer', padding: '3px 6px', display: 'flex', alignItems: 'center',
-                      color: 'var(--text-primary)',
-                    }}>
-                      {fileSortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            <div style={{ borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
+              {/* Sort & Filter Toolbar */}
+              {sourceFiles.length > 0 && (
+                <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <button onClick={toggleSelectAll} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: selectedFiles.size === sourceFiles.length ? 'var(--accent)' : 'var(--text-tertiary)' }}>
+                      {selectedFiles.size > 0 && selectedFiles.size === sourceFiles.length ? <CheckSquare size={16} /> : <Square size={16} />}
                     </button>
+                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)' }}>
+                      {filtered.length} file{filtered.length !== 1 ? 's' : ''}{fileTypeFilter !== 'all' ? ` (${fileTypeFilter.toUpperCase()})` : ''}
+                      {folders.length > 0 ? ` · ${folders.length} folder${folders.length !== 1 ? 's' : ''}` : ''}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {/* Type filter */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Filter size={12} color="var(--text-tertiary)" />
+                      <select value={fileTypeFilter} onChange={e => setFileTypeFilter(e.target.value as FileFormat | 'all')} style={{
+                        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
+                        color: 'var(--text-primary)', fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
+                      }}>
+                        <option value="all">All Types</option>
+                        {formatCounts['csv'] && <option value="csv">CSV ({formatCounts['csv']})</option>}
+                        {formatCounts['gz'] && <option value="gz">GZ ({formatCounts['gz']})</option>}
+                        {formatCounts['parquet'] && <option value="parquet">Parquet ({formatCounts['parquet']})</option>}
+                        {formatCounts['other'] && <option value="other">Other ({formatCounts['other']})</option>}
+                      </select>
+                    </div>
+                    {/* Sort */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <ArrowUpDown size={12} color="var(--text-tertiary)" />
+                      <select value={fileSortKey} onChange={e => setFileSortKey(e.target.value as FileSortKey)} style={{
+                        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
+                        color: 'var(--text-primary)', fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
+                      }}>
+                        <option value="date">Date</option>
+                        <option value="name">Name</option>
+                        <option value="size">Size</option>
+                      </select>
+                      <button onClick={() => setFileSortAsc(!fileSortAsc)} style={{
+                        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
+                        cursor: 'pointer', padding: '3px 6px', display: 'flex', alignItems: 'center',
+                        color: 'var(--text-primary)',
+                      }}>
+                        {fileSortAsc ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {folders.map((f) => {
-              const folderName = f.endsWith('/') ? f.slice(0, -1).split('/').pop() : f.split('/').pop();
-              return (
-              <div
-                key={f}
-                style={{
-                  display: 'flex', alignItems: 'center', padding: '12px 18px', borderBottom: '1px solid var(--border)',
-                  cursor: 'pointer', transition: 'background 0.15s',
-                }}
-                onClick={() => { setPrefix(f); browseFiles(f); }}
-                onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                onMouseOut={e => (e.currentTarget.style.background = '')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Folder size={16} color="var(--accent)" fill="var(--accent)" fillOpacity={0.2} />
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{folderName}/</div>
-                </div>
-              </div>
-            )})}
-            
-            {sorted.map((f) => {
-              const fileName = f.key.split('/').pop() || '';
-              const format = getFileFormat(fileName);
-              const isSelected = selectedFiles.has(f.key);
-              return (
-              <div
-                key={f.key}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '12px 18px', borderBottom: '1px solid var(--border)',
-                  transition: 'background 0.15s', cursor: 'pointer',
-                  background: isSelected ? 'var(--bg-hover)' : 'transparent'
-                }}
-                onMouseOver={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-                onMouseOut={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
-                onClick={() => toggleFile(f.key)}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <button onClick={(e) => { e.stopPropagation(); toggleFile(f.key); }} style={{ background:'none', border:'none', cursor:'pointer', padding: 0, color: isSelected ? 'var(--accent)' : 'var(--text-tertiary)' }}>
-                    {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-                  </button>
-                  <FileText size={16} color="var(--text-tertiary)" />
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{fileName}</span>
-                      <span style={{
-                        fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
-                        padding: '2px 6px', borderRadius: 4,
-                        color: FORMAT_COLORS[format], background: FORMAT_COLORS[format] + '18',
-                      }}>{format === 'gz' ? 'GZ' : format.toUpperCase()}</span>
-                    </div>
-                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                      {formatBytes(f.size)} · {new Date(f.modified).toLocaleDateString()} {new Date(f.modified).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {folders.map((f) => {
+                const folderName = f.endsWith('/') ? f.slice(0, -1).split('/').pop() : f.split('/').pop();
+                return (
+                  <div
+                    key={f}
+                    style={{
+                      display: 'flex', alignItems: 'center', padding: '12px 18px', borderBottom: '1px solid var(--border)',
+                      cursor: 'pointer', transition: 'background 0.15s',
+                    }}
+                    onClick={() => { setPrefix(f); browseFiles(f); }}
+                    onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                    onMouseOut={e => (e.currentTarget.style.background = '')}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <Folder size={16} color="var(--accent)" fill="var(--accent)" fillOpacity={0.2} />
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{folderName}/</div>
                     </div>
                   </div>
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {(getFileFormat(fileName) === 'csv' || getFileFormat(fileName) === 'gz') && (
-                    <Button
-                      variant="secondary"
-                      icon={previewLoading === f.key ? <Loader2 size={14} className="spin" /> : <Eye size={14} />}
-                      onClick={(e: any) => { e.stopPropagation(); handlePreview(f.key); }}
-                      disabled={previewLoading !== null}
-                      style={{ padding: '6px 10px', fontSize: 11 }}
-                    >
-                      {previewLoading === f.key ? '...' : 'Preview'}
-                    </Button>
-                  )}
-                  <Button
-                    variant="secondary"
-                    icon={ingesting === f.key ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
-                    onClick={(e: any) => { e.stopPropagation(); startIngestion(f.key); }}
-                    disabled={ingesting !== null || ingestingBulk}
+                )
+              })}
+
+              {sorted.map((f) => {
+                const fileName = f.key.split('/').pop() || '';
+                const format = getFileFormat(fileName);
+                const isSelected = selectedFiles.has(f.key);
+                return (
+                  <div
+                    key={f.key}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '12px 18px', borderBottom: '1px solid var(--border)',
+                      transition: 'background 0.15s', cursor: 'pointer',
+                      background: isSelected ? 'var(--bg-hover)' : 'transparent'
+                    }}
+                    onMouseOver={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                    onMouseOut={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                    onClick={() => toggleFile(f.key)}
                   >
-                    {ingesting === f.key ? 'Starting...' : 'Ingest'}
-                  </Button>
-                </div>
-              </div>
-            )})}
-          </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <button onClick={(e) => { e.stopPropagation(); toggleFile(f.key); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: isSelected ? 'var(--accent)' : 'var(--text-tertiary)' }}>
+                        {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                      </button>
+                      <FileText size={16} color="var(--text-tertiary)" />
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{fileName}</span>
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+                            padding: '2px 6px', borderRadius: 4,
+                            color: FORMAT_COLORS[format], background: FORMAT_COLORS[format] + '18',
+                          }}>{format === 'gz' ? 'GZ' : format.toUpperCase()}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                          {formatBytes(f.size)} · {new Date(f.modified).toLocaleDateString()} {new Date(f.modified).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {(getFileFormat(fileName) === 'csv' || getFileFormat(fileName) === 'gz') && (
+                        <Button
+                          variant="secondary"
+                          icon={previewLoading === f.key ? <Loader2 size={14} className="spin" /> : <Eye size={14} />}
+                          onClick={(e: any) => { e.stopPropagation(); handlePreview(f.key); }}
+                          disabled={previewLoading !== null}
+                          style={{ padding: '6px 10px', fontSize: 11 }}
+                        >
+                          {previewLoading === f.key ? '...' : 'Preview'}
+                        </Button>
+                      )}
+                      <Button
+                        variant="secondary"
+                        icon={ingesting === f.key ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
+                        onClick={(e: any) => { e.stopPropagation(); startIngestion(f.key); }}
+                        disabled={ingesting !== null || ingestingBulk}
+                      >
+                        {ingesting === f.key ? 'Starting...' : 'Ingest'}
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           );
         })() : (
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 13, background: 'var(--bg-hover)', borderRadius: 8 }}>
@@ -976,7 +978,56 @@ export default function IngestionPage() {
       </div>
 
       {/* --- JOB HISTORY --- */}
-      <SectionHeader title={`Ingestion Jobs (${jobs.length})`} action="Refresh" onAction={fetchData} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Ingestion Jobs ({jobs.length})</h3>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {jobs.some(j => ['pending', 'downloading', 'uploading', 'ingesting'].includes(j.status)) && (
+            <Button variant="danger" style={{ padding: '5px 10px', fontSize: 11 }} icon={<X size={12} />}
+              onClick={async () => {
+                if (!confirm('Cancel all running ingestion jobs?')) return;
+                try {
+                  const r = await apiCall<{ cancelled: number }>('/api/ingestion/cancel-running', { method: 'POST' });
+                  alert(`Cancelled ${r.cancelled} job(s)`);
+                  fetchData();
+                } catch (e: any) { alert(e.message); }
+              }}>Cancel Running</Button>
+          )}
+          {jobs.some(j => j.status === 'failed') && (
+            <Button variant="secondary" style={{ padding: '5px 10px', fontSize: 11 }} icon={<Trash2 size={12} />}
+              onClick={async () => {
+                if (!confirm('Delete all failed job records?')) return;
+                try {
+                  const r = await apiCall<{ deleted: number }>('/api/ingestion/clear-jobs', { method: 'POST', body: { status: 'failed' } });
+                  alert(`Cleared ${r.deleted} failed job(s)`);
+                  fetchData();
+                } catch (e: any) { alert(e.message); }
+              }}>Clear Failed</Button>
+          )}
+          {jobs.some(j => j.status === 'complete') && (
+            <Button variant="secondary" style={{ padding: '5px 10px', fontSize: 11 }} icon={<CheckCircle2 size={12} />}
+              onClick={async () => {
+                if (!confirm('Delete all completed job records?')) return;
+                try {
+                  const r = await apiCall<{ deleted: number }>('/api/ingestion/clear-jobs', { method: 'POST', body: { status: 'complete' } });
+                  alert(`Cleared ${r.deleted} completed job(s)`);
+                  fetchData();
+                } catch (e: any) { alert(e.message); }
+              }}>Clear Completed</Button>
+          )}
+          {jobs.length > 0 && (
+            <Button variant="secondary" style={{ padding: '5px 10px', fontSize: 11 }} icon={<Trash2 size={12} />}
+              onClick={async () => {
+                if (!confirm('Delete ALL finished/failed/cancelled job records? Running jobs are untouched.')) return;
+                try {
+                  const r = await apiCall<{ deleted: number }>('/api/ingestion/clear-jobs', { method: 'POST', body: { status: 'all' } });
+                  alert(`Cleared ${r.deleted} job(s)`);
+                  fetchData();
+                } catch (e: any) { alert(e.message); }
+              }}>Clear All Done</Button>
+          )}
+          <Button variant="secondary" style={{ padding: '5px 10px', fontSize: 11 }} icon={<RotateCw size={12} />} onClick={fetchData}>Refresh</Button>
+        </div>
+      </div>
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
         {jobs.length > 0 ? (() => {
           const sortedJobs = [...jobs].sort((a, b) => {
@@ -996,41 +1047,41 @@ export default function IngestionPage() {
           ];
 
           return (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>Job ID</th>
-                  {jobHeaders.map(h => (
-                    <th key={h.key} onClick={() => { if (jobSortKey === h.key) setJobSortAsc(!jobSortAsc); else { setJobSortKey(h.key); setJobSortAsc(false); } }}
-                      style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: jobSortKey === h.key ? 'var(--accent)' : 'var(--text-tertiary)', borderBottom: '1px solid var(--border)', cursor: 'pointer', userSelect: 'none' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {h.label}
-                        {jobSortKey === h.key && (jobSortAsc ? <ChevronUp size={10} /> : <ChevronDown size={10} />)}
-                      </span>
-                    </th>
-                  ))}
-                  <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>Size</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedJobs.map((job) => (
-                  <tr key={job.id} style={{ transition: 'background 0.1s' }}
-                    onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                    onMouseOut={e => (e.currentTarget.style.background = '')}>
-                    <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontFamily: 'monospace', fontSize: 12 }}>{job.id.slice(0, 8)}...</td>
-                    <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.file_name}</td>
-                    <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>{formatNumber(job.rows_ingested)}</td>
-                    <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', padding: '4px 10px', borderRadius: 6, color: statusColors[job.status] || 'var(--text-secondary)', background: (statusColors[job.status] || 'var(--text-secondary)') + '18' }}>{job.status}</span>
-                    </td>
-                    <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{timeAgo(job.started_at)}</td>
-                    <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{formatBytes(Number(job.file_size_bytes))}</td>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>Job ID</th>
+                    {jobHeaders.map(h => (
+                      <th key={h.key} onClick={() => { if (jobSortKey === h.key) setJobSortAsc(!jobSortAsc); else { setJobSortKey(h.key); setJobSortAsc(false); } }}
+                        style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: jobSortKey === h.key ? 'var(--accent)' : 'var(--text-tertiary)', borderBottom: '1px solid var(--border)', cursor: 'pointer', userSelect: 'none' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {h.label}
+                          {jobSortKey === h.key && (jobSortAsc ? <ChevronUp size={10} /> : <ChevronDown size={10} />)}
+                        </span>
+                      </th>
+                    ))}
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>Size</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {sortedJobs.map((job) => (
+                    <tr key={job.id} style={{ transition: 'background 0.1s' }}
+                      onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseOut={e => (e.currentTarget.style.background = '')}>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontFamily: 'monospace', fontSize: 12 }}>{job.id.slice(0, 8)}...</td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.file_name}</td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>{formatNumber(job.rows_ingested)}</td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', padding: '4px 10px', borderRadius: 6, color: statusColors[job.status] || 'var(--text-secondary)', background: (statusColors[job.status] || 'var(--text-secondary)') + '18' }}>{job.status}</span>
+                      </td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{timeAgo(job.started_at)}</td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{formatBytes(Number(job.file_size_bytes))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           );
         })() : (
           <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-tertiary)' }}>
@@ -1043,7 +1094,7 @@ export default function IngestionPage() {
 
       {/* --- ADD / EDIT SOURCE MODAL --- */}
       {showSourceModal && editingSource && (
-        <div 
+        <div
           onClick={(e) => { if (e.target === e.currentTarget) { setShowSourceModal(false); setEditingSource(null); } }}
           style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -1059,43 +1110,43 @@ export default function IngestionPage() {
             <h2 style={{ margin: '0 0 20px 0', fontSize: 20, color: 'var(--text-primary)' }}>
               {editingSource.id ? 'Edit S3 Source' : 'Add S3 Source'}
             </h2>
-            
+
             <div style={{ display: 'grid', gap: 16 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Label Name</label>
-                <Input placeholder="e.g. Partner A Data" value={editingSource.label || ''} onChange={(v: string) => setEditingSource({...editingSource, label: v})} />
+                <Input placeholder="e.g. Partner A Data" value={editingSource.label || ''} onChange={(v: string) => setEditingSource({ ...editingSource, label: v })} />
               </div>
-              
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Bucket</label>
-                  <Input placeholder="e.g. my-bucket" value={editingSource.bucket || ''} onChange={(v: string) => setEditingSource({...editingSource, bucket: v})} />
+                  <Input placeholder="e.g. my-bucket" value={editingSource.bucket || ''} onChange={(v: string) => setEditingSource({ ...editingSource, bucket: v })} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Region</label>
-                  <Input placeholder="e.g. us-east-1" value={editingSource.region || ''} onChange={(v: string) => setEditingSource({...editingSource, region: v})} />
+                  <Input placeholder="e.g. us-east-1" value={editingSource.region || ''} onChange={(v: string) => setEditingSource({ ...editingSource, region: v })} />
                 </div>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Access Key ID {editingSource.id ? '(Leave blank to keep)' : ''}</label>
-                <Input placeholder="AKIA..." value={editingSource.access_key || ''} onChange={(v: string) => setEditingSource({...editingSource, access_key: v})} />
+                <Input placeholder="AKIA..." value={editingSource.access_key || ''} onChange={(v: string) => setEditingSource({ ...editingSource, access_key: v })} />
               </div>
-              
+
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Secret Access Key {editingSource.id ? '(Leave blank to keep)' : ''}</label>
-                <Input placeholder="Secret key..." value={editingSource.secret_key || ''} onChange={(v: string) => setEditingSource({...editingSource, secret_key: v})} />
+                <Input placeholder="Secret key..." value={editingSource.secret_key || ''} onChange={(v: string) => setEditingSource({ ...editingSource, secret_key: v })} />
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Endpoint URL <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>(MinIO / Linode / S3-compatible)</span></label>
-                <Input placeholder="e.g. https://us-east-1.linodeobjects.com" value={editingSource.endpoint_url || ''} onChange={(v: string) => setEditingSource({...editingSource, endpoint_url: v})} />
+                <Input placeholder="e.g. https://us-east-1.linodeobjects.com" value={editingSource.endpoint_url || ''} onChange={(v: string) => setEditingSource({ ...editingSource, endpoint_url: v })} />
                 <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>Leave blank for standard AWS S3</p>
               </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Default Prefix</label>
-                <Input placeholder="e.g. outgoing/" value={editingSource.prefix || ''} onChange={(v: string) => setEditingSource({...editingSource, prefix: v})} />
+                <Input placeholder="e.g. outgoing/" value={editingSource.prefix || ''} onChange={(v: string) => setEditingSource({ ...editingSource, prefix: v })} />
               </div>
             </div>
 
@@ -1112,8 +1163,8 @@ export default function IngestionPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32 }}>
               <Button variant="secondary" onClick={() => { setShowSourceModal(false); setEditingSource(null); }}>Cancel</Button>
               <div style={{ display: 'flex', gap: 12 }}>
-                <Button 
-                  variant="secondary" 
+                <Button
+                  variant="secondary"
                   onClick={handleTestCredentials}
                   disabled={testingCreds || !editingSource.bucket}
                 >
@@ -1150,14 +1201,14 @@ export default function IngestionPage() {
               {/* Label */}
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Rule Name</label>
-                <Input placeholder="e.g. Daily 5x Coop Sync" value={editingRule.label || ''} onChange={(v: string) => setEditingRule({...editingRule, label: v})} />
+                <Input placeholder="e.g. Daily 5x Coop Sync" value={editingRule.label || ''} onChange={(v: string) => setEditingRule({ ...editingRule, label: v })} />
               </div>
 
               {/* Source + Prefix */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>S3 Source</label>
-                  <select value={editingRule.source_id || ''} onChange={e => setEditingRule({...editingRule, source_id: e.target.value})} style={{
+                  <select value={editingRule.source_id || ''} onChange={e => setEditingRule({ ...editingRule, source_id: e.target.value })} style={{
                     width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)',
                     background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13,
                   }}>
@@ -1167,7 +1218,7 @@ export default function IngestionPage() {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Prefix / Folder</label>
-                  <Input placeholder="e.g. outgoing/apis/" value={editingRule.prefix_pattern || ''} onChange={(v: string) => setEditingRule({...editingRule, prefix_pattern: v})} />
+                  <Input placeholder="e.g. outgoing/apis/" value={editingRule.prefix_pattern || ''} onChange={(v: string) => setEditingRule({ ...editingRule, prefix_pattern: v })} />
                 </div>
               </div>
 
@@ -1182,7 +1233,7 @@ export default function IngestionPage() {
                       <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)' }}>
                         <input type="checkbox" checked={checked} onChange={() => {
                           const next = checked ? types.filter(x => x !== t) : [...types, t];
-                          setEditingRule({...editingRule, file_types: next});
+                          setEditingRule({ ...editingRule, file_types: next });
                         }} style={{ accentColor: 'var(--accent)' }} />
                         {t.toUpperCase()}
                       </label>
@@ -1194,7 +1245,7 @@ export default function IngestionPage() {
               {/* Schedule */}
               <div>
                 <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Schedule</label>
-                <select value={editingRule.schedule || '0 */6 * * *'} onChange={e => setEditingRule({...editingRule, schedule: e.target.value})} style={{
+                <select value={editingRule.schedule || '0 */6 * * *'} onChange={e => setEditingRule({ ...editingRule, schedule: e.target.value })} style={{
                   width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)',
                   background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13,
                 }}>
@@ -1207,20 +1258,20 @@ export default function IngestionPage() {
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Only Files After (optional)</label>
                   <input type="date" value={editingRule.min_date ? editingRule.min_date.split('T')[0] : ''}
-                    onChange={e => setEditingRule({...editingRule, min_date: e.target.value || null})} style={{
-                    width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)',
-                    background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13,
-                  }} />
+                    onChange={e => setEditingRule({ ...editingRule, min_date: e.target.value || null })} style={{
+                      width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)',
+                      background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: 13,
+                    }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Min File Size (MB)</label>
                   <Input placeholder="e.g. 1" value={(editingRule as any).min_file_size_mb?.toString() || ''}
-                    onChange={(v: string) => setEditingRule({...editingRule, min_file_size_mb: v ? Number(v) : null} as any)} />
+                    onChange={(v: string) => setEditingRule({ ...editingRule, min_file_size_mb: v ? Number(v) : null } as any)} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>Max File Size (MB)</label>
                   <Input placeholder="e.g. 500" value={editingRule.max_file_size_mb?.toString() || ''}
-                    onChange={(v: string) => setEditingRule({...editingRule, max_file_size_mb: v ? Number(v) : null})} />
+                    onChange={(v: string) => setEditingRule({ ...editingRule, max_file_size_mb: v ? Number(v) : null })} />
                 </div>
               </div>
 
@@ -1228,7 +1279,7 @@ export default function IngestionPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--text-primary)' }}>
                   <input type="checkbox" checked={!!editingRule.skip_duplicates}
-                    onChange={() => setEditingRule({...editingRule, skip_duplicates: editingRule.skip_duplicates ? 0 : 1})}
+                    onChange={() => setEditingRule({ ...editingRule, skip_duplicates: editingRule.skip_duplicates ? 0 : 1 })}
                     style={{ accentColor: 'var(--accent)' }} />
                   Skip already-ingested files (recommended)
                 </label>
