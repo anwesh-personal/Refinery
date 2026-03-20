@@ -668,7 +668,7 @@ export default function IngestionPage() {
           <div style={{
             width: 40, height: 40, borderRadius: 12,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'var(--accent)', color: '#fff', fontSize: 22, fontWeight: 700,
+            background: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 22, fontWeight: 700,
           }}>+</div>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Add New Source</div>
         </div>

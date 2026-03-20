@@ -446,7 +446,7 @@ export function Button({ children, variant = 'primary', onClick, icon, full = fa
   };
 
   const variants: Record<string, React.CSSProperties> = {
-    primary: { ...base, background: 'var(--accent)', color: '#fff' },
+    primary: { ...base, background: 'var(--accent)', color: 'var(--accent-contrast)' },
     secondary: { ...base, background: 'var(--bg-card-hover)', color: 'var(--text-primary)', border: '1px solid var(--border)' },
     danger: { ...base, background: 'var(--red-muted)', color: 'var(--red)' },
     ghost: { ...base, background: 'transparent', color: 'var(--text-secondary)', border: '1px solid var(--border)' },

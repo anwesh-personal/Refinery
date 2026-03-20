@@ -183,7 +183,7 @@ function ProfileSection({ user, refreshProfile }: { user: any; refreshProfile: (
             <div style={{
               position: 'absolute', bottom: -2, right: -2,
               width: 24, height: 24, borderRadius: '50%',
-              background: 'var(--accent)', color: '#fff',
+              background: 'var(--accent)', color: 'var(--accent-contrast)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               <Camera size={12} />
@@ -642,7 +642,7 @@ const inputStyle: React.CSSProperties = {
 const btnStyle: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
   padding: '12px 20px', borderRadius: 12, fontSize: 13, fontWeight: 700,
-  border: 'none', background: 'var(--accent)', color: '#fff',
+  border: 'none', background: 'var(--accent)', color: 'var(--accent-contrast)',
   transition: 'all 0.2s', width: '100%',
 };
 
