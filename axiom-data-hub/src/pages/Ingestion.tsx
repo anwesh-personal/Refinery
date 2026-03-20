@@ -112,6 +112,7 @@ function timeAgo(dateStr: string): string {
 const statusColors: Record<string, string> = {
   complete: 'var(--green)', ingesting: 'var(--blue)', downloading: 'var(--yellow)',
   uploading: 'var(--purple)', pending: 'var(--text-secondary)', failed: 'var(--red)',
+  cancelled: 'var(--yellow)',
 };
 
 type FileFormat = 'csv' | 'gz' | 'parquet' | 'other';
@@ -1043,7 +1044,23 @@ export default function IngestionPage() {
 
       {/* --- JOB HISTORY --- */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Ingestion Jobs ({jobs.length})</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Ingestion Jobs ({jobs.length})</h3>
+          {/* Status counts */}
+          {jobs.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, fontSize: 11 }}>
+              {Object.entries(
+                jobs.reduce((acc, j) => { acc[j.status] = (acc[j.status] || 0) + 1; return acc; }, {} as Record<string, number>)
+              ).map(([status, count]) => (
+                <span key={status} style={{
+                  padding: '2px 8px', borderRadius: 6, fontWeight: 600,
+                  color: statusColors[status] || 'var(--text-tertiary)',
+                  background: (statusColors[status] || 'var(--text-tertiary)') + '18',
+                }}>{count} {status}</span>
+              ))}
+            </div>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {jobs.some(j => ['pending', 'downloading', 'uploading', 'ingesting'].includes(j.status)) && (
             <Button variant="danger" style={{ padding: '5px 10px', fontSize: 11 }} icon={<X size={12} />}
@@ -1056,10 +1073,21 @@ export default function IngestionPage() {
                 } catch (e: any) { alert(e.message); }
               }}>Cancel Running</Button>
           )}
+          {jobs.some(j => j.status === 'cancelled') && (
+            <Button variant="secondary" style={{ padding: '5px 10px', fontSize: 11 }} icon={<X size={12} />}
+              onClick={async () => {
+                if (!confirm(`Delete all ${jobs.filter(j => j.status === 'cancelled').length} cancelled job records?`)) return;
+                try {
+                  const r = await apiCall<{ deleted: number }>('/api/ingestion/clear-jobs', { method: 'POST', body: { status: 'cancelled' } });
+                  alert(`Cleared ${r.deleted} cancelled job(s)`);
+                  fetchData();
+                } catch (e: any) { alert(e.message); }
+              }}>Clear Cancelled</Button>
+          )}
           {jobs.some(j => j.status === 'failed') && (
             <Button variant="secondary" style={{ padding: '5px 10px', fontSize: 11 }} icon={<Trash2 size={12} />}
               onClick={async () => {
-                if (!confirm('Delete all failed job records?')) return;
+                if (!confirm(`Delete all ${jobs.filter(j => j.status === 'failed').length} failed job records?`)) return;
                 try {
                   const r = await apiCall<{ deleted: number }>('/api/ingestion/clear-jobs', { method: 'POST', body: { status: 'failed' } });
                   alert(`Cleared ${r.deleted} failed job(s)`);
@@ -1070,7 +1098,7 @@ export default function IngestionPage() {
           {jobs.some(j => j.status === 'complete') && (
             <Button variant="secondary" style={{ padding: '5px 10px', fontSize: 11 }} icon={<CheckCircle2 size={12} />}
               onClick={async () => {
-                if (!confirm('Delete all completed job records?')) return;
+                if (!confirm(`Delete all ${jobs.filter(j => j.status === 'complete').length} completed job records?`)) return;
                 try {
                   const r = await apiCall<{ deleted: number }>('/api/ingestion/clear-jobs', { method: 'POST', body: { status: 'complete' } });
                   alert(`Cleared ${r.deleted} completed job(s)`);
@@ -1078,7 +1106,7 @@ export default function IngestionPage() {
                 } catch (e: any) { alert(e.message); }
               }}>Clear Completed</Button>
           )}
-          {jobs.length > 0 && (
+          {jobs.length > 5 && (
             <Button variant="secondary" style={{ padding: '5px 10px', fontSize: 11 }} icon={<Trash2 size={12} />}
               onClick={async () => {
                 if (!confirm('Delete ALL finished/failed/cancelled job records? Running jobs are untouched.')) return;
@@ -1087,7 +1115,7 @@ export default function IngestionPage() {
                   alert(`Cleared ${r.deleted} job(s)`);
                   fetchData();
                 } catch (e: any) { alert(e.message); }
-              }}>Clear All Done</Button>
+              }}>Clear All</Button>
           )}
           <Button variant="secondary" style={{ padding: '5px 10px', fontSize: 11 }} icon={<RotateCw size={12} />} onClick={fetchData}>Refresh</Button>
         </div>

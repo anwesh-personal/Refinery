@@ -149,10 +149,12 @@ router.post('/clear-jobs', async (req, res) => {
       condition = "status = 'failed'";
     } else if (status === 'complete') {
       condition = "status = 'complete'";
+    } else if (status === 'cancelled') {
+      condition = "status = 'cancelled'";
     } else if (status === 'all') {
       condition = "status IN ('failed', 'complete', 'cancelled')";
     } else {
-      return res.status(400).json({ error: 'status must be "failed", "complete", or "all"' });
+      return res.status(400).json({ error: 'status must be "failed", "complete", "cancelled", or "all"' });
     }
 
     // Count first
