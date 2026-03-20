@@ -81,9 +81,8 @@ async function resolveVerify550Config(): Promise<{ endpoint: string; apiKey: str
 async function getConfigFromDB(): Promise<Record<string, string>> {
   try {
     const rows = await query<{ config_key: string; config_value: string }>(
-      `SELECT config_key, config_value FROM system_config
-       WHERE config_key LIKE 'verify550_%' OR config_key LIKE 'builtin_%'
-       FINAL`,
+      `SELECT config_key, config_value FROM system_config FINAL
+       WHERE config_key LIKE 'verify550_%' OR config_key LIKE 'builtin_%'`,
     );
     const map: Record<string, string> = {};
     for (const row of rows) {
@@ -98,9 +97,8 @@ async function getConfigFromDB(): Promise<Record<string, string>> {
 /** Public: Get current config with secrets masked. Safe for API response. */
 export async function getConfig(): Promise<Record<string, string>> {
   const rows = await query<{ config_key: string; config_value: string; is_secret: number }>(
-    `SELECT config_key, config_value, is_secret FROM system_config
-     WHERE config_key LIKE 'verify550_%' OR config_key LIKE 'builtin_%'
-     FINAL`,
+    `SELECT config_key, config_value, is_secret FROM system_config FINAL
+     WHERE config_key LIKE 'verify550_%' OR config_key LIKE 'builtin_%'`,
   );
   const config: Record<string, string> = {};
   for (const row of rows) {
@@ -115,7 +113,7 @@ export async function getConfig(): Promise<Record<string, string>> {
 
 /** Public: Save config values to system_config (ReplacingMergeTree handles dedup). */
 export async function saveConfig(
-  updates: { 
+  updates: {
     endpoint?: string; apiKey?: string;
     batchSize?: string | number; concurrency?: string | number;
     builtinHeloDomain?: string; builtinFromEmail?: string;
@@ -214,11 +212,11 @@ export async function startBatch(segmentId: string, engine: 'verify550' | 'built
 
   // Run verification pipeline in background
   runVerificationPipeline(
-    batchId, 
-    segmentId, 
-    engine, 
-    v550Config, 
-    builtinConfig, 
+    batchId,
+    segmentId,
+    engine,
+    v550Config,
+    builtinConfig,
     control
   ).catch(async (err) => {
     console.error(`[Engine - ${engine}] Batch ${batchId} failed:`, err.message);
@@ -263,7 +261,7 @@ async function runVerificationPipeline(
   control: { cancelled: boolean },
 ) {
   await updateBatchStatus(batchId, 'submitting');
-  
+
   // Use V550 batch size, or a large default for builtin (it processes concurrently internally)
   const batchSize = engine === 'verify550' ? v550Config!.batchSize : 5000;
 
@@ -308,7 +306,7 @@ async function runVerificationPipeline(
 
     // Execute Verification
     let results: VerificationResult[];
-    
+
     if (engine === 'verify550') {
       try {
         results = await callVerify550WithRetry(
