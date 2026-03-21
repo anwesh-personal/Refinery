@@ -40,7 +40,7 @@ const COMPLETENESS_LOW = 0.4;
 
 // Quick toggle definitions — column name is validated at runtime against schema
 const QUICK_TOGGLE_CONFIG = [
-  { key: 'hasEmail', label: 'Has Email', column: 'business_email', icon: 'mail' },
+  { key: 'hasEmail', label: 'Has Email', column: 'personal_emails', icon: 'mail' },
   { key: 'hasPhone', label: 'Has Phone', column: 'mobile_phone', icon: 'phone' },
   { key: 'hasLinkedin', label: 'Has LinkedIn', column: 'linkedin_url', icon: 'linkedin' },
 ] as const;
@@ -277,7 +277,7 @@ export default function DatabasePage() {
         .map(f => ({ column: f.column, operator: f.operator, value: f.value }));
 
       // Add quick boolean toggles
-      if (quickToggles.hasEmail) afPayload.push({ column: 'business_email', operator: 'is_not_null', value: '' });
+      // hasEmail is handled separately via the hasEmail flag (checks both business_email + personal_emails)
       if (quickToggles.hasPhone) afPayload.push({ column: 'mobile_phone', operator: 'is_not_null', value: '' });
       if (quickToggles.hasLinkedin) afPayload.push({ column: 'linkedin_url', operator: 'is_not_null', value: '' });
 
@@ -287,6 +287,7 @@ export default function DatabasePage() {
           search: currentSearch,
           filters: { ...activeFilters, ...(dataSourceFilter ? { _ingestion_job_id: dataSourceFilter } : {}) },
           advancedFilters: afPayload.length > 0 ? afPayload : undefined,
+          hasEmail: quickToggles.hasEmail || undefined,
           page,
           pageSize,
           sortBy: sortCol || activeCols[0] || 'up_id',

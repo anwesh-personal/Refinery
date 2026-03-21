@@ -114,6 +114,7 @@ export interface BrowseParams {
   search?: string;
   filters?: Record<string, string>;
   advancedFilters?: AdvancedFilter[];
+  hasEmail?: boolean;
   page?: number;
   pageSize?: number;
   sortBy?: string;
@@ -200,6 +201,11 @@ export async function browseData(params: BrowseParams) {
         break;
       }
     }
+  }
+
+  // Has Email composite filter — checks both business_email and personal_emails
+  if (params.hasEmail) {
+    conditions.push(`((\`business_email\` IS NOT NULL AND toString(\`business_email\`) != '') OR (\`personal_emails\` IS NOT NULL AND toString(\`personal_emails\`) != ''))`);
   }
 
   // Completeness filter — compute ratio of non-null, non-empty columns server-side
