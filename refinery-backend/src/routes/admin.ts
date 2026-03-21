@@ -2,7 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import * as adminService from '../services/admin.js';
 import { supabaseAdmin } from '../services/supabaseAdmin.js';
-import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
+import { requireAuth, requireSuperadmin, invalidateProfileCache } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -124,6 +124,7 @@ router.post('/delete-user', async (req, res) => {
     if (userId === adminId) return res.status(400).json({ error: 'Cannot delete yourself' });
 
     await adminService.deleteAuthUser(userId);
+    invalidateProfileCache(userId);
     await auditLog(adminId, 'admin_delete_user', userId, {});
     res.json({ message: 'User deleted successfully' });
   } catch (err: any) {

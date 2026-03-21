@@ -40,6 +40,7 @@ interface Batch {
   started_at: string;
   completed_at: string | null;
   error_message?: string;
+  performed_by_name?: string | null;
 }
 
 interface Segment {
@@ -50,7 +51,7 @@ interface Segment {
 export default function VerificationPage() {
   const { selectedServerId } = useServers();
   const [stats, setStats] = useState<VerifyStats | null>(null);
-  const [config, setConfig] = useState<VerifyConfig>({ 
+  const [config, setConfig] = useState<VerifyConfig>({
     endpoint: '', apiKey: '', batchSize: '5000', concurrency: '3',
     builtinHeloDomain: '', builtinFromEmail: '', builtinConcurrency: '10', builtinTimeout: '15000',
     builtinEnableCatchAll: '0', builtinMinInterval: '2000', builtinPort: '25', builtinMaxPerDomain: '2'
@@ -75,8 +76,8 @@ export default function VerificationPage() {
 
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ok: boolean; message: string} | null>(null);
-  
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedSegmentId, setSelectedSegmentId] = useState('');
   const [startingBatch, setStartingBatch] = useState(false);
@@ -102,13 +103,13 @@ export default function VerificationPage() {
     try {
       const opts = { serverId: selectedServerId || undefined };
       const [s, c, b, segs, credsResp, completedResp, runningResp] = await Promise.all([
-        apiCall<VerifyStats>('/api/verification/stats', opts).catch(()=>null),
-        !background ? apiCall<Record<string, string>>('/api/verification/config', opts).catch(()=>null) : Promise.resolve(null),
-        apiCall<Batch[]>('/api/verification/batches', opts).catch(()=>[]),
-        !background ? apiCall<{ segments: Segment[] }>('/api/segments', opts).catch(()=>null) : Promise.resolve(null),
-        apiCall<{ credits: number }>('/api/v550/credits', opts).catch(()=>null),
-        apiCall<any>('/api/v550/jobs/completed', opts).catch(()=>null),
-        apiCall<any>('/api/v550/jobs/running', opts).catch(()=>null),
+        apiCall<VerifyStats>('/api/verification/stats', opts).catch(() => null),
+        !background ? apiCall<Record<string, string>>('/api/verification/config', opts).catch(() => null) : Promise.resolve(null),
+        apiCall<Batch[]>('/api/verification/batches', opts).catch(() => []),
+        !background ? apiCall<{ segments: Segment[] }>('/api/segments', opts).catch(() => null) : Promise.resolve(null),
+        apiCall<{ credits: number }>('/api/v550/credits', opts).catch(() => null),
+        apiCall<any>('/api/v550/jobs/completed', opts).catch(() => null),
+        apiCall<any>('/api/v550/jobs/running', opts).catch(() => null),
       ]);
       if (s) setStats(s);
       if (c) {
@@ -134,18 +135,18 @@ export default function VerificationPage() {
           setSelectedSegmentId(segs.segments[0].id);
         }
       }
-      
+
       if (credsResp) setV550Credits(credsResp.credits);
-      
+
       const vjobs: any[] = [];
       const runningArr = Array.isArray(runningResp) ? runningResp : runningResp?.data || [];
       const completedArr = Array.isArray(completedResp) ? completedResp : completedResp?.data || [];
-      
+
       vjobs.push(...runningArr.map((j: any) => ({ ...j, status: 'progress' })));
       vjobs.push(...completedArr.map((j: any) => ({ ...j, status: 'finished' })));
-      
+
       if (vjobs.length > 0) {
-         setV550Jobs(vjobs.sort((a,b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime()));
+        setV550Jobs(vjobs.sort((a, b) => new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime()));
       }
 
       // Reset backoff on success
@@ -196,7 +197,7 @@ export default function VerificationPage() {
     setTesting(true);
     setTestResult(null);
     try {
-      const resp = await apiCall<{ok: boolean; message: string}>('/api/verification/test', {
+      const resp = await apiCall<{ ok: boolean; message: string }>('/api/verification/test', {
         method: 'POST',
         serverId: selectedServerId || undefined
       });
@@ -263,7 +264,7 @@ export default function VerificationPage() {
     setSingleVerifying(true);
     setSingleVerifyResult(null);
     try {
-      const resp = await apiCall<{status: string}>(`/api/v550/verify?email=${encodeURIComponent(singleVerifyEmail)}`);
+      const resp = await apiCall<{ status: string }>(`/api/v550/verify?email=${encodeURIComponent(singleVerifyEmail)}`);
       setSingleVerifyResult(resp.status);
     } catch (e: any) {
       alert(`Verification failed: ${e.message}`);
@@ -279,12 +280,12 @@ export default function VerificationPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      
+
       await apiCall('/api/v550/upload', {
         method: 'POST',
         body: formData,
       });
-      
+
       alert('File uploaded to Verify550 successfully!');
       fetchData(false);
     } catch (err: any) {
@@ -372,8 +373,8 @@ export default function VerificationPage() {
 
   return (
     <>
-      <PageHeader 
-        title="Verification Engine" 
+      <PageHeader
+        title="Verification Engine"
         sub="Batch-verify segment emails using the built-in SMTP probe or the high-speed Verify550 API — track progress, yields, and bounces in real-time."
         description="Select a segment, choose your verification engine (Built-in SMTP for maximum control, or Verify550 API for speed), then hit Verify. The engine queries MX records, connects to mail servers, and checks each address for deliverability. Results flow back into ClickHouse with per-email status tags. Bounced leads are automatically flagged across all segments."
         action={<ServerSelector type="clickhouse" />}
@@ -387,10 +388,10 @@ export default function VerificationPage() {
       </div>
 
       <SectionHeader title="Engine Configuration" />
-      
+
       {/* ─── Two-Column Engine Config ─── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 24, marginBottom: 36 }} className="animate-fadeIn stagger-4">
-        
+
         {/* ── Native SMTP Engine Card ── */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
@@ -434,7 +435,7 @@ export default function VerificationPage() {
               <Input value={config.builtinTimeout} onChange={e => setConfig({ ...config, builtinTimeout: e })} placeholder="15000" type="number" />
             </div>
           </div>
-          
+
           {/* Catch-All Toggle */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--bg-app)', borderRadius: 8, border: '1px solid var(--border)', marginBottom: 20 }}>
             <div>
@@ -464,13 +465,13 @@ export default function VerificationPage() {
               <h4 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>Verify550 API</h4>
             </div>
             {v550Credits !== null && (
-               <Badge label={`${v550Credits.toLocaleString()} Credits`} color="var(--purple, #a855f7)" colorMuted="var(--purple-muted, rgba(168,85,247,.15))" />
+              <Badge label={`${v550Credits.toLocaleString()} Credits`} color="var(--purple, #a855f7)" colorMuted="var(--purple-muted, rgba(168,85,247,.15))" />
             )}
           </div>
           <p style={{ margin: '0 0 24px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
             Third-party commercial verification. Highest accuracy via dynamic IP routing. Use when your server lacks Port 25 access.
           </p>
-          
+
           <div style={{ flex: 1 }}>
             <div style={{ padding: 12, borderRadius: 8, background: 'var(--bg-hover)', marginBottom: 16, fontSize: 12, color: 'var(--text-secondary)' }}>
               <strong style={{ color: 'var(--text-primary)' }}>Endpoint:</strong> https://app.verify550.com/api <span style={{ color: 'var(--text-tertiary)' }}>(configured server-side)</span>
@@ -493,7 +494,7 @@ export default function VerificationPage() {
               </div>
             </div>
           </div>
-          
+
           <div style={{ marginTop: 24, paddingTop: 24, borderTop: '1px solid var(--border)' }}>
             {testResult && (
               <div style={{ marginBottom: 16, padding: 12, borderRadius: 8, background: testResult.ok ? 'var(--green-muted)' : 'var(--red-muted)', color: testResult.ok ? 'var(--green)' : 'var(--red)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -512,38 +513,38 @@ export default function VerificationPage() {
 
       <SectionHeader title="Verify550 Operations" />
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(400px, 2fr)', gap: 24, marginBottom: 36 }}>
-         {/* Single Verification */}
-         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
-           <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600 }}>Quick Verification</h4>
-           <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>Check a single email address instantly against Verify550.</p>
-           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-             <Input placeholder="email@domain.com" value={singleVerifyEmail} onChange={(v: string) => setSingleVerifyEmail(v)} />
-             <Button disabled={!singleVerifyEmail || singleVerifying} onClick={handleSingleVerify} style={{ padding: '0 16px' }}>
-               {singleVerifying ? '...' : 'Verify'}
-             </Button>
-           </div>
-           {singleVerifyResult && (
-             <div style={{ padding: '12px 16px', borderRadius: 8, fontSize: 13, background: 'var(--bg-app)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Status:</span> 
-                <Badge label={singleVerifyResult} color="var(--purple)" colorMuted="var(--purple-muted)" />
-             </div>
-           )}
-         </div>
+        {/* Single Verification */}
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 24 }}>
+          <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600 }}>Quick Verification</h4>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>Check a single email address instantly against Verify550.</p>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <Input placeholder="email@domain.com" value={singleVerifyEmail} onChange={(v: string) => setSingleVerifyEmail(v)} />
+            <Button disabled={!singleVerifyEmail || singleVerifying} onClick={handleSingleVerify} style={{ padding: '0 16px' }}>
+              {singleVerifying ? '...' : 'Verify'}
+            </Button>
+          </div>
+          {singleVerifyResult && (
+            <div style={{ padding: '12px 16px', borderRadius: 8, fontSize: 13, background: 'var(--bg-app)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Status:</span>
+              <Badge label={singleVerifyResult} color="var(--purple)" colorMuted="var(--purple-muted)" />
+            </div>
+          )}
+        </div>
 
-         {/* Bulk CSV Upload */}
-         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-           <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600 }}>External Bulk Verification</h4>
-           <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20 }}>Upload a raw CSV file directly to Verify550 for verification without using internal segments. Bypasses local storage.</p>
-           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-             <input type="file" accept=".csv" ref={fileInputRef} onChange={handleBulkUpload} style={{ display: 'none' }} id="v550-upload" />
-             <label htmlFor="v550-upload" style={{
-                cursor: 'pointer', padding: '10px 20px', borderRadius: 10, background: 'var(--purple, #a855f7)', color: '#fff', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'background 0.2s',
-                opacity: uploadingCSV ? 0.7 : 1, pointerEvents: uploadingCSV ? 'none' : 'auto'
-             }}>
-                <Upload size={16} /> {uploadingCSV ? 'Uploading to Verify550...' : 'Select & Upload CSV'}
-             </label>
-           </div>
-         </div>
+        {/* Bulk CSV Upload */}
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 600 }}>External Bulk Verification</h4>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20 }}>Upload a raw CSV file directly to Verify550 for verification without using internal segments. Bypasses local storage.</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <input type="file" accept=".csv" ref={fileInputRef} onChange={handleBulkUpload} style={{ display: 'none' }} id="v550-upload" />
+            <label htmlFor="v550-upload" style={{
+              cursor: 'pointer', padding: '10px 20px', borderRadius: 10, background: 'var(--purple, #a855f7)', color: '#fff', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'background 0.2s',
+              opacity: uploadingCSV ? 0.7 : 1, pointerEvents: uploadingCSV ? 'none' : 'auto'
+            }}>
+              <Upload size={16} /> {uploadingCSV ? 'Uploading to Verify550...' : 'Select & Upload CSV'}
+            </label>
+          </div>
+        </div>
       </div>
 
       <SectionHeader title="Verify550 External Jobs" />
@@ -588,6 +589,7 @@ export default function VerificationPage() {
           { key: 'verified', label: 'Verified' },
           { key: 'bounced', label: 'Bounced' },
           { key: 'status', label: 'State' },
+          { key: 'by', label: 'By' },
           { key: 'action', label: '' },
         ]}
         rows={batches.map(b => ({
@@ -605,7 +607,8 @@ export default function VerificationPage() {
             <Button variant="danger" style={{ padding: '6px 12px', fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleCancel(b.id); }} icon={<StopCircle size={12} />}>Halt</Button>
           ) : ['complete', 'cancelled'].includes(b.status) ? (
             <Button variant="secondary" style={{ padding: '6px 12px', fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleExportCSV(b.id); }} icon={<Download size={12} />}>CSV</Button>
-          ) : null
+          ) : null,
+          by: <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{b.performed_by_name || '—'}</span>,
         }))}
         emptyIcon={<ShieldCheck size={24} />}
         emptyTitle="No verification history"
@@ -619,11 +622,11 @@ export default function VerificationPage() {
             <p style={{ margin: '0 0 24px', fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
               Choose a segment and engine. Already-verified leads are skipped — safe to re-run incrementally.
             </p>
-            
+
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 8 }}>Target Segment</label>
-              <select 
-                value={selectedSegmentId} 
+              <select
+                value={selectedSegmentId}
                 onChange={e => setSelectedSegmentId(e.target.value)}
                 style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 14 }}
               >
@@ -631,11 +634,11 @@ export default function VerificationPage() {
                 {segments.length === 0 && <option value="" disabled>No segments available…</option>}
               </select>
             </div>
-            
+
             <div style={{ marginBottom: 28 }}>
               <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 10 }}>Verification Engine</label>
-              
-              <div 
+
+              <div
                 onClick={() => setEngineType('builtin')}
                 style={{ cursor: 'pointer', padding: '14px 16px', borderRadius: 10, border: `2px solid ${engineType === 'builtin' ? 'var(--blue)' : 'var(--border)'}`, background: engineType === 'builtin' ? 'var(--blue-muted)' : 'transparent', marginBottom: 10, transition: 'all .2s' }}
               >
@@ -645,8 +648,8 @@ export default function VerificationPage() {
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', paddingLeft: 24 }}>Free. Direct SMTP probing. Requires unrestricted Port 25 outbound.</div>
               </div>
-              
-              <div 
+
+              <div
                 onClick={() => setEngineType('verify550')}
                 style={{ cursor: 'pointer', padding: '14px 16px', borderRadius: 10, border: `2px solid ${engineType === 'verify550' ? 'var(--purple, #a855f7)' : 'var(--border)'}`, background: engineType === 'verify550' ? 'var(--purple-muted, rgba(168,85,247,.15))' : 'transparent', transition: 'all .2s' }}
               >

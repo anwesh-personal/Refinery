@@ -27,6 +27,7 @@ interface RecentActivity {
     detail: string;
     status: string;
     timestamp: string;
+    performedBy: string | null;
 }
 
 export async function getIngestionTrends(days = 30): Promise<IngestionTrend[]> {
@@ -77,8 +78,8 @@ export async function getRecentActivity(limit = 15): Promise<RecentActivity[]> {
     // Recent ingestion jobs
     try {
         const jobs = await query<{
-            file_name: string; status: string; rows_ingested: string; started_at: string;
-        }>(`SELECT file_name, status, rows_ingested, started_at FROM ingestion_jobs ORDER BY started_at DESC LIMIT ${limit}`);
+            file_name: string; status: string; rows_ingested: string; started_at: string; performed_by_name: string | null;
+        }>(`SELECT file_name, status, rows_ingested, started_at, performed_by_name FROM ingestion_jobs ORDER BY started_at DESC LIMIT ${limit}`);
         for (const j of jobs) {
             activities.push({
                 type: 'ingestion',
@@ -86,6 +87,7 @@ export async function getRecentActivity(limit = 15): Promise<RecentActivity[]> {
                 detail: `${Number(j.rows_ingested).toLocaleString()} rows`,
                 status: j.status,
                 timestamp: j.started_at,
+                performedBy: j.performed_by_name || null,
             });
         }
     } catch { /* table may not exist */ }
@@ -93,8 +95,8 @@ export async function getRecentActivity(limit = 15): Promise<RecentActivity[]> {
     // Recent verification batches
     try {
         const batches = await query<{
-            segment_id: string; status: string; valid_count: string; invalid_count: string; started_at: string;
-        }>(`SELECT segment_id, status, valid_count, invalid_count, started_at FROM verification_batches ORDER BY started_at DESC LIMIT ${limit}`);
+            segment_id: string; status: string; valid_count: string; invalid_count: string; started_at: string; performed_by_name: string | null;
+        }>(`SELECT segment_id, status, valid_count, invalid_count, started_at, performed_by_name FROM verification_batches ORDER BY started_at DESC LIMIT ${limit}`);
         for (const b of batches) {
             activities.push({
                 type: 'verification',
@@ -102,6 +104,7 @@ export async function getRecentActivity(limit = 15): Promise<RecentActivity[]> {
                 detail: `${Number(b.valid_count).toLocaleString()} valid, ${Number(b.invalid_count).toLocaleString()} invalid`,
                 status: b.status,
                 timestamp: b.started_at,
+                performedBy: b.performed_by_name || null,
             });
         }
     } catch { /* table may not exist */ }
@@ -109,8 +112,8 @@ export async function getRecentActivity(limit = 15): Promise<RecentActivity[]> {
     // Recent target lists
     try {
         const targets = await query<{
-            name: string; status: string; email_count: string; created_at: string;
-        }>(`SELECT name, status, email_count, created_at FROM target_lists ORDER BY created_at DESC LIMIT ${limit}`);
+            name: string; status: string; email_count: string; created_at: string; performed_by_name: string | null;
+        }>(`SELECT name, status, email_count, created_at, performed_by_name FROM target_lists ORDER BY created_at DESC LIMIT ${limit}`);
         for (const t of targets) {
             activities.push({
                 type: 'target',
@@ -118,6 +121,7 @@ export async function getRecentActivity(limit = 15): Promise<RecentActivity[]> {
                 detail: `${Number(t.email_count).toLocaleString()} emails`,
                 status: t.status,
                 timestamp: t.created_at,
+                performedBy: t.performed_by_name || null,
             });
         }
     } catch { /* table may not exist */ }

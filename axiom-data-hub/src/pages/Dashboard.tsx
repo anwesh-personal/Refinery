@@ -48,6 +48,7 @@ interface RecentActivity {
   detail: string;
   status: string;
   timestamp: string;
+  performedBy: string | null;
 }
 
 function formatNumber(n: string | number): string {
@@ -350,7 +351,7 @@ export default function DashboardPage() {
                             {act.status === 'complete' || act.status === 'ready' ? <CheckCircle2 size={12} color="var(--green)" /> : null}
                           </div>
                           <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                            {act.detail} · {timeAgo(act.timestamp)}
+                            {act.detail}{act.performedBy ? ` · by ${act.performedBy}` : ''} · {timeAgo(act.timestamp)}
                           </div>
                         </div>
                       </div>

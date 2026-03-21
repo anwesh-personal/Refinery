@@ -16,6 +16,7 @@ interface QueueJob {
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
+  performed_by_name: string | null;
 }
 
 interface QueueStats {
@@ -223,7 +224,7 @@ export default function QueuePage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr>
-                  {['Target List', 'Progress', 'Sent', 'Failed', 'Status', 'Started', 'Actions'].map(h => (
+                  {['Target List', 'Progress', 'Sent', 'Failed', 'Status', 'Started', 'By', 'Actions'].map(h => (
                     <th key={h} style={{
                       padding: '12px 16px', textAlign: 'left', fontWeight: 700,
                       fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em',
@@ -289,6 +290,9 @@ export default function QueuePage() {
                       </td>
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
                         {relativeTime(job.started_at)}
+                      </td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)', fontSize: 12 }}>
+                        {job.performed_by_name || '—'}
                       </td>
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', gap: 8 }}>

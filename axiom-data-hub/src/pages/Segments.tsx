@@ -13,6 +13,7 @@ interface Segment {
   lead_count: string;
   status: string;
   created_at: string;
+  performed_by_name: string | null;
 }
 
 interface PreviewResult {
@@ -237,7 +238,7 @@ export default function SegmentsPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr>
-                  {['Name', 'Niche', 'Client', 'Leads', 'Status', 'Actions'].map(h => (
+                  {['Name', 'Niche', 'Client', 'Leads', 'Status', 'Created By', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>{h}</th>
                   ))}
                 </tr>
@@ -253,6 +254,9 @@ export default function SegmentsPage() {
                     <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>{formatNumber(seg.lead_count)}</td>
                     <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
                       <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', padding: '4px 10px', borderRadius: 6, color: statusColors[seg.status] || '#6b7280', background: (statusColors[seg.status] || '#6b7280') + '18' }}>{seg.status}</span>
+                    </td>
+                    <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)', fontSize: 12 }}>
+                      {seg.performed_by_name || '—'}
                     </td>
                     <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
                       <div style={{ display: 'flex', gap: 8 }}>
