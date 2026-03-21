@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as segService from '../services/segments.js';
+import { getRequestUser } from '../types/auth.js';
 
 const router = Router();
 
@@ -29,7 +30,8 @@ router.post('/', async (req, res) => {
   try {
     const { name, niche, clientName, filterQuery } = req.body;
     if (!name || !filterQuery) return res.status(400).json({ error: 'name and filterQuery are required' });
-    const id = await segService.createSegment({ name, niche, clientName, filterQuery });
+    const user = getRequestUser(req);
+    const id = await segService.createSegment({ name, niche, clientName, filterQuery }, user.id, user.name);
     res.json({ id });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

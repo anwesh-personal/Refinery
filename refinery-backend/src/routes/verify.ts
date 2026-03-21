@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
+import { getRequestUser } from '../types/auth.js';
 import {
   runPipeline,
   DEFAULT_CHECK_CONFIG,
@@ -175,6 +176,7 @@ router.post('/async', requireSuperadmin, async (req, res) => {
 
     const { emails, checks, smtp, severityWeights, thresholds } = parsed.data;
     const jobId = genId();
+    const user = getRequestUser(req);
 
     // Store job in ClickHouse
     await insertRows('pipeline_jobs', [{
@@ -182,6 +184,8 @@ router.post('/async', requireSuperadmin, async (req, res) => {
       total_emails: emails.length,
       status: 'processing',
       config_json: JSON.stringify({ checks, smtp, severityWeights, thresholds }),
+      performed_by: user.id,
+      performed_by_name: user.name,
     }]);
 
     // Run pipeline in background (not awaited)

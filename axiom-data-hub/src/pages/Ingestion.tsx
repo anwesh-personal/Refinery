@@ -23,6 +23,8 @@ interface IngestionJob {
   error_message: string | null;
   started_at: string;
   completed_at: string | null;
+  performed_by: string | null;
+  performed_by_name: string | null;
 }
 
 interface SourceFile {
@@ -1153,6 +1155,7 @@ export default function IngestionPage() {
                         </span>
                       </th>
                     ))}
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>By</th>
                     <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>Size</th>
                     <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>Actions</th>
                   </tr>
@@ -1172,6 +1175,9 @@ export default function IngestionPage() {
                         )}
                       </td>
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{timeAgo(job.started_at)}</td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)', fontSize: 12 }}>
+                        {job.performed_by_name || <span style={{ opacity: 0.4 }}>—</span>}
+                      </td>
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{formatBytes(Number(job.file_size_bytes))}</td>
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', gap: 4 }}>

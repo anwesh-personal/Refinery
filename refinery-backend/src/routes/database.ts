@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as dbService from '../services/database.js';
+import { getRequestUser } from '../types/auth.js';
 
 const router = Router();
 
@@ -127,6 +128,8 @@ router.post('/bulk-delete', async (req, res) => {
     const { upIds } = req.body;
     if (!Array.isArray(upIds)) return res.status(400).json({ error: 'upIds must be an array' });
     const count = await dbService.bulkDeleteRows(upIds);
+    const user = getRequestUser(req);
+    console.log(`[Database] Bulk delete: ${count} rows by ${user.name} (${user.id})`);
     res.json({ deleted: count });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -194,6 +197,8 @@ router.post('/find-replace', async (req, res) => {
       ? `replaceAll(\`${column}\`, '${escFind}', '${escReplace}')`
       : `'${escReplace}'`;
     await cmd(`ALTER TABLE ${dbService.TABLE_NAME} UPDATE \`${column}\` = ${updateExpr} WHERE ${whereClause}`);
+    const user = getRequestUser(req);
+    console.log(`[Database] Find-replace: ${count} rows in '${column}' (${matchMode}) by ${user.name} (${user.id})`);
     res.json({ updated: count, column, from: findValue, to: replaceValue, matchMode });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

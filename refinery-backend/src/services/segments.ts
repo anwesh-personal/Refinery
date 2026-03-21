@@ -72,7 +72,7 @@ async function validateFilterQuery(filterQuery: string): Promise<{ valid: boolea
 }
 
 /** Create a new segment */
-export async function createSegment(input: SegmentInput): Promise<string> {
+export async function createSegment(input: SegmentInput, performedBy?: string, performedByName?: string): Promise<string> {
   // Validate filter before persisting
   const validation = await validateFilterQuery(input.filterQuery);
   if (!validation.valid) {
@@ -88,6 +88,8 @@ export async function createSegment(input: SegmentInput): Promise<string> {
     client_name: input.clientName || null,
     filter_query: input.filterQuery,
     status: 'draft',
+    ...(performedBy ? { performed_by: performedBy } : {}),
+    ...(performedByName ? { performed_by_name: performedByName } : {}),
   }]);
 
   return id;

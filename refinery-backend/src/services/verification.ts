@@ -171,7 +171,7 @@ async function resolveBuiltinConfig(): Promise<EngineConfig> {
 
 // ─── Start a Verification Batch ───
 
-export async function startBatch(segmentId: string, engine: 'verify550' | 'builtin' = 'verify550'): Promise<string> {
+export async function startBatch(segmentId: string, engine: 'verify550' | 'builtin' = 'verify550', performedBy?: string, performedByName?: string): Promise<string> {
   // Validate config before starting
   const v550Config = engine === 'verify550' ? await resolveVerify550Config() : undefined;
   const builtinConfig = engine === 'builtin' ? await resolveBuiltinConfig() : undefined;
@@ -204,6 +204,8 @@ export async function startBatch(segmentId: string, engine: 'verify550' | 'built
     engine: engine,
     total_leads: totalLeads,
     status: 'pending',
+    ...(performedBy ? { performed_by: performedBy } : {}),
+    ...(performedByName ? { performed_by_name: performedByName } : {}),
   }]);
 
   // Track for cancellation

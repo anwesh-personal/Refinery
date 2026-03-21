@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import * as verifyService from '../services/verification.js';
 import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
+import { getRequestUser } from '../types/auth.js';
 
 const router = Router();
 
@@ -99,9 +100,10 @@ router.post('/start', requireSuperadmin, async (req, res) => {
       return res.status(400).json({ error: parsed.error.issues.map(i => i.message).join('; ') });
     }
     const { segmentId, engine } = parsed.data;
+    const user = getRequestUser(req);
 
-    const batchId = await verifyService.startBatch(segmentId, engine);
-    res.json({ batchId, message: 'Verification batch started', engine });
+    const batchId = await verifyService.startBatch(segmentId, engine, user.id, user.name);
+    res.json({ batchId, message: 'Verification batch started', engine, startedBy: user.name });
   } catch (e: any) {
     const status = e.message?.includes('not configured') ? 422 : 500;
     res.status(status).json({ error: e.message });

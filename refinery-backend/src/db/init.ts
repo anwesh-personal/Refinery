@@ -275,6 +275,24 @@ export async function initDatabase(): Promise<void> {
     await command(SCHEMAS[i]);
     console.log(`[DB] ✓ Schema ${i + 1}/${SCHEMAS.length} applied`);
   }
+
+  // ── User Attribution Columns ──
+  // Add performed_by (user UUID) and performed_by_name (display name) to all operation tables.
+  // Uses ADD COLUMN IF NOT EXISTS so this is idempotent and safe to re-run.
+  const ATTRIBUTION_TABLES = [
+    'ingestion_jobs',
+    'segments',
+    'verification_batches',
+    'pipeline_jobs',
+    'target_lists',
+    'queue_jobs',
+  ];
+  for (const table of ATTRIBUTION_TABLES) {
+    await command(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS performed_by Nullable(String)`);
+    await command(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS performed_by_name Nullable(String)`);
+  }
+  console.log(`[DB] ✓ User attribution columns ensured on ${ATTRIBUTION_TABLES.length} tables`);
+
   console.log('[DB] ✓ All tables initialized');
 }
 

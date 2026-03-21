@@ -292,7 +292,7 @@ export async function getIngestionStats() {
  * 2. Upload to Linode Object Storage
  * 3. Parse file (CSV / GZ / Parquet) and insert into ClickHouse
  */
-export async function startIngestionJob(sourceKey: string, sourceId?: string): Promise<string> {
+export async function startIngestionJob(sourceKey: string, sourceId?: string, performedBy?: string, performedByName?: string): Promise<string> {
   const jobId = genId();
   const fileName = sourceKey.split('/').pop() || sourceKey;
   const format = detectFormat(fileName);
@@ -322,6 +322,8 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string): P
     source_key: sourceKey,
     file_name: fileName,
     status: 'downloading',
+    ...(performedBy ? { performed_by: performedBy } : {}),
+    ...(performedByName ? { performed_by_name: performedByName } : {}),
   }]);
 
   // Run the actual pipeline in the background with concurrency control
@@ -350,7 +352,7 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string): P
  * then fire background workers. No file count limit.
  * This avoids the socket hang up caused by 500+ sequential insertRows calls.
  */
-export async function startBulkIngestion(sourceKeys: string[], sourceId?: string): Promise<string[]> {
+export async function startBulkIngestion(sourceKeys: string[], sourceId?: string, performedBy?: string, performedByName?: string): Promise<string[]> {
   // Resolve S3 source once (not per file)
   let sourceBucket: string;
   let sourceClient: S3Client;
@@ -382,6 +384,8 @@ export async function startBulkIngestion(sourceKeys: string[], sourceId?: string
       source_key: key,
       file_name: fileName,
       status: 'pending',
+      ...(performedBy ? { performed_by: performedBy } : {}),
+      ...(performedByName ? { performed_by_name: performedByName } : {}),
     });
   }
 
@@ -604,7 +608,7 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
  * and mark the job as 'rolled_back'.
  * Returns the number of rows deleted.
  */
-export async function rollbackJob(jobId: string): Promise<{ rowsDeleted: number; fileName: string }> {
+export async function rollbackJob(jobId: string, performedBy?: string, performedByName?: string): Promise<{ rowsDeleted: number; fileName: string }> {
   const id = esc(jobId);
 
   // Get job info
@@ -626,10 +630,11 @@ export async function rollbackJob(jobId: string): Promise<{ rowsDeleted: number;
   }
 
   // Mark job as rolled back
+  const byClause = performedByName ? ` by ${performedByName}` : '';
   await command(`
     ALTER TABLE ingestion_jobs UPDATE
       status = 'rolled_back',
-      error_message = 'Rolled back — ${rowsToDelete} rows deleted'
+      error_message = 'Rolled back${byClause} — ${rowsToDelete} rows deleted'
     WHERE id = '${id}'
   `);
 
@@ -641,7 +646,7 @@ export async function rollbackJob(jobId: string): Promise<{ rowsDeleted: number;
  * Archive a job — schedule its leads for deletion after `days` days.
  * The leads remain queryable until the TTL expires, then cleanupArchivedJobs() purges them.
  */
-export async function archiveJob(jobId: string, days: number = 7): Promise<{ deleteAfter: string; fileName: string }> {
+export async function archiveJob(jobId: string, days: number = 7, performedBy?: string, performedByName?: string): Promise<{ deleteAfter: string; fileName: string }> {
   const id = esc(jobId);
 
   const [job] = await query<{ file_name: string; status: string }>(
