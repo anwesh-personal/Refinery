@@ -341,12 +341,12 @@ export default function DatabasePage() {
   };
 
   // --- UI Helpers ---
-  const downloadCSV = () => {
-    if (!result?.rows.length) return;
-    const cols = Object.keys(result.rows[0]);
+  const downloadCSV = (rows: Record<string, unknown>[], fileNameSuffix: string = 'page') => {
+    if (!rows.length) return;
+    const cols = Object.keys(rows[0]);
     const csv = [
       cols.join(','),
-      ...result.rows.map(r => cols.map(c => {
+      ...rows.map(r => cols.map(c => {
         const val = String(r[c] ?? '');
         return val.includes(',') || val.includes('"') || val.includes('\n')
           ? `"${val.replace(/"/g, '""')}"` : val;
@@ -356,7 +356,7 @@ export default function DatabasePage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `export_${Date.now()}.csv`;
+    a.download = `export_${fileNameSuffix}_${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -842,7 +842,13 @@ export default function DatabasePage() {
           })()}
           {result?.rows.length ? (
             <>
-              <Button variant="ghost" icon={<Download size={14} />} onClick={downloadCSV}>Export Page</Button>
+              <Button variant="ghost" icon={<Download size={14} />} onClick={() => downloadCSV(sortedRows, `page${page}`)}>Export View ({sortedRows.length})</Button>
+              {selectedIds.size > 0 && (
+                <Button variant="ghost" icon={<Download size={14} />} onClick={() => {
+                  const selectedRows = sortedRows.filter(r => selectedIds.has(String(r.up_id || r.id)));
+                  downloadCSV(selectedRows, 'selected');
+                }}>Export Selected ({selectedIds.size})</Button>
+              )}
               <Button variant="secondary" icon={<Download size={14} />} onClick={async () => {
                 try {
                   const activeFilters = Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== ''));
@@ -857,13 +863,14 @@ export default function DatabasePage() {
                       advancedFilters: afPayload.length > 0 ? afPayload : undefined,
                       sortBy: sortCol, sortDir,
                       columns: activeCols.length > 0 ? activeCols : undefined,
+                      completenessFilter: completenessFilter !== 'all' ? completenessFilter : undefined,
                     }),
                   });
                   const blob = await resp.blob();
                   const url = URL.createObjectURL(blob);
                   const link = document.createElement('a');
                   link.href = url;
-                  link.download = `refinery-export-${Date.now()}.csv`;
+                  link.download = `refinery-export-all-${Date.now()}.csv`;
                   document.body.appendChild(link);
                   link.click();
                   document.body.removeChild(link);
@@ -871,7 +878,7 @@ export default function DatabasePage() {
                 } catch (e: any) {
                   setError(`Export failed: ${e.message}`);
                 }
-              }}>Export All ({formatNumber(result.total || 0)})</Button>
+              }}>Export All{completenessFilter !== 'all' ? ` (${completenessFilter})` : ''} ({formatNumber(result.total || 0)})</Button>
               {selectedIds.size > 0 && (
                 <Button variant="primary" icon={<Trash2 size={14} />} onClick={handleBulkDelete} disabled={bulkDeleting} style={{ background: 'var(--red)', borderColor: 'var(--red)' }}>
                   {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedIds.size})`}
@@ -915,10 +922,21 @@ export default function DatabasePage() {
                   {activeTab === 'browse' && (
                     <th style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', width: 40 }}>
                       <div style={{ cursor: 'pointer', color: 'var(--text-tertiary)' }} onClick={() => {
-                        if (selectedIds.size === sortedRows.length) setSelectedIds(new Set());
-                        else setSelectedIds(new Set(sortedRows.map(r => String(r.up_id || r.id)).filter(Boolean)));
+                        if (selectedIds.size > 0) {
+                          setSelectedIds(new Set());
+                        } else {
+                          setSelectedIds(new Set(sortedRows.map(r => String(r.up_id || r.id)).filter(Boolean)));
+                        }
                       }}>
-                        {selectedIds.size === sortedRows.length && sortedRows.length > 0 ? <CheckSquare size={16} color="var(--accent)" /> : <Square size={16} />}
+                        {selectedIds.size > 0 && selectedIds.size === sortedRows.length ? (
+                          <CheckSquare size={16} color="var(--accent)" />
+                        ) : selectedIds.size > 0 ? (
+                          <div style={{ width: 16, height: 16, borderRadius: 3, border: '2px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ width: 8, height: 2, background: 'var(--accent)', borderRadius: 1 }} />
+                          </div>
+                        ) : (
+                          <Square size={16} />
+                        )}
                       </div>
                     </th>
                   )}

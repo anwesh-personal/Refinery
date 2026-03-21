@@ -114,6 +114,7 @@ export interface BrowseParams {
   sortBy?: string;
   sortDir?: 'asc' | 'desc';
   columns?: string[];
+  completenessFilter?: 'all' | 'high' | 'medium' | 'low';
 }
 
 /** Browse data with filters, search, pagination — no SQL required */
@@ -125,6 +126,7 @@ export async function browseData(params: BrowseParams) {
     pageSize = 50,
     sortBy,
     sortDir = 'asc',
+    completenessFilter,
   } = params;
 
   const allColumns = await getTableColumns();
@@ -183,6 +185,20 @@ export async function browseData(params: BrowseParams) {
       case 'ends_with': conditions.push(`lower(coalesce(toString(${col}), '')) LIKE lower('%${escaped}')`); break;
       case 'is_null': conditions.push(`(${col} IS NULL OR toString(${col}) = '')`); break;
       case 'is_not_null': conditions.push(`(${col} IS NOT NULL AND toString(${col}) != '')`); break;
+    }
+  }
+
+  // Completeness filter — compute ratio of non-null, non-empty columns server-side
+  if (completenessFilter && completenessFilter !== 'all') {
+    // Build a ClickHouse expression that counts filled columns across all selectCols
+    const filledExpr = selectCols.map(c => `if(\`${c}\` IS NOT NULL AND toString(\`${c}\`) != '', 1, 0)`).join(' + ');
+    const totalCols = selectCols.length;
+    if (completenessFilter === 'high') {
+      conditions.push(`(${filledExpr}) / ${totalCols} > 0.8`);
+    } else if (completenessFilter === 'medium') {
+      conditions.push(`(${filledExpr}) / ${totalCols} > 0.4 AND (${filledExpr}) / ${totalCols} <= 0.8`);
+    } else if (completenessFilter === 'low') {
+      conditions.push(`(${filledExpr}) / ${totalCols} <= 0.4`);
     }
   }
 
