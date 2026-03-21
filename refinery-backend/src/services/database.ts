@@ -79,6 +79,11 @@ let columnsCacheTimestamp = 0;
 const COLUMNS_CACHE_TTL = 60_000;
 
 /** Fetch all column names for universal_person from ClickHouse */
+// Completeness threshold constants — single source of truth
+export const COMPLETENESS_HIGH = 0.8;
+export const COMPLETENESS_LOW = 0.4;
+export const TABLE_NAME = 'universal_person';
+
 export async function getTableColumns(): Promise<string[]> {
   const now = Date.now();
   if (columnsCache.length > 0 && now - columnsCacheTimestamp < COLUMNS_CACHE_TTL) {
@@ -190,7 +195,7 @@ export async function browseData(params: BrowseParams) {
       case 'between': {
         const parts = escaped.split(',').map(s => s.trim().replace(/'/g, "\\'"));
         if (parts.length === 2) {
-          conditions.push(`${col} >= '${parts[0]}' AND ${col} <= '${parts[1]}'}`);
+          conditions.push(`${col} >= '${parts[0]}' AND ${col} <= '${parts[1]}'`);
         }
         break;
       }
@@ -203,11 +208,11 @@ export async function browseData(params: BrowseParams) {
     const filledExpr = selectCols.map(c => `if(\`${c}\` IS NOT NULL AND toString(\`${c}\`) != '', 1, 0)`).join(' + ');
     const totalCols = selectCols.length;
     if (completenessFilter === 'high') {
-      conditions.push(`(${filledExpr}) / ${totalCols} > 0.8`);
+      conditions.push(`(${filledExpr}) / ${totalCols} > ${COMPLETENESS_HIGH}`);
     } else if (completenessFilter === 'medium') {
-      conditions.push(`(${filledExpr}) / ${totalCols} > 0.4 AND (${filledExpr}) / ${totalCols} <= 0.8`);
+      conditions.push(`(${filledExpr}) / ${totalCols} > ${COMPLETENESS_LOW} AND (${filledExpr}) / ${totalCols} <= ${COMPLETENESS_HIGH}`);
     } else if (completenessFilter === 'low') {
-      conditions.push(`(${filledExpr}) / ${totalCols} <= 0.4`);
+      conditions.push(`(${filledExpr}) / ${totalCols} <= ${COMPLETENESS_LOW}`);
     }
   }
 

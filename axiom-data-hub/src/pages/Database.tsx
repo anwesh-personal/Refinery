@@ -34,12 +34,25 @@ const FILTER_OPERATORS = [
   { value: 'between', label: 'Between' },
 ];
 
+// Completeness threshold constants — match backend values
+const COMPLETENESS_HIGH = 0.8;
+const COMPLETENESS_LOW = 0.4;
+
+// Quick toggle definitions — column name is validated at runtime against schema
+const QUICK_TOGGLE_CONFIG = [
+  { key: 'hasEmail', label: 'Has Email', column: 'business_email', icon: 'mail' },
+  { key: 'hasPhone', label: 'Has Phone', column: 'mobile_phone', icon: 'phone' },
+  { key: 'hasLinkedin', label: 'Has LinkedIn', column: 'linkedin_url', icon: 'linkedin' },
+] as const;
+
 interface FilterPreset {
   name: string;
   filters: Record<string, string>;
   advancedFilters: AdvancedFilterUI[];
   completenessFilter: 'all' | 'high' | 'medium' | 'low';
   search: string;
+  quickToggles: Record<string, boolean>;
+  dataSourceFilter: string;
   savedAt: number;
 }
 
@@ -147,13 +160,16 @@ export default function DatabasePage() {
     try { return JSON.parse(localStorage.getItem('refinery_filter_presets') || '[]'); } catch { return []; }
   });
   const [showPresets, setShowPresets] = useState(false);
+  const presetsRef = useRef<HTMLDivElement>(null);
+  const presetsBtnRef = useRef<HTMLButtonElement>(null);
 
-  // Find & Replace
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [frColumn, setFrColumn] = useState('');
   const [frFind, setFrFind] = useState('');
   const [frReplace, setFrReplace] = useState('');
   const [frProcessing, setFrProcessing] = useState(false);
+  const [frMatchMode, setFrMatchMode] = useState<'exact' | 'contains'>('exact');
+  const [frPreviewCount, setFrPreviewCount] = useState<number | null>(null);
 
   // Duplicate detection 
   const [showDuplicates, setShowDuplicates] = useState(false);
@@ -230,6 +246,11 @@ export default function DatabasePage() {
       if (colPickerRef.current && !colPickerRef.current.contains(event.target as Node) &&
         colPickerBtnRef.current && !colPickerBtnRef.current.contains(event.target as Node)) {
         setShowColPicker(false);
+      }
+      // Click outside presets dropdown
+      if (presetsRef.current && !presetsRef.current.contains(event.target as Node) &&
+        presetsBtnRef.current && !presetsBtnRef.current.contains(event.target as Node)) {
+        setShowPresets(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -406,22 +427,15 @@ export default function DatabasePage() {
   const resultCols = result?.rows.length ? Object.keys(result.rows[0]) : [];
 
   // For SQL mode, we sort locally. For Browse mode, backend sorts, but we can do local sort for currently displayed page too
-  const sortedRows = (result?.rows ? [...result.rows].sort((a, b) => {
+  // NOTE: Completeness is now filtered server-side only — no double filtering
+  const sortedRows = result?.rows ? [...result.rows].sort((a, b) => {
     if (!sortCol) return 0;
     const aVal = String(a[sortCol] ?? '');
     const bVal = String(b[sortCol] ?? '');
     const numA = Number(aVal), numB = Number(bVal);
     if (!isNaN(numA) && !isNaN(numB)) return sortDir === 'asc' ? numA - numB : numB - numA;
     return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-  }) : []).filter(row => {
-    if (completenessFilter === 'all') return true;
-    const totalCols = resultCols.length || 1;
-    const filled = Object.values(row).filter(v => v !== null && v !== '').length;
-    const score = filled / totalCols;
-    if (completenessFilter === 'high') return score > 0.8;
-    if (completenessFilter === 'medium') return score > 0.4 && score <= 0.8;
-    return score <= 0.4; // low
-  });
+  }) : [];
 
   const toggleSort = (col: string) => {
     if (sortCol === col) {
@@ -668,8 +682,8 @@ export default function DatabasePage() {
                       </select>
                       {!['is_null', 'is_not_null'].includes(af.operator) && (
                         <input
-                          type="text"
-                          placeholder="Value..."
+                          type={af.operator === 'between' ? 'text' : (['_ingested_at', '_verified_at', 'birth_date', 'job_title_last_updated'].includes(af.column) && ['greater_than', 'less_than'].includes(af.operator)) ? 'date' : 'text'}
+                          placeholder={af.operator === 'between' ? 'min, max (e.g. 100,500)' : 'Value...'}
                           value={af.value}
                           onChange={e => {
                             const updated = [...advancedFilters];
@@ -728,11 +742,7 @@ export default function DatabasePage() {
 
           {/* ═══ ACTION TOOLBAR ═══ */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-            {[
-              { key: 'hasEmail', label: 'Has Email', icon: <Mail size={12} /> },
-              { key: 'hasPhone', label: 'Has Phone', icon: <Phone size={12} /> },
-              { key: 'hasLinkedin', label: 'Has LinkedIn', icon: <Linkedin size={12} /> },
-            ].map(t => (
+            {QUICK_TOGGLE_CONFIG.filter(t => allColumns.includes(t.column)).map(t => (
               <button key={t.key} onClick={() => { setQuickToggles(prev => ({ ...prev, [t.key]: !prev[t.key] })); setPage(1); }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8,
@@ -741,21 +751,21 @@ export default function DatabasePage() {
                   color: quickToggles[t.key] ? '#fff' : 'var(--text-secondary)',
                   border: `1px solid ${quickToggles[t.key] ? 'var(--accent)' : 'var(--border)'}`,
                 }}>
-                {t.icon} {t.label}
+                {t.icon === 'mail' ? <Mail size={12} /> : t.icon === 'phone' ? <Phone size={12} /> : <Linkedin size={12} />} {t.label}
               </button>
             ))}
             <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
             <div style={{ position: 'relative' }}>
-              <button onClick={() => setShowPresets(!showPresets)}
+              <button ref={presetsBtnRef} onClick={() => setShowPresets(!showPresets)}
                 style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
                 <Bookmark size={12} /> Presets {filterPresets.length > 0 && `(${filterPresets.length})`}
               </button>
               {showPresets && (
-                <div style={{ position: 'absolute', top: 36, left: 0, width: 280, zIndex: 100, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: 'var(--shadow-lg)', padding: 8 }}>
+                <div ref={presetsRef} style={{ position: 'absolute', top: 36, left: 0, width: 280, zIndex: 100, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: 'var(--shadow-lg)', padding: 8 }}>
                   <button onClick={() => {
                     const name = prompt('Name this filter preset:');
                     if (!name) return;
-                    const preset: FilterPreset = { name, filters: { ...filters }, advancedFilters: [...advancedFilters], completenessFilter, search, savedAt: Date.now() };
+                    const preset: FilterPreset = { name, filters: { ...filters }, advancedFilters: [...advancedFilters], completenessFilter, search, quickToggles: { ...quickToggles }, dataSourceFilter, savedAt: Date.now() };
                     const updated = [...filterPresets, preset];
                     setFilterPresets(updated);
                     localStorage.setItem('refinery_filter_presets', JSON.stringify(updated));
@@ -768,7 +778,10 @@ export default function DatabasePage() {
                     <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: 'var(--text-primary)' }}
                       onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                       onMouseOut={e => (e.currentTarget.style.background = 'transparent')}>
-                      <span onClick={() => { setFilters(p.filters); setAdvancedFilters(p.advancedFilters); setCompletenessFilter(p.completenessFilter); setSearch(p.search); setPage(1); setShowPresets(false); toastSuccess(`Loaded "${p.name}"`); }} style={{ flex: 1, fontWeight: 600 }}>{p.name}</span>
+                      <span onClick={() => { setFilters(p.filters); setAdvancedFilters(p.advancedFilters); setCompletenessFilter(p.completenessFilter); setSearch(p.search); setQuickToggles(p.quickToggles || {}); setDataSourceFilter(p.dataSourceFilter || ''); setPage(1); setShowPresets(false); toastSuccess(`Loaded "${p.name}"`); }} style={{ flex: 1, fontWeight: 600 }}>
+                        {p.name}
+                        <span style={{ fontSize: 9, color: 'var(--text-tertiary)', marginLeft: 6 }}>{new Date(p.savedAt).toLocaleDateString()}</span>
+                      </span>
                       <X size={12} style={{ color: 'var(--text-tertiary)', cursor: 'pointer' }} onClick={() => { const u = filterPresets.filter((_, i) => i !== idx); setFilterPresets(u); localStorage.setItem('refinery_filter_presets', JSON.stringify(u)); }} />
                     </div>
                   ))}
@@ -779,18 +792,30 @@ export default function DatabasePage() {
             <button onClick={async () => {
               const af = Object.entries(filters).filter(([_, v]) => v !== '');
               const afAdv = advancedFilters.filter(f => f.column && f.operator);
-              if (af.length === 0 && afAdv.length === 0 && !search) { alert('Apply some filters first'); return; }
+              if (af.length === 0 && afAdv.length === 0 && !search) { toastError('Apply some filters first to create a segment'); return; }
               const name = prompt('Segment name:');
               if (!name) return;
               const parts: string[] = [];
               for (const [col, val] of af) parts.push(`\`${col}\` = '${val}'`);
               for (const f of afAdv) {
-                if (f.operator === 'equals') parts.push(`\`${f.column}\` = '${f.value}'`);
-                else if (f.operator === 'contains') parts.push(`\`${f.column}\` LIKE '%${f.value}%'`);
-                else if (f.operator === 'not_equals') parts.push(`\`${f.column}\` != '${f.value}'`);
-                else if (f.operator === 'is_not_null') parts.push(`\`${f.column}\` IS NOT NULL AND toString(\`${f.column}\`) != ''`);
-                else if (f.operator === 'is_null') parts.push(`(\`${f.column}\` IS NULL OR toString(\`${f.column}\`) = '')`);
-                else parts.push(`\`${f.column}\` = '${f.value}'`);
+                const c = `\`${f.column}\``;
+                switch (f.operator) {
+                  case 'equals': parts.push(`${c} = '${f.value}'`); break;
+                  case 'not_equals': parts.push(`${c} != '${f.value}'`); break;
+                  case 'contains': parts.push(`${c} LIKE '%${f.value}%'`); break;
+                  case 'not_contains': parts.push(`${c} NOT LIKE '%${f.value}%'`); break;
+                  case 'starts_with': parts.push(`${c} LIKE '${f.value}%'`); break;
+                  case 'ends_with': parts.push(`${c} LIKE '%${f.value}'`); break;
+                  case 'is_not_null': parts.push(`${c} IS NOT NULL AND toString(${c}) != ''`); break;
+                  case 'is_null': parts.push(`(${c} IS NULL OR toString(${c}) = '')`); break;
+                  case 'greater_than': parts.push(`${c} > '${f.value}'`); break;
+                  case 'less_than': parts.push(`${c} < '${f.value}'`); break;
+                  case 'between': {
+                    const [a, b] = (f.value || '').split(',').map(s => s.trim());
+                    if (a && b) parts.push(`${c} >= '${a}' AND ${c} <= '${b}'`);
+                    break;
+                  }
+                }
               }
               try {
                 await apiCall('/api/segments', { method: 'POST', body: { name, filterQuery: parts.join(' AND ') } });
@@ -1118,10 +1143,10 @@ export default function DatabasePage() {
                   const rowId = String(row.up_id || row.id);
                   const isSelected = selectedIds.has(rowId);
 
-                  // Simple completeness score based on string length of all values
+                  // Completeness score using named constants
                   const values = Object.values(row).filter(v => v !== null && v !== '');
                   const score = values.length / resultCols.length;
-                  const completenessColor = score > 0.8 ? '#22c55e' : score > 0.4 ? '#eab308' : '#ef4444';
+                  const completenessColor = score > COMPLETENESS_HIGH ? '#22c55e' : score > COMPLETENESS_LOW ? '#eab308' : '#ef4444';
 
                   return (
                     <tr key={i} style={{ transition: 'background 0.1s', cursor: 'pointer', background: isSelected ? 'var(--bg-hover)' : 'transparent' }}
@@ -1289,31 +1314,56 @@ export default function DatabasePage() {
           <div className="animate-scaleIn" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 210, width: 440, background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', boxShadow: 'var(--shadow-xl)', overflow: 'hidden' }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><Replace size={16} color="var(--accent)" /> Find &amp; Replace</h4>
-              <X size={16} style={{ cursor: 'pointer', color: 'var(--text-tertiary)' }} onClick={() => setShowFindReplace(false)} />
+              <X size={16} style={{ cursor: 'pointer', color: 'var(--text-tertiary)' }} onClick={() => { setShowFindReplace(false); setFrPreviewCount(null); }} />
             </div>
             <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <select value={frColumn} onChange={e => setFrColumn(e.target.value)}
+              <select value={frColumn} onChange={e => { setFrColumn(e.target.value); setFrPreviewCount(null); }}
                 style={{ padding: '10px 12px', borderRadius: 10, fontSize: 13, background: 'var(--bg-input)', border: '1px solid var(--border)', color: frColumn ? 'var(--text-primary)' : 'var(--text-tertiary)', cursor: 'pointer' }}>
                 <option value="">Select Column...</option>
                 {allColumns.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
               </select>
-              <input type="text" placeholder="Find value..." value={frFind} onChange={e => setFrFind(e.target.value)}
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['exact', 'contains'] as const).map(m => (
+                  <button key={m} onClick={() => { setFrMatchMode(m); setFrPreviewCount(null); }}
+                    style={{ flex: 1, padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: frMatchMode === m ? 'var(--accent)' : 'var(--bg-hover)', color: frMatchMode === m ? '#fff' : 'var(--text-secondary)', border: `1px solid ${frMatchMode === m ? 'var(--accent)' : 'var(--border)'}` }}>
+                    {m === 'exact' ? 'Exact Match' : 'Contains'}
+                  </button>
+                ))}
+              </div>
+              <input type="text" placeholder={frMatchMode === 'exact' ? 'Find exact value...' : 'Find text containing...'} value={frFind} onChange={e => { setFrFind(e.target.value); setFrPreviewCount(null); }}
                 style={{ padding: '10px 12px', borderRadius: 10, fontSize: 13, background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)', outline: 'none' }} />
               <input type="text" placeholder="Replace with..." value={frReplace} onChange={e => setFrReplace(e.target.value)}
                 style={{ padding: '10px 12px', borderRadius: 10, fontSize: 13, background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)', outline: 'none' }} />
-              <button disabled={!frColumn || !frFind || frProcessing} onClick={async () => {
-                if (!confirm(`Replace all "${frFind}" with "${frReplace}" in column "${frColumn}"?`)) return;
-                setFrProcessing(true);
-                try {
-                  const res = await apiCall<{ updated: number }>('/api/database/find-replace', { method: 'POST', body: { column: frColumn, findValue: frFind, replaceValue: frReplace } });
-                  toastSuccess(`Updated ${res.updated.toLocaleString()} rows`);
-                  setShowFindReplace(false); setFrFind(''); setFrReplace(''); runBrowse();
-                } catch (e: any) { toastError(e.message); }
-                setFrProcessing(false);
-              }}
-                style={{ padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: (!frColumn || !frFind || frProcessing) ? 'var(--bg-hover)' : 'var(--accent)', color: (!frColumn || !frFind || frProcessing) ? 'var(--text-tertiary)' : '#fff', border: 'none', transition: 'all 0.15s' }}>
-                {frProcessing ? 'Processing...' : 'Replace All'}
-              </button>
+              {frPreviewCount !== null && (
+                <div style={{ padding: '8px 12px', borderRadius: 8, background: frPreviewCount > 0 ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)', fontSize: 12, fontWeight: 600, color: frPreviewCount > 0 ? '#eab308' : '#22c55e' }}>
+                  {frPreviewCount > 0 ? `⚠️ ${frPreviewCount.toLocaleString()} rows will be affected` : '✅ No matching rows found'}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button disabled={!frColumn || !frFind} onClick={async () => {
+                  try {
+                    const res = await apiCall<{ updated: number }>('/api/database/find-replace-preview', { method: 'POST', body: { column: frColumn, findValue: frFind, matchMode: frMatchMode } });
+                    setFrPreviewCount(res.updated);
+                  } catch { setFrPreviewCount(0); }
+                }}
+                  style={{ flex: 1, padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-hover)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>
+                  Preview Count
+                </button>
+                <button disabled={!frColumn || !frFind || frProcessing} onClick={async () => {
+                  const count = frPreviewCount ?? '(unknown)';
+                  if (!confirm(`Replace ${count} occurrences of "${frFind}" with "${frReplace}" in ${frColumn}?`)) return;
+                  setFrProcessing(true);
+                  try {
+                    const res = await apiCall<{ updated: number }>('/api/database/find-replace', { method: 'POST', body: { column: frColumn, findValue: frFind, replaceValue: frReplace, matchMode: frMatchMode } });
+                    toastSuccess(`Updated ${res.updated.toLocaleString()} rows`);
+                    setShowFindReplace(false); setFrFind(''); setFrReplace(''); setFrPreviewCount(null); runBrowse();
+                  } catch (e: any) { toastError(e.message); }
+                  setFrProcessing(false);
+                }}
+                  style={{ flex: 1, padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: (!frColumn || !frFind || frProcessing) ? 'var(--bg-hover)' : 'var(--red)', color: (!frColumn || !frFind || frProcessing) ? 'var(--text-tertiary)' : '#fff', border: 'none', transition: 'all 0.15s' }}>
+                  {frProcessing ? 'Processing...' : 'Replace All'}
+                </button>
+              </div>
             </div>
           </div>
         </>

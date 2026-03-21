@@ -143,10 +143,33 @@ router.get('/table-columns/:table', async (req, res) => {
   }
 });
 
+// POST /api/database/find-replace-preview — count affected rows without executing
+router.post('/find-replace-preview', async (req, res) => {
+  try {
+    const { column, findValue, matchMode = 'exact' } = req.body;
+    if (!column || findValue === undefined) {
+      return res.status(400).json({ error: 'column and findValue are required' });
+    }
+    const { query: q } = await import('../db/clickhouse.js');
+    const allColumns = await dbService.getTableColumns();
+    if (!allColumns.includes(column)) return res.status(400).json({ error: `Invalid column: ${column}` });
+
+    const escFind = findValue.replace(/'/g, "\\'");
+    const whereClause = matchMode === 'contains'
+      ? `lower(toString(\`${column}\`)) LIKE lower('%${escFind}%')`
+      : `\`${column}\` = '${escFind}'`;
+
+    const [{ cnt }] = await q<{ cnt: string }>(`SELECT count() as cnt FROM ${dbService.TABLE_NAME} WHERE ${whereClause}`);
+    res.json({ updated: Number(cnt) });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/database/find-replace — bulk update values in a column
 router.post('/find-replace', async (req, res) => {
   try {
-    const { column, findValue, replaceValue } = req.body;
+    const { column, findValue, replaceValue, matchMode = 'exact' } = req.body;
     if (!column || findValue === undefined || replaceValue === undefined) {
       return res.status(400).json({ error: 'column, findValue, and replaceValue are required' });
     }
@@ -157,13 +180,21 @@ router.post('/find-replace', async (req, res) => {
     const escFind = findValue.replace(/'/g, "\\'");
     const escReplace = replaceValue.replace(/'/g, "\\'");
 
+    const whereClause = matchMode === 'contains'
+      ? `lower(toString(\`${column}\`)) LIKE lower('%${escFind}%')`
+      : `\`${column}\` = '${escFind}'`;
+
     // Count affected rows
-    const [{ cnt }] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE \`${column}\` = '${escFind}'`);
+    const [{ cnt }] = await q<{ cnt: string }>(`SELECT count() as cnt FROM ${dbService.TABLE_NAME} WHERE ${whereClause}`);
     const count = Number(cnt);
     if (count === 0) return res.json({ updated: 0 });
 
-    await cmd(`ALTER TABLE universal_person UPDATE \`${column}\` = '${escReplace}' WHERE \`${column}\` = '${escFind}'`);
-    res.json({ updated: count, column, from: findValue, to: replaceValue });
+    // Execute update
+    const updateExpr = matchMode === 'contains'
+      ? `replaceAll(\`${column}\`, '${escFind}', '${escReplace}')`
+      : `'${escReplace}'`;
+    await cmd(`ALTER TABLE ${dbService.TABLE_NAME} UPDATE \`${column}\` = ${updateExpr} WHERE ${whereClause}`);
+    res.json({ updated: count, column, from: findValue, to: replaceValue, matchMode });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -180,7 +211,7 @@ router.post('/duplicates', async (req, res) => {
 
     const rows = await q<{ value: string; cnt: string }>(
       `SELECT toString(\`${column}\`) as value, count() as cnt 
-       FROM universal_person 
+       FROM ${dbService.TABLE_NAME} 
        WHERE \`${column}\` IS NOT NULL AND toString(\`${column}\`) != ''
        GROUP BY value HAVING cnt > 1 
        ORDER BY cnt DESC LIMIT ${Math.min(Number(limit), 200)}`
