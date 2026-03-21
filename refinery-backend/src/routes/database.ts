@@ -143,4 +143,52 @@ router.get('/table-columns/:table', async (req, res) => {
   }
 });
 
+// POST /api/database/find-replace — bulk update values in a column
+router.post('/find-replace', async (req, res) => {
+  try {
+    const { column, findValue, replaceValue } = req.body;
+    if (!column || findValue === undefined || replaceValue === undefined) {
+      return res.status(400).json({ error: 'column, findValue, and replaceValue are required' });
+    }
+    const { query: q, command: cmd } = await import('../db/clickhouse.js');
+    const allColumns = await dbService.getTableColumns();
+    if (!allColumns.includes(column)) return res.status(400).json({ error: `Invalid column: ${column}` });
+
+    const escFind = findValue.replace(/'/g, "\\'");
+    const escReplace = replaceValue.replace(/'/g, "\\'");
+
+    // Count affected rows
+    const [{ cnt }] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE \`${column}\` = '${escFind}'`);
+    const count = Number(cnt);
+    if (count === 0) return res.json({ updated: 0 });
+
+    await cmd(`ALTER TABLE universal_person UPDATE \`${column}\` = '${escReplace}' WHERE \`${column}\` = '${escFind}'`);
+    res.json({ updated: count, column, from: findValue, to: replaceValue });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/database/duplicates — find duplicate values in a column
+router.post('/duplicates', async (req, res) => {
+  try {
+    const { column, limit = 50 } = req.body;
+    if (!column) return res.status(400).json({ error: 'column is required' });
+    const { query: q } = await import('../db/clickhouse.js');
+    const allColumns = await dbService.getTableColumns();
+    if (!allColumns.includes(column)) return res.status(400).json({ error: `Invalid column: ${column}` });
+
+    const rows = await q<{ value: string; cnt: string }>(
+      `SELECT toString(\`${column}\`) as value, count() as cnt 
+       FROM universal_person 
+       WHERE \`${column}\` IS NOT NULL AND toString(\`${column}\`) != ''
+       GROUP BY value HAVING cnt > 1 
+       ORDER BY cnt DESC LIMIT ${Math.min(Number(limit), 200)}`
+    );
+    res.json(rows);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;

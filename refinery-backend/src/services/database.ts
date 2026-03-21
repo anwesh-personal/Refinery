@@ -79,7 +79,7 @@ let columnsCacheTimestamp = 0;
 const COLUMNS_CACHE_TTL = 60_000;
 
 /** Fetch all column names for universal_person from ClickHouse */
-async function getTableColumns(): Promise<string[]> {
+export async function getTableColumns(): Promise<string[]> {
   const now = Date.now();
   if (columnsCache.length > 0 && now - columnsCacheTimestamp < COLUMNS_CACHE_TTL) {
     return columnsCache;
@@ -101,7 +101,7 @@ export async function getAvailableColumns(): Promise<string[]> {
 
 export interface AdvancedFilter {
   column: string;
-  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'starts_with' | 'ends_with' | 'is_null' | 'is_not_null';
+  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'starts_with' | 'ends_with' | 'is_null' | 'is_not_null' | 'greater_than' | 'less_than' | 'between';
   value?: string;
 }
 
@@ -185,6 +185,15 @@ export async function browseData(params: BrowseParams) {
       case 'ends_with': conditions.push(`lower(coalesce(toString(${col}), '')) LIKE lower('%${escaped}')`); break;
       case 'is_null': conditions.push(`(${col} IS NULL OR toString(${col}) = '')`); break;
       case 'is_not_null': conditions.push(`(${col} IS NOT NULL AND toString(${col}) != '')`); break;
+      case 'greater_than': conditions.push(`${col} > '${escaped}'`); break;
+      case 'less_than': conditions.push(`${col} < '${escaped}'`); break;
+      case 'between': {
+        const parts = escaped.split(',').map(s => s.trim().replace(/'/g, "\\'"));
+        if (parts.length === 2) {
+          conditions.push(`${col} >= '${parts[0]}' AND ${col} <= '${parts[1]}'}`);
+        }
+        break;
+      }
     }
   }
 

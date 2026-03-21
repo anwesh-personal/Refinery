@@ -2,7 +2,8 @@ import {
   Database, Table2, Rows3, HardDrive, Play, Copy, Download, RefreshCw,
   Loader2, AlertCircle, CheckCircle2, ChevronDown, ChevronUp,
   Search, Columns, ChevronLeft, ChevronRight, Layers, X, Filter, Plus, Trash2,
-  Save, BookmarkCheck, BarChart2, Sidebar, Square, CheckSquare
+  Save, BookmarkCheck, BarChart2, Sidebar, Square, CheckSquare,
+  Mail, Phone, Linkedin, Bookmark, Tag, ArrowRightLeft, ScanSearch, Replace
 } from 'lucide-react';
 import { PageHeader, StatCard, Button } from '../components/UI';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -28,7 +29,19 @@ const FILTER_OPERATORS = [
   { value: 'ends_with', label: 'Ends With' },
   { value: 'is_null', label: 'Is Empty' },
   { value: 'is_not_null', label: 'Is Not Empty' },
+  { value: 'greater_than', label: 'Greater Than' },
+  { value: 'less_than', label: 'Less Than' },
+  { value: 'between', label: 'Between' },
 ];
+
+interface FilterPreset {
+  name: string;
+  filters: Record<string, string>;
+  advancedFilters: AdvancedFilterUI[];
+  completenessFilter: 'all' | 'high' | 'medium' | 'low';
+  search: string;
+  savedAt: number;
+}
 
 interface AdvancedFilterUI {
   id: number;
@@ -126,6 +139,28 @@ export default function DatabasePage() {
   const [statsColumn, setStatsColumn] = useState<string | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
 
+  // Quick boolean toggles
+  const [quickToggles, setQuickToggles] = useState<Record<string, boolean>>({});
+
+  // Filter presets
+  const [filterPresets, setFilterPresets] = useState<FilterPreset[]>(() => {
+    try { return JSON.parse(localStorage.getItem('refinery_filter_presets') || '[]'); } catch { return []; }
+  });
+  const [showPresets, setShowPresets] = useState(false);
+
+  // Find & Replace
+  const [showFindReplace, setShowFindReplace] = useState(false);
+  const [frColumn, setFrColumn] = useState('');
+  const [frFind, setFrFind] = useState('');
+  const [frReplace, setFrReplace] = useState('');
+  const [frProcessing, setFrProcessing] = useState(false);
+
+  // Duplicate detection 
+  const [showDuplicates, setShowDuplicates] = useState(false);
+  const [dupColumn, setDupColumn] = useState('business_email');
+  const [dupResults, setDupResults] = useState<{ value: string; cnt: string }[]>([]);
+  const [dupLoading, setDupLoading] = useState(false);
+
   // --- Data Fetching ---
   const fetchStats = useCallback(async () => {
     setStatsLoading(true);
@@ -220,6 +255,11 @@ export default function DatabasePage() {
         .filter(f => f.column && f.operator)
         .map(f => ({ column: f.column, operator: f.operator, value: f.value }));
 
+      // Add quick boolean toggles
+      if (quickToggles.hasEmail) afPayload.push({ column: 'business_email', operator: 'is_not_null', value: '' });
+      if (quickToggles.hasPhone) afPayload.push({ column: 'mobile_phone', operator: 'is_not_null', value: '' });
+      if (quickToggles.hasLinkedin) afPayload.push({ column: 'linkedin_url', operator: 'is_not_null', value: '' });
+
       const res = await apiCall<QueryResult>('/api/database/browse', {
         method: 'POST',
         body: {
@@ -230,7 +270,8 @@ export default function DatabasePage() {
           pageSize,
           sortBy: sortCol || activeCols[0] || 'up_id',
           sortDir,
-          columns: activeCols.length > 0 ? activeCols : undefined
+          columns: activeCols.length > 0 ? activeCols : undefined,
+          completenessFilter: completenessFilter !== 'all' ? completenessFilter : undefined,
         }
       });
       setResult(res);
@@ -239,7 +280,7 @@ export default function DatabasePage() {
     } finally {
       setLoading(false);
     }
-  }, [filters, page, pageSize, sortCol, sortDir, visibleCols, activeTab, columnsLoaded, dataSourceFilter]);
+  }, [filters, page, pageSize, sortCol, sortDir, visibleCols, activeTab, columnsLoaded, dataSourceFilter, quickToggles, completenessFilter]);
 
   // Single effect for Browse tab (handles both search debounce and other filters)
   useEffect(() => {
@@ -259,7 +300,7 @@ export default function DatabasePage() {
       if (timer) clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, filters, page, sortCol, sortDir, visibleCols, activeTab, advancedFilters]);
+  }, [search, filters, page, sortCol, sortDir, visibleCols, activeTab, advancedFilters, quickToggles, completenessFilter]);
 
 
   const executeSQL = async () => {
@@ -684,6 +725,115 @@ export default function DatabasePage() {
               )}
             </div>
           </div>
+
+          {/* ═══ ACTION TOOLBAR ═══ */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+            {[
+              { key: 'hasEmail', label: 'Has Email', icon: <Mail size={12} /> },
+              { key: 'hasPhone', label: 'Has Phone', icon: <Phone size={12} /> },
+              { key: 'hasLinkedin', label: 'Has LinkedIn', icon: <Linkedin size={12} /> },
+            ].map(t => (
+              <button key={t.key} onClick={() => { setQuickToggles(prev => ({ ...prev, [t.key]: !prev[t.key] })); setPage(1); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8,
+                  fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
+                  background: quickToggles[t.key] ? 'var(--accent)' : 'var(--bg-card-hover)',
+                  color: quickToggles[t.key] ? '#fff' : 'var(--text-secondary)',
+                  border: `1px solid ${quickToggles[t.key] ? 'var(--accent)' : 'var(--border)'}`,
+                }}>
+                {t.icon} {t.label}
+              </button>
+            ))}
+            <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setShowPresets(!showPresets)}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                <Bookmark size={12} /> Presets {filterPresets.length > 0 && `(${filterPresets.length})`}
+              </button>
+              {showPresets && (
+                <div style={{ position: 'absolute', top: 36, left: 0, width: 280, zIndex: 100, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: 'var(--shadow-lg)', padding: 8 }}>
+                  <button onClick={() => {
+                    const name = prompt('Name this filter preset:');
+                    if (!name) return;
+                    const preset: FilterPreset = { name, filters: { ...filters }, advancedFilters: [...advancedFilters], completenessFilter, search, savedAt: Date.now() };
+                    const updated = [...filterPresets, preset];
+                    setFilterPresets(updated);
+                    localStorage.setItem('refinery_filter_presets', JSON.stringify(updated));
+                    toastSuccess(`Preset "${name}" saved`); setShowPresets(false);
+                  }}
+                    style={{ width: '100%', padding: '8px 12px', fontSize: 11, fontWeight: 700, borderRadius: 8, cursor: 'pointer', background: 'var(--bg-hover)', border: '1px dashed var(--border)', color: 'var(--accent)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Plus size={12} /> Save Current Filters
+                  </button>
+                  {filterPresets.map((p, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: 'var(--text-primary)' }}
+                      onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseOut={e => (e.currentTarget.style.background = 'transparent')}>
+                      <span onClick={() => { setFilters(p.filters); setAdvancedFilters(p.advancedFilters); setCompletenessFilter(p.completenessFilter); setSearch(p.search); setPage(1); setShowPresets(false); toastSuccess(`Loaded "${p.name}"`); }} style={{ flex: 1, fontWeight: 600 }}>{p.name}</span>
+                      <X size={12} style={{ color: 'var(--text-tertiary)', cursor: 'pointer' }} onClick={() => { const u = filterPresets.filter((_, i) => i !== idx); setFilterPresets(u); localStorage.setItem('refinery_filter_presets', JSON.stringify(u)); }} />
+                    </div>
+                  ))}
+                  {filterPresets.length === 0 && <div style={{ padding: 12, fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center' }}>No saved presets</div>}
+                </div>
+              )}
+            </div>
+            <button onClick={async () => {
+              const af = Object.entries(filters).filter(([_, v]) => v !== '');
+              const afAdv = advancedFilters.filter(f => f.column && f.operator);
+              if (af.length === 0 && afAdv.length === 0 && !search) { alert('Apply some filters first'); return; }
+              const name = prompt('Segment name:');
+              if (!name) return;
+              const parts: string[] = [];
+              for (const [col, val] of af) parts.push(`\`${col}\` = '${val}'`);
+              for (const f of afAdv) {
+                if (f.operator === 'equals') parts.push(`\`${f.column}\` = '${f.value}'`);
+                else if (f.operator === 'contains') parts.push(`\`${f.column}\` LIKE '%${f.value}%'`);
+                else if (f.operator === 'not_equals') parts.push(`\`${f.column}\` != '${f.value}'`);
+                else if (f.operator === 'is_not_null') parts.push(`\`${f.column}\` IS NOT NULL AND toString(\`${f.column}\`) != ''`);
+                else if (f.operator === 'is_null') parts.push(`(\`${f.column}\` IS NULL OR toString(\`${f.column}\`) = '')`);
+                else parts.push(`\`${f.column}\` = '${f.value}'`);
+              }
+              try {
+                await apiCall('/api/segments', { method: 'POST', body: { name, filterQuery: parts.join(' AND ') } });
+                toastSuccess(`Segment "${name}" created!`);
+              } catch (e: any) { toastError(e.message); }
+            }}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+              <Tag size={12} /> Create Segment
+            </button>
+            <button onClick={() => setShowDuplicates(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+              <ScanSearch size={12} /> Duplicates
+            </button>
+            <button onClick={() => setShowFindReplace(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+              <ArrowRightLeft size={12} /> Find &amp; Replace
+            </button>
+          </div>
+
+          {/* ═══ ACTIVE FILTER CHIPS ═══ */}
+          {(() => {
+            const chips: { label: string; onRemove: () => void }[] = [];
+            Object.entries(filters).forEach(([k, v]) => { if (v) chips.push({ label: `${k.replace(/_/g, ' ')}: ${v}`, onRemove: () => setFilters(prev => ({ ...prev, [k]: '' })) }); });
+            advancedFilters.forEach((af, idx) => { if (af.column) chips.push({ label: `${af.column.replace(/_/g, ' ')} ${af.operator.replace(/_/g, ' ')} ${af.value || ''}`.trim(), onRemove: () => setAdvancedFilters(advancedFilters.filter((_, i) => i !== idx)) }); });
+            if (search) chips.push({ label: `Search: "${search}"`, onRemove: () => setSearch('') });
+            if (completenessFilter !== 'all') chips.push({ label: `Completeness: ${completenessFilter}`, onRemove: () => setCompletenessFilter('all') });
+            Object.entries(quickToggles).forEach(([k, v]) => { if (v) chips.push({ label: k === 'hasEmail' ? 'Has Email' : k === 'hasPhone' ? 'Has Phone' : 'Has LinkedIn', onRemove: () => setQuickToggles(prev => ({ ...prev, [k]: false })) }); });
+            if (dataSourceFilter) chips.push({ label: `Source: ${dataSourceOptions.find(s => s.id === dataSourceFilter)?.label || dataSourceFilter}`, onRemove: () => setDataSourceFilter('') });
+            if (chips.length === 0) return null;
+            return (
+              <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.05em' }}>Active:</span>
+                {chips.map((c, i) => (
+                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: 'rgba(99,102,241,0.1)', color: 'var(--accent)', border: '1px solid rgba(99,102,241,0.2)' }}>
+                    {c.label}
+                    <X size={10} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => { c.onRemove(); setPage(1); }} />
+                  </span>
+                ))}
+                <button onClick={() => { setFilters({}); setAdvancedFilters([]); setSearch(''); setCompletenessFilter('all'); setQuickToggles({}); setDataSourceFilter(''); setPage(1); }}
+                  style={{ fontSize: 10, fontWeight: 700, color: 'var(--red)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>Clear All</button>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -989,12 +1139,21 @@ export default function DatabasePage() {
 
                       {resultCols.map((col, cIdx) => {
                         const val = row[col];
+                        const valStr = val === null || val === undefined ? '' : String(val);
                         return (
                           <td key={col} onClick={() => setSelectedRow(row)}
-                            style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }} title={String(val ?? '')}>
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              if (!valStr) return;
+                              filterIdCounter.current += 1;
+                              setAdvancedFilters(prev => [...prev, { id: filterIdCounter.current, column: col, operator: 'equals', value: valStr }]);
+                              setPage(1);
+                              toastSuccess(`Filtered: ${col.replace(/_/g, ' ')} = "${valStr}"`);
+                            }}
+                            style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)', position: 'relative' }} title={`${valStr || '—'}\n\nDouble-click to filter by this value`}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               {cIdx === 0 && <span style={{ width: 6, height: 6, borderRadius: '50%', background: completenessColor, flexShrink: 0 }} title={`Data Completeness`} />}
-                              <span>{val === null || val === undefined ? <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>—</span> : String(val)}</span>
+                              <span>{!valStr ? <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>—</span> : valStr}</span>
                             </div>
                           </td>
                         );
@@ -1119,6 +1278,97 @@ export default function DatabasePage() {
                   );
                 })}
               </div>
+            </div>
+          </div>
+        </>
+      )}
+      {/* ═══ FIND & REPLACE MODAL ═══ */}
+      {showFindReplace && (
+        <>
+          <div onClick={() => setShowFindReplace(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200 }} />
+          <div className="animate-scaleIn" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 210, width: 440, background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', boxShadow: 'var(--shadow-xl)', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><Replace size={16} color="var(--accent)" /> Find &amp; Replace</h4>
+              <X size={16} style={{ cursor: 'pointer', color: 'var(--text-tertiary)' }} onClick={() => setShowFindReplace(false)} />
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <select value={frColumn} onChange={e => setFrColumn(e.target.value)}
+                style={{ padding: '10px 12px', borderRadius: 10, fontSize: 13, background: 'var(--bg-input)', border: '1px solid var(--border)', color: frColumn ? 'var(--text-primary)' : 'var(--text-tertiary)', cursor: 'pointer' }}>
+                <option value="">Select Column...</option>
+                {allColumns.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+              </select>
+              <input type="text" placeholder="Find value..." value={frFind} onChange={e => setFrFind(e.target.value)}
+                style={{ padding: '10px 12px', borderRadius: 10, fontSize: 13, background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)', outline: 'none' }} />
+              <input type="text" placeholder="Replace with..." value={frReplace} onChange={e => setFrReplace(e.target.value)}
+                style={{ padding: '10px 12px', borderRadius: 10, fontSize: 13, background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)', outline: 'none' }} />
+              <button disabled={!frColumn || !frFind || frProcessing} onClick={async () => {
+                if (!confirm(`Replace all "${frFind}" with "${frReplace}" in column "${frColumn}"?`)) return;
+                setFrProcessing(true);
+                try {
+                  const res = await apiCall<{ updated: number }>('/api/database/find-replace', { method: 'POST', body: { column: frColumn, findValue: frFind, replaceValue: frReplace } });
+                  toastSuccess(`Updated ${res.updated.toLocaleString()} rows`);
+                  setShowFindReplace(false); setFrFind(''); setFrReplace(''); runBrowse();
+                } catch (e: any) { toastError(e.message); }
+                setFrProcessing(false);
+              }}
+                style={{ padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: (!frColumn || !frFind || frProcessing) ? 'var(--bg-hover)' : 'var(--accent)', color: (!frColumn || !frFind || frProcessing) ? 'var(--text-tertiary)' : '#fff', border: 'none', transition: 'all 0.15s' }}>
+                {frProcessing ? 'Processing...' : 'Replace All'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ═══ DUPLICATE DETECTION MODAL ═══ */}
+      {showDuplicates && (
+        <>
+          <div onClick={() => setShowDuplicates(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 200 }} />
+          <div className="animate-scaleIn" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 210, width: 500, maxHeight: '70vh', background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', boxShadow: 'var(--shadow-xl)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><ScanSearch size={16} color="var(--accent)" /> Duplicate Detection</h4>
+              <X size={16} style={{ cursor: 'pointer', color: 'var(--text-tertiary)' }} onClick={() => setShowDuplicates(false)} />
+            </div>
+            <div style={{ padding: '16px 20px', display: 'flex', gap: 8, alignItems: 'center' }}>
+              <select value={dupColumn} onChange={e => setDupColumn(e.target.value)}
+                style={{ flex: 1, padding: '10px 12px', borderRadius: 10, fontSize: 13, background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                {['business_email', 'personal_emails', 'mobile_phone', 'linkedin_url', 'first_name', 'last_name', 'company_name', ...allColumns.filter(c => !['business_email', 'personal_emails', 'mobile_phone', 'linkedin_url', 'first_name', 'last_name', 'company_name'].includes(c))].map(c => (
+                  <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
+                ))}
+              </select>
+              <button onClick={async () => {
+                setDupLoading(true); setDupResults([]);
+                try {
+                  const res = await apiCall<{ value: string; cnt: string }[]>('/api/database/duplicates', { method: 'POST', body: { column: dupColumn } });
+                  setDupResults(res || []);
+                } catch (e: any) { toastError(e.message); }
+                setDupLoading(false);
+              }}
+                style={{ padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: 'var(--accent)', color: '#fff', border: 'none', whiteSpace: 'nowrap' }}>
+                {dupLoading ? <Loader2 size={14} className="spin" /> : 'Scan'}
+              </button>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1, padding: '0 20px 16px' }}>
+              {dupLoading && <div style={{ textAlign: 'center', padding: 20 }}><Loader2 size={24} className="spin" style={{ color: 'var(--accent)' }} /></div>}
+              {!dupLoading && dupResults.length === 0 && <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-tertiary)', fontSize: 13 }}>No duplicates found (or click Scan)</div>}
+              {dupResults.map((d, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.value}>
+                    {d.value}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--red)', background: 'rgba(239,68,68,0.1)', padding: '2px 8px', borderRadius: 10 }}>{Number(d.cnt).toLocaleString()}×</span>
+                    <button onClick={() => {
+                      filterIdCounter.current += 1;
+                      setAdvancedFilters(prev => [...prev, { id: filterIdCounter.current, column: dupColumn, operator: 'equals', value: d.value }]);
+                      setPage(1); setShowDuplicates(false);
+                      toastSuccess(`Filtered to "${d.value}" duplicates`);
+                    }}
+                      style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', background: 'transparent', border: '1px solid var(--accent)', color: 'var(--accent)' }}>
+                      Filter
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </>
