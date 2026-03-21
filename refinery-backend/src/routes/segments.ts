@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import * as segService from '../services/segments.js';
 import { getRequestUser } from '../types/auth.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+// All segment routes require authentication for proper user attribution
+router.use(requireAuth);
 
 // GET /api/segments
 router.get('/', async (_req, res) => {

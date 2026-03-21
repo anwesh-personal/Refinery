@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import * as rules from '../services/ingestion-rules.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use(requireAuth);
 
 // GET /api/ingestion-rules
 router.get('/', async (_req, res) => {

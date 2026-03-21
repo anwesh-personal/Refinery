@@ -6,7 +6,9 @@ import { PageHeader, StatCard, GradientCard, ActionCard, SectionHeader, EmptySta
 import { ServerSelector } from '../components/ServerSelector';
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 import { apiCall } from '../lib/api';
+import { TeamNetworkGraph } from '../components/TeamNetworkGraph';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 
 interface DbStats {
@@ -104,6 +106,7 @@ const activityIcons: Record<string, any> = {
 const COLORS = ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444', '#ec4899', '#0ea5e9', '#6366f1'];
 
 export default function DashboardPage() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [dbStats, setDbStats] = useState<DbStats | null>(null);
   const [ingestionStats, setIngestionStats] = useState<IngestionStats | null>(null);
@@ -306,6 +309,13 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Superadmin Team Constellation */}
+      {user?.role === 'superadmin' && (
+        <div className="animate-fadeIn stagger-3" style={{ marginBottom: 36 }}>
+          <TeamNetworkGraph />
+        </div>
+      )}
 
       {/* Two Column Layout (Actions / Activity) */}
       <div className="animate-fadeIn stagger-4" style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(350px, 1fr)', gap: 36, marginBottom: 36 }}>

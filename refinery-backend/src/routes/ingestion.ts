@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import * as ingestionService from '../services/ingestion.js';
 import { getRequestUser } from '../types/auth.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+// All ingestion routes require authentication for proper user attribution
+router.use(requireAuth);
 
 // GET /api/ingestion/stats
 router.get('/stats', async (_req, res) => {

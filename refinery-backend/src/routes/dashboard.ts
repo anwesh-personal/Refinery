@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import * as dashboardService from '../services/dashboard.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use(requireAuth);
 
 // GET /api/dashboard/ingestion-trends?days=30
 router.get('/ingestion-trends', async (req, res) => {
@@ -40,6 +43,16 @@ router.get('/activity', async (req, res) => {
     try {
         const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 15;
         const data = await dashboardService.getRecentActivity(limit);
+        res.json(data);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET /api/dashboard/user-stats — per-user operation counts for Team Constellation
+router.get('/user-stats', async (_req, res) => {
+    try {
+        const data = await dashboardService.getUserOperationStats();
         res.json(data);
     } catch (e: any) {
         res.status(500).json({ error: e.message });

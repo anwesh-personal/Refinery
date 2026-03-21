@@ -7,7 +7,7 @@ import { supabaseAdmin } from './supabaseAdmin.js';
 
 export async function resetPassword(userId: string, newPassword: string) {
   if (!env.supabase.secretKey) throw new Error('Backend is missing SUPABASE_SECRET_KEY');
-  
+
   const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, { password: newPassword });
   if (error) throw new Error(`Supabase Admin Error: ${error.message}`);
   return true;
@@ -15,7 +15,7 @@ export async function resetPassword(userId: string, newPassword: string) {
 
 export async function sendResetLink(email: string) {
   if (!env.supabase.secretKey) throw new Error('Backend is missing SUPABASE_SECRET_KEY');
-  
+
   const { error } = await supabaseAdmin.auth.admin.generateLink({
     type: 'recovery',
     email,
@@ -30,7 +30,7 @@ export async function generateImpersonationLink(userId: string): Promise<string>
   // To impersonate, we first need their email.
   const { data: user, error: userErr } = await supabaseAdmin.auth.admin.getUserById(userId);
   if (userErr || !user.user) throw new Error(`User lookup failed: ${userErr?.message || 'Not found'}`);
-  
+
   if (!user.user.email) throw new Error('User has no email associated');
 
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
@@ -46,7 +46,7 @@ export async function generateImpersonationLink(userId: string): Promise<string>
 
 export async function updateUserAuth(userId: string, updates: { email?: string; user_metadata?: any }) {
   if (!env.supabase.secretKey) throw new Error('Backend is missing SUPABASE_SECRET_KEY');
-  
+
   const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, updates);
   if (error) throw new Error(`Supabase Admin Error: ${error.message}`);
   return true;
@@ -54,7 +54,7 @@ export async function updateUserAuth(userId: string, updates: { email?: string; 
 
 export async function deleteAuthUser(userId: string) {
   if (!env.supabase.secretKey) throw new Error('Backend is missing SUPABASE_SECRET_KEY');
-  
+
   const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
   if (error) throw new Error(`Supabase Admin Error: ${error.message}`);
   return true;
@@ -96,6 +96,13 @@ export async function createUser(opts: {
   if (opts.fullName) updates.full_name = opts.fullName;
   if (opts.role) updates.role = opts.role;
   updates.is_active = true;
+
+  // Generate a deterministic avatar so the user has a profile image from day one.
+  // DiceBear notionists-neutral style — clean, professional, gender-neutral.
+  // If the user later uploads their own avatar via Settings, it overwrites this.
+  const DICEBEAR_BASE = 'https://api.dicebear.com/9.x/notionists-neutral';
+  const BG_PALETTE = 'b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf';
+  updates.avatar_url = `${DICEBEAR_BASE}/svg?seed=${encodeURIComponent(opts.email)}&size=256&backgroundColor=${BG_PALETTE}`;
 
   if (Object.keys(updates).length > 0) {
     const { error: profileErr } = await supabaseAdmin

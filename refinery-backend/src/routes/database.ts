@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import * as dbService from '../services/database.js';
 import { getRequestUser } from '../types/auth.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use(requireAuth);
 
 // GET /api/database/stats
 router.get('/stats', async (_req, res) => {

@@ -538,7 +538,7 @@ export default function VerificationPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <input type="file" accept=".csv" ref={fileInputRef} onChange={handleBulkUpload} style={{ display: 'none' }} id="v550-upload" />
             <label htmlFor="v550-upload" style={{
-              cursor: 'pointer', padding: '10px 20px', borderRadius: 10, background: 'var(--purple, #a855f7)', color: '#fff', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'background 0.2s',
+              cursor: 'pointer', padding: '10px 20px', borderRadius: 10, background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'background 0.2s',
               opacity: uploadingCSV ? 0.7 : 1, pointerEvents: uploadingCSV ? 'none' : 'auto'
             }}>
               <Upload size={16} /> {uploadingCSV ? 'Uploading to Verify550...' : 'Select & Upload CSV'}
@@ -594,7 +594,7 @@ export default function VerificationPage() {
         ]}
         rows={batches.map(b => ({
           id: <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{b.id.substring(0, 8)}…</span>,
-          engine: <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: (!b.engine || b.engine === 'verify550') ? 'var(--purple-muted, rgba(168,85,247,.15))' : 'var(--blue-muted)', color: (!b.engine || b.engine === 'verify550') ? 'var(--purple, #a855f7)' : 'var(--blue)' }}>{(!b.engine || b.engine === 'verify550') ? 'Verify550' : 'Native SMTP'}</span>,
+          engine: <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: (!b.engine || b.engine === 'verify550') ? 'var(--purple-muted, rgba(168,85,247,.15))' : 'var(--blue-muted)', color: (!b.engine || b.engine === 'verify550') ? 'var(--purple)' : 'var(--blue)' }}>{(!b.engine || b.engine === 'verify550') ? 'Verify550' : 'Native SMTP'}</span>,
           segment: segments.find(s => s.id === b.segment_id)?.name || b.segment_id,
           total: (b.total_leads || 0).toLocaleString(),
           verified: (b.verified_count || 0).toLocaleString(),

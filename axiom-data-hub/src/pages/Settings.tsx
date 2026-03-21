@@ -151,7 +151,8 @@ function ProfileSection({ user, refreshProfile }: { user: any; refreshProfile: (
         setMessage({ text: `Upload failed: ${uploadErr.message}. You can paste an image URL instead.`, type: 'error' });
       } else {
         const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-        setAvatarUrl(data.publicUrl);
+        // Cache-bust: same filename is reused on re-upload, so browser serves stale cache without this
+        setAvatarUrl(data.publicUrl + '?t=' + Date.now());
         setMessage({ text: 'Avatar uploaded — click Save to apply', type: 'success' });
       }
     } catch (err: any) {

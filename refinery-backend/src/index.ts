@@ -150,6 +150,10 @@ async function start() {
     // Register env-configured servers into Supabase
     await ensureEnvServersRegistered();
     console.log('[Server] ✓ Server registry synchronized');
+
+    // Backfill user attribution for historical operations
+    const { backfillUserAttribution } = await import('./services/dashboard.js');
+    await backfillUserAttribution();
   } catch (e: any) {
     console.warn(`[Server] ⚠ Database init skipped (ClickHouse unavailable): ${e.message}`);
     console.warn('[Server] ⚠ The API will start but database operations will fail until ClickHouse is available.');

@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import * as s3Service from '../services/s3sources.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use(requireAuth);
 
 /* ── List all active sources (masked credentials) ── */
 router.get('/', async (_req, res) => {

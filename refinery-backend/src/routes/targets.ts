@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import * as targetService from '../services/targets.js';
 import { getRequestUser } from '../types/auth.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+// All target routes require authentication for proper user attribution
+router.use(requireAuth);
 
 // GET /api/targets/stats
 router.get('/stats', async (_req, res) => {

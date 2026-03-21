@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import * as logService from '../services/logs.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use(requireAuth);
 
 // GET /api/logs?lines=200&level=error&search=clickhouse
 router.get('/', async (req, res) => {

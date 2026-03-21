@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import * as janitor from '../services/janitor.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use(requireAuth);
 
 // GET /api/janitor/columns — available columns for dropdowns
 router.get('/columns', async (_req, res) => {

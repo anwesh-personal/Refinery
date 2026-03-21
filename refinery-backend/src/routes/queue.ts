@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import * as queueService from '../services/queue.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use(requireAuth);
 
 // GET /api/queue/stats
 router.get('/stats', async (_req, res) => {
