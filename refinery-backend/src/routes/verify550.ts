@@ -4,6 +4,7 @@ import os from 'os';
 import { z } from 'zod';
 import * as v550 from '../services/verify550.js';
 import { requireAuth } from '../middleware/auth.js';
+import { getRequestUser } from '../types/auth.js';
 
 const router = Router();
 const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 100 * 1024 * 1024 } }); // 100MB max directly to disk to prevent OOM
@@ -38,7 +39,7 @@ router.get('/verify', async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0].message });
     }
-    
+
     const email = parsed.data;
     const apiKey = await v550.resolveApiKey((req as any).userId);
     const status = await v550.verifySingle(apiKey, email);
@@ -112,6 +113,8 @@ router.get('/export/:id', async (req, res) => {
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    const user = getRequestUser(req);
+    console.log(`[Export] V550 job ${req.params.id} exported by ${user.name} (${user.id}) — format: ${format || 'default'}`);
     res.send(buffer);
   } catch (e: any) {
     res.status(500).json({ error: e.message });

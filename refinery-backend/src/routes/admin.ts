@@ -40,6 +40,15 @@ const adminRateLimit = rateLimit({
 
 router.use(adminRateLimit);
 
+// ── Self-Service Cache Invalidation (before superadmin gate) ──
+// Any authenticated user can invalidate their own profile cache
+// after updating their name/avatar via Settings.
+router.post('/invalidate-my-cache', requireAuth, (req, res) => {
+  const userId = (req as any).userId;
+  if (userId) invalidateProfileCache(userId);
+  res.json({ ok: true });
+});
+
 // Use shared auth middleware — requireAuth + requireSuperadmin
 router.use(requireAuth);
 router.use(requireSuperadmin);

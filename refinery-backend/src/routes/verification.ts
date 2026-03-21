@@ -173,6 +173,8 @@ router.get('/batches/:id/export', requireSuperadmin, async (req, res) => {
     }
 
     const results = await verifyService.exportBatchResults(batchId);
+    const user = getRequestUser(req);
+    console.log(`[Export] Verification batch ${batchId} exported by ${user.name} (${user.id}) — ${results.length} rows`);
 
     // Build CSV
     const header = 'email,status,verified_at\n';

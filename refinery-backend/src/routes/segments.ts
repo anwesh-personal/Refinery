@@ -75,6 +75,8 @@ router.post('/:id/execute', async (req, res) => {
 router.get('/:id/export', async (req, res) => {
   try {
     const rows = await segService.exportSegmentLeads(req.params.id);
+    const user = getRequestUser(req);
+    console.log(`[Export] Segment ${req.params.id} exported by ${user.name} (${user.id}) \u2014 ${rows.length} rows`);
     res.json({ rows, count: rows.length });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

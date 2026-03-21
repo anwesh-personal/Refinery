@@ -103,6 +103,8 @@ router.post('/export', async (req, res) => {
       }).join(',')
     );
     const csv = [header, ...lines].join('\n');
+    const user = getRequestUser(req);
+    console.log(`[Export] Database CSV exported by ${user.name} (${user.id}) \u2014 ${rows.length} rows`);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="export-${Date.now()}.csv"`);
     res.send(csv);

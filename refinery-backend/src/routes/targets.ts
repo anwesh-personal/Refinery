@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as targetService from '../services/targets.js';
+import { getRequestUser } from '../types/auth.js';
 
 const router = Router();
 
@@ -39,6 +40,8 @@ router.post('/', async (req, res) => {
 router.get('/:id/export', async (req, res) => {
   try {
     const { csv, count } = await targetService.exportTargetList(req.params.id);
+    const user = getRequestUser(req);
+    console.log(`[Export] Target list ${req.params.id} exported by ${user.name} (${user.id}) — ${count} emails`);
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="target-list-${req.params.id}.csv"`);
     res.send(csv);

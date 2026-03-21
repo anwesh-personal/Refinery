@@ -106,6 +106,19 @@ function ProfileSection({ user, refreshProfile }: { user: any; refreshProfile: (
       await supabase.auth.updateUser({
         data: { full_name: fullName, avatar_url: avatarUrl || null },
       });
+
+      // Invalidate the backend's profile cache so the updated name is
+      // reflected immediately in all user-attribution columns.
+      try {
+        const session = (await supabase.auth.getSession()).data.session;
+        if (session?.access_token) {
+          await fetch(`${import.meta.env.VITE_API_URL || ''}/api/admin/invalidate-my-cache`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${session.access_token}` },
+          });
+        }
+      } catch { /* non-critical */ }
+
       await refreshProfile();
       setMessage({ text: 'Profile updated successfully', type: 'success' });
     }
