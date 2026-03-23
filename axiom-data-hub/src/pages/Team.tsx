@@ -953,8 +953,17 @@ export default function TeamPage() {
                               style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
                             />
                             <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{m.profile?.full_name || 'Unnamed'}</div>
-                              <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{m.profile?.email}</div>
+                              {(() => {
+                                const fallback = team.find(t => t.id === m.profile_id);
+                                const name = m.profile?.full_name || fallback?.full_name || fallback?.email?.split('@')[0] || 'Unknown';
+                                const email = m.profile?.email || fallback?.email || '';
+                                return (
+                                  <>
+                                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{name}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{email}</div>
+                                  </>
+                                );
+                              })()}
                             </div>
                             <select
                               value={m.role_id || ''}
