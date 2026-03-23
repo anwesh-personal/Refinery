@@ -1,4 +1,5 @@
-import { ListOrdered, Send, Clock, CheckCircle, XCircle, Play, Pause, Loader2, AlertCircle, RefreshCw, Database, Rocket, BarChart3 } from 'lucide-react';
+import React from 'react';
+import { ListOrdered, Send, Clock, CheckCircle, XCircle, Play, Pause, Loader2, AlertCircle, RefreshCw, Database, Rocket, BarChart3, Eye, TrendingUp, Mail, MousePointerClick, AlertTriangle, Ban } from 'lucide-react';
 import { PageHeader, StatCard, Button } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
 import { useState, useEffect, useCallback } from 'react';
@@ -36,6 +37,24 @@ interface MTACampaign {
   from_name?: string;
   from_email?: string;
   created_at?: string;
+}
+
+interface CampaignStats {
+  campaign_id: string;
+  total_recipients: number;
+  sent: number;
+  opens: number;
+  unique_opens: number;
+  clicks: number;
+  unique_clicks: number;
+  bounces: number;
+  hard_bounces: number;
+  soft_bounces: number;
+  unsubscribes: number;
+  complaints: number;
+  delivery_rate: number;
+  open_rate: number;
+  click_rate: number;
 }
 
 interface TargetList {
@@ -83,6 +102,9 @@ export default function QueuePage() {
   const [campaignModalOpen, setCampaignModalOpen] = useState(false);
   const [sendingCampaignId, setSendingCampaignId] = useState<string | null>(null);
   const [pausingCampaignId, setPausingCampaignId] = useState<string | null>(null);
+  const [expandedCampaignId, setExpandedCampaignId] = useState<string | null>(null);
+  const [campaignStats, setCampaignStats] = useState<CampaignStats | null>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
 
   const [selectedListId, setSelectedListId] = useState('');
 
@@ -192,12 +214,33 @@ export default function QueuePage() {
   };
 
   const viewStats = async (id: string) => {
+    if (expandedCampaignId === id) {
+      setExpandedCampaignId(null);
+      setCampaignStats(null);
+      return;
+    }
+    setExpandedCampaignId(id);
+    setLoadingStats(true);
     try {
-      const stats = await apiCall<Record<string, any>>(`/api/queue/campaign/${id}/stats`);
-      const msg = `Sent: ${stats.sent} | Opens: ${stats.unique_opens} (${((stats.open_rate||0)*100).toFixed(1)}%) | Clicks: ${stats.unique_clicks} | Bounces: ${stats.bounces}`;
-      toastSuccess('Campaign Stats', msg);
+      const s = await apiCall<CampaignStats>(`/api/queue/campaign/${id}/stats`);
+      setCampaignStats(s);
     } catch (e: any) { toastError('Stats Error', e.message); }
+    setLoadingStats(false);
   };
+
+  // Auto-poll stats for expanded campaign
+  useEffect(() => {
+    if (!expandedCampaignId) return;
+    const campaign = campaigns.find(c => c.id === expandedCampaignId);
+    if (!campaign || campaign.status !== 'sending') return;
+    const interval = setInterval(async () => {
+      try {
+        const s = await apiCall<CampaignStats>(`/api/queue/campaign/${expandedCampaignId}/stats`);
+        setCampaignStats(s);
+      } catch { /* silent */ }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [expandedCampaignId, campaigns]);
 
 
 
@@ -415,7 +458,8 @@ export default function QueuePage() {
                   {campaigns.map(c => {
                     const cStatus = statusConfig[c.status] || { color: 'var(--text-tertiary)', bg: 'var(--bg-elevated)', label: c.status };
                     return (
-                      <tr key={c.id}
+                      <React.Fragment key={c.id}>
+                      <tr
                         style={{ transition: 'background 0.1s' }}
                         onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                         onMouseOut={e => (e.currentTarget.style.background = '')}
@@ -454,11 +498,91 @@ export default function QueuePage() {
                               </Button>
                             )}
                             <Button variant="ghost" icon={<BarChart3 size={14} />} onClick={() => viewStats(c.id)}>
-                              Stats
+                              {expandedCampaignId === c.id ? 'Hide' : 'Stats'}
                             </Button>
                           </div>
                         </td>
                       </tr>
+                      {/* ── Inline Deliverability Dashboard ── */}
+                      {expandedCampaignId === c.id && (
+                        <tr>
+                          <td colSpan={5} style={{ padding: 0, borderBottom: '1px solid var(--border)' }}>
+                            {loadingStats ? (
+                              <div style={{ padding: 32, textAlign: 'center' }}>
+                                <Loader2 size={20} className="spin" style={{ color: 'var(--accent)' }} />
+                              </div>
+                            ) : campaignStats ? (() => {
+                              const s = campaignStats;
+                              const pctBar = (value: number, color: string) => (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'var(--bg-elevated)', overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', width: `${Math.min(value, 100)}%`, background: color, borderRadius: 3, transition: 'width 0.5s' }} />
+                                  </div>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 45, textAlign: 'right' }}>{value.toFixed(1)}%</span>
+                                </div>
+                              );
+                              return (
+                                <div style={{ padding: '20px 24px', background: 'var(--bg-hover)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                                    <TrendingUp size={14} color="var(--accent)" />
+                                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Live Deliverability — {c.name}</span>
+                                    {c.status === 'sending' && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4, background: 'var(--blue-muted)', color: 'var(--blue)', textTransform: 'uppercase', marginLeft: 8 }}>● Live</span>}
+                                  </div>
+                                  {/* Metric cards */}
+                                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 16 }}>
+                                    {[
+                                      { label: 'Sent', value: s.sent, icon: <Send size={13} />, color: 'var(--blue)' },
+                                      { label: 'Unique Opens', value: s.unique_opens, icon: <Eye size={13} />, color: 'var(--green)' },
+                                      { label: 'Unique Clicks', value: s.unique_clicks, icon: <MousePointerClick size={13} />, color: 'var(--accent)' },
+                                      { label: 'Bounces', value: s.bounces, icon: <AlertTriangle size={13} />, color: 'var(--yellow)' },
+                                      { label: 'Complaints', value: s.complaints, icon: <Ban size={13} />, color: 'var(--red)' },
+                                      { label: 'Unsubs', value: s.unsubscribes, icon: <XCircle size={13} />, color: 'var(--text-tertiary)' },
+                                    ].map(m => (
+                                      <div key={m.label} style={{ background: 'var(--bg-card)', borderRadius: 10, padding: '10px 12px', border: '1px solid var(--border)' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                                          <span style={{ color: m.color }}>{m.icon}</span>
+                                          <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>{m.label}</span>
+                                        </div>
+                                        <div style={{ fontSize: 18, fontWeight: 800, color: m.color }}>{m.value.toLocaleString()}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {/* Rate bars */}
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                                    <div>
+                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <Mail size={10} /> Delivery Rate
+                                      </div>
+                                      {pctBar(s.delivery_rate, 'var(--green)')}
+                                    </div>
+                                    <div>
+                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <Eye size={10} /> Open Rate
+                                      </div>
+                                      {pctBar(s.open_rate, 'var(--blue)')}
+                                    </div>
+                                    <div>
+                                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <MousePointerClick size={10} /> Click Rate
+                                      </div>
+                                      {pctBar(s.click_rate, 'var(--accent)')}
+                                    </div>
+                                  </div>
+                                  {/* Bounce breakdown */}
+                                  {s.bounces > 0 && (
+                                    <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-tertiary)', display: 'flex', gap: 16 }}>
+                                      <span>Hard bounces: <strong style={{ color: 'var(--red)' }}>{s.hard_bounces}</strong></span>
+                                      <span>Soft bounces: <strong style={{ color: 'var(--yellow)' }}>{s.soft_bounces}</strong></span>
+                                      <span>Total recipients: <strong style={{ color: 'var(--text-primary)' }}>{s.total_recipients.toLocaleString()}</strong></span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })() : null}
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

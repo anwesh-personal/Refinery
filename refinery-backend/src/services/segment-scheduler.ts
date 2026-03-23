@@ -12,6 +12,7 @@
 import cron from 'node-cron';
 import { query, insertRows } from '../db/clickhouse.js';
 import { executeSegment, getSegment } from './segments.js';
+import { syncSegmentToMailwizz } from './mailwizz-sync.js';
 
 interface ScheduledSegment {
   id: string;
@@ -19,6 +20,7 @@ interface ScheduledSegment {
   schedule_cron: string;
   next_run_at: string | null;
   last_executed_at: string | null;
+  mailwizz_list_id: string | null;
 }
 
 /** Parse a cron expression and return the next run Date from `now`. */
@@ -90,7 +92,7 @@ async function tick(): Promise<void> {
   try {
     const now = new Date();
     const segments = await query<ScheduledSegment>(
-      `SELECT id, name, schedule_cron, next_run_at, last_executed_at
+      `SELECT id, name, schedule_cron, next_run_at, last_executed_at, mailwizz_list_id
        FROM segments FINAL
        WHERE schedule_cron IS NOT NULL AND schedule_cron != ''
        ORDER BY next_run_at ASC`
@@ -112,6 +114,16 @@ async function tick(): Promise<void> {
       try {
         const count = await executeSegment(seg.id);
         console.log(`[Scheduler] ✓ Segment "${seg.name}" executed — ${count} leads tagged`);
+
+        // Auto-sync to MailWizz if previously synced (has a list ID)
+        if (seg.mailwizz_list_id) {
+          try {
+            const sync = await syncSegmentToMailwizz(seg.id);
+            console.log(`[Scheduler] ✓ Auto-synced "${seg.name}" to MailWizz — ${sync.synced} subscribers`);
+          } catch (syncErr: any) {
+            console.warn(`[Scheduler] ⚠ Auto-sync failed for "${seg.name}":`, syncErr.message);
+          }
+        }
       } catch (err: any) {
         console.error(`[Scheduler] ✗ Segment "${seg.name}" failed:`, err.message);
       }
