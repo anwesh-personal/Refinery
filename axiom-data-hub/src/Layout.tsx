@@ -6,7 +6,7 @@ import type { PermissionKey } from './auth/AuthContext';
 import {
   LayoutDashboard, CloudDownload, Database, Filter, ShieldCheck,
   Send, ListOrdered, Server, ScrollText, Users, Settings2,
-  Moon, Sun, LogOut, Menu, X, ChevronRight, Beaker, Palette, Check, PlayCircle, Trash2
+  Moon, Sun, LogOut, Menu, X, ChevronRight, Beaker, Palette, Check, PlayCircle, Trash2, Radio
 } from 'lucide-react';
 
 interface LayoutProps { children: ReactNode; }
@@ -33,6 +33,7 @@ const NAV = [
     items: [
       { name: 'Email Targets', icon: Send, path: '/targets', requires: 'canViewTargets' as PermissionKey },
       { name: 'Mail Queue', icon: ListOrdered, path: '/queue', requires: 'canViewQueue' as PermissionKey },
+      { name: 'MTA & Swarm', icon: Radio, path: '/mta-config', requires: 'canViewConfig' as PermissionKey },
     ],
   },
   {
