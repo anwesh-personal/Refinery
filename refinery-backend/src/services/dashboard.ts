@@ -119,8 +119,8 @@ export async function getVerificationTrends(days = 30): Promise<VerificationTren
     SELECT
       toDate(started_at) as day,
       count() as batches,
-      sum(valid_count) as valid,
-      sum(invalid_count) as invalid,
+      sum(verified_count) as valid,
+      sum(bounced_count) as invalid,
       sum(unknown_count) as unknown
     FROM verification_batches
     WHERE started_at >= now() - INTERVAL ${days} DAY
@@ -166,13 +166,13 @@ export async function getRecentActivity(limit = 15): Promise<RecentActivity[]> {
     // Recent verification batches
     try {
         const batches = await query<{
-            segment_id: string; status: string; valid_count: string; invalid_count: string; started_at: string; performed_by_name: string | null;
-        }>(`SELECT segment_id, status, valid_count, invalid_count, started_at, performed_by_name FROM verification_batches ORDER BY started_at DESC LIMIT ${limit}`);
+            segment_id: string; status: string; verified_count: string; bounced_count: string; started_at: string; performed_by_name: string | null;
+        }>(`SELECT segment_id, status, verified_count, bounced_count, started_at, performed_by_name FROM verification_batches ORDER BY started_at DESC LIMIT ${limit}`);
         for (const b of batches) {
             activities.push({
                 type: 'verification',
                 title: `Verification batch`,
-                detail: `${Number(b.valid_count).toLocaleString()} valid, ${Number(b.invalid_count).toLocaleString()} invalid`,
+                detail: `${Number(b.verified_count).toLocaleString()} verified, ${Number(b.bounced_count).toLocaleString()} bounced`,
                 status: b.status,
                 timestamp: b.started_at,
                 performedBy: b.performed_by_name || null,

@@ -26,7 +26,7 @@ function formatNumber(n: string | number): string {
 }
 
 const statusColors: Record<string, string> = {
-  active: '#22c55e', draft: '#6b7280', executing: '#3b82f6',
+  active: 'var(--green)', draft: 'var(--text-tertiary)', executing: 'var(--blue)',
 };
 
 export default function SegmentsPage() {
