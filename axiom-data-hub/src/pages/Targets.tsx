@@ -1,8 +1,9 @@
-import { Send, Users, FileDown, Plus, Loader2, AlertCircle, CheckCircle2, Trash2, Download, Eye } from 'lucide-react';
+import { Send, Users, FileDown, Plus, Loader2, AlertCircle, CheckCircle2, Trash2, Download, Eye, Upload } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
 import { useState, useEffect, useCallback } from 'react';
 import { apiCall } from '../lib/api';
+import AudiencePushModal from '../components/AudiencePushModal';
 
 /* ── Types ── */
 interface TargetList {
@@ -61,6 +62,7 @@ export default function TargetsPage() {
   const [exporting, setExporting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [pushTarget, setPushTarget] = useState<{ id: string; name: string } | null>(null);
 
   // Form state
   const [name, setName] = useState('');
@@ -298,6 +300,15 @@ export default function TargetsPage() {
                           {(list.status === 'ready' || list.status === 'pushed') && (
                             <Button
                               variant="ghost"
+                              icon={<Upload size={14} />}
+                              onClick={() => setPushTarget({ id: list.id, name: list.name })}
+                            >
+                              Push
+                            </Button>
+                          )}
+                          {(list.status === 'ready' || list.status === 'pushed') && (
+                            <Button
+                              variant="ghost"
                               icon={exporting === list.id ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
                               onClick={() => exportList(list.id)}
                               disabled={exporting !== null}
@@ -322,6 +333,14 @@ export default function TargetsPage() {
           </div>
         )}
       </div>
+
+      <AudiencePushModal
+        open={!!pushTarget}
+        onClose={() => setPushTarget(null)}
+        targetId={pushTarget?.id || ''}
+        targetName={pushTarget?.name || ''}
+        onPushed={() => { setPushTarget(null); fetchData(); }}
+      />
     </>
   );
 }

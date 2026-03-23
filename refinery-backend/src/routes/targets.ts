@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as targetService from '../services/targets.js';
+import * as audienceSync from '../services/audience-sync.js';
 import { getRequestUser } from '../types/auth.js';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -49,6 +50,63 @@ router.get('/:id/export', async (req, res) => {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="target-list-${req.params.id}.csv"`);
     res.send(csv);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/targets/columns — available ClickHouse columns for mapping
+router.get('/columns', async (_req, res) => {
+  try {
+    const columns = await audienceSync.getAvailableColumns();
+    res.json(columns);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/targets/:id/preview — preview audience before pushing
+router.post('/:id/preview', async (req, res) => {
+  try {
+    const list = (await targetService.listTargetLists()).find((l: any) => l.id === req.params.id);
+    if (!list) return res.status(404).json({ error: 'Target list not found' });
+
+    const { columns, limit, offset, excludeRoleBased, excludeFreeProviders } = req.body;
+    const result = await audienceSync.previewAudience(
+      (list as any).segment_id,
+      columns || [],
+      { limit, offset, excludeRoleBased, excludeFreeProviders },
+    );
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/targets/:id/push — push audience to MTA
+router.post('/:id/push', async (req, res) => {
+  try {
+    const list = (await targetService.listTargetLists()).find((l: any) => l.id === req.params.id);
+    if (!list) return res.status(404).json({ error: 'Target list not found' });
+
+    const { columnMappings, excludeRoleBased, excludeFreeProviders } = req.body;
+    if (!columnMappings || !Array.isArray(columnMappings) || columnMappings.length === 0) {
+      return res.status(400).json({ error: 'columnMappings[] is required' });
+    }
+
+    const user = getRequestUser(req);
+    console.log(`[Push] Target ${req.params.id} pushed by ${user.name} (${user.id})`);
+
+    const result = await audienceSync.pushToMTA({
+      targetListId: req.params.id,
+      listName: (list as any).name,
+      segmentId: (list as any).segment_id,
+      columnMappings,
+      excludeRoleBased,
+      excludeFreeProviders,
+    });
+
+    res.json(result);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
