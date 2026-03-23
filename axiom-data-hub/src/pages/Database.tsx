@@ -791,36 +791,115 @@ export default function DatabasePage() {
               )}
             </div>
             <button onClick={async () => {
+              // Collect ALL active filters — leave nothing behind
               const af = Object.entries(filters).filter(([_, v]) => v !== '');
               const afAdv = advancedFilters.filter(f => f.column && f.operator);
-              if (af.length === 0 && afAdv.length === 0 && !search) { toastError('Apply some filters first to create a segment'); return; }
-              const name = prompt('Segment name:');
-              if (!name) return;
+              const activeToggles = Object.entries(quickToggles).filter(([_, v]) => v);
+              const hasCompleteness = completenessFilter !== 'all';
+              const hasDataSource = !!dataSourceFilter;
+              const hasSearch = !!search.trim();
+
+              // Check if ANY filter is active
+              if (af.length === 0 && afAdv.length === 0 && activeToggles.length === 0 && !hasCompleteness && !hasDataSource && !hasSearch) {
+                toastError('Apply some filters first to create a segment');
+                return;
+              }
+
+              // Build the SQL filter parts
               const parts: string[] = [];
-              for (const [col, val] of af) parts.push(`\`${col}\` = '${val}'`);
+
+              // 1. Dropdown filters
+              for (const [col, val] of af) {
+                parts.push(`\`${col}\` = '${val.replace(/'/g, "\\'")}'`);
+              }
+
+              // 2. Advanced filters
               for (const f of afAdv) {
                 const c = `\`${f.column}\``;
+                const escaped = (f.value || '').replace(/'/g, "\\'");
                 switch (f.operator) {
-                  case 'equals': parts.push(`${c} = '${f.value}'`); break;
-                  case 'not_equals': parts.push(`${c} != '${f.value}'`); break;
-                  case 'contains': parts.push(`${c} LIKE '%${f.value}%'`); break;
-                  case 'not_contains': parts.push(`${c} NOT LIKE '%${f.value}%'`); break;
-                  case 'starts_with': parts.push(`${c} LIKE '${f.value}%'`); break;
-                  case 'ends_with': parts.push(`${c} LIKE '%${f.value}'`); break;
+                  case 'equals': parts.push(`${c} = '${escaped}'`); break;
+                  case 'not_equals': parts.push(`${c} != '${escaped}'`); break;
+                  case 'contains': parts.push(`${c} LIKE '%${escaped}%'`); break;
+                  case 'not_contains': parts.push(`${c} NOT LIKE '%${escaped}%'`); break;
+                  case 'starts_with': parts.push(`${c} LIKE '${escaped}%'`); break;
+                  case 'ends_with': parts.push(`${c} LIKE '%${escaped}'`); break;
                   case 'is_not_null': parts.push(`${c} IS NOT NULL AND toString(${c}) != ''`); break;
                   case 'is_null': parts.push(`(${c} IS NULL OR toString(${c}) = '')`); break;
-                  case 'greater_than': parts.push(`${c} > '${f.value}'`); break;
-                  case 'less_than': parts.push(`${c} < '${f.value}'`); break;
+                  case 'greater_than': parts.push(`${c} > '${escaped}'`); break;
+                  case 'less_than': parts.push(`${c} < '${escaped}'`); break;
                   case 'between': {
-                    const [a, b] = (f.value || '').split(',').map(s => s.trim());
+                    const [a, b] = (escaped).split(',').map(s => s.trim());
                     if (a && b) parts.push(`${c} >= '${a}' AND ${c} <= '${b}'`);
                     break;
                   }
                 }
               }
+
+              // 3. Quick toggles → IS NOT NULL conditions
+              for (const [key] of activeToggles) {
+                const toggle = QUICK_TOGGLE_CONFIG.find(t => t.key === key);
+                if (toggle) {
+                  if (key === 'hasEmail') {
+                    // Email checks both business_email AND personal_emails
+                    parts.push(`((\`business_email\` IS NOT NULL AND toString(\`business_email\`) != '') OR (\`personal_emails\` IS NOT NULL AND toString(\`personal_emails\`) != ''))`);
+                  } else {
+                    parts.push(`\`${toggle.column}\` IS NOT NULL AND toString(\`${toggle.column}\`) != ''`);
+                  }
+                }
+              }
+
+              // 4. Search → LIKE across searchable columns
+              if (hasSearch) {
+                const escaped = search.trim().replace(/'/g, "\\'");
+                const searchCols = ['first_name', 'last_name', 'business_email', 'personal_emails', 'company_name', 'job_title_normalized', 'mobile_phone', 'company_domain'];
+                const searchClause = searchCols.map(c => `lower(coalesce(toString(\`${c}\`), '')) LIKE lower('%${escaped}%')`).join(' OR ');
+                parts.push(`(${searchClause})`);
+              }
+
+              // 5. Data source filter
+              if (hasDataSource) {
+                parts.push(`\`_ingestion_job_id\` = '${dataSourceFilter.replace(/'/g, "\\'")}'`);
+              }
+
+              // 6. Completeness filter (computed column ratio)
+              if (hasCompleteness) {
+                const cols = allColumns.filter(c => !['_ingestion_job_id', '_ingested_at', '_segment_ids', '_verification_status', '_verified_at', 'topic_type', 'source_table', 'topic_id'].includes(c));
+                const filledExpr = cols.map(c => `if(\`${c}\` IS NOT NULL AND toString(\`${c}\`) != '', 1, 0)`).join(' + ');
+                const total = cols.length;
+                if (completenessFilter === 'high') {
+                  parts.push(`(${filledExpr}) / ${total} > 0.8`);
+                } else if (completenessFilter === 'medium') {
+                  parts.push(`(${filledExpr}) / ${total} > 0.4 AND (${filledExpr}) / ${total} <= 0.8`);
+                } else if (completenessFilter === 'low') {
+                  parts.push(`(${filledExpr}) / ${total} <= 0.4`);
+                }
+              }
+
+              const filterQuery = parts.join(' AND ');
+
+              // Build a human-readable summary
+              const summary: string[] = [];
+              if (af.length > 0) summary.push(`${af.length} dropdown filter(s)`);
+              if (afAdv.length > 0) summary.push(`${afAdv.length} advanced filter(s)`);
+              if (activeToggles.length > 0) summary.push(activeToggles.map(([k]) => k === 'hasEmail' ? 'Has Email' : k === 'hasPhone' ? 'Has Phone' : 'Has LinkedIn').join(', '));
+              if (hasCompleteness) summary.push(`Completeness: ${completenessFilter}`);
+              if (hasDataSource) summary.push('Data source filtered');
+              if (hasSearch) summary.push(`Search: "${search}"`);
+
+              const currentCount = result?.total ? formatNumber(result.total) : '?';
+
+              const name = prompt(
+                `Create Segment\n\n` +
+                `Filters: ${summary.join(' + ')}\n` +
+                `Matching: ~${currentCount} leads\n\n` +
+                `Enter segment name:`
+              );
+              if (!name) return;
+
               try {
-                await apiCall('/api/segments', { method: 'POST', body: { name, filterQuery: parts.join(' AND ') } });
-                toastSuccess(`Segment "${name}" created!`);
+                await apiCall('/api/segments', { method: 'POST', body: { name, filterQuery } });
+                toastSuccess(`Segment "${name}" created with ${summary.join(' + ')}!`);
               } catch (e: any) { toastError(e.message); }
             }}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>

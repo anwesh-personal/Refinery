@@ -234,6 +234,39 @@ export default function SegmentsPage() {
           </div>
         </div>
         <div style={{ marginBottom: 20 }}>
+          <label style={labelStyle}>Quick Templates — One-Click Segments</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            {[
+              { label: '✉️ Verified Emails Only', name: 'Verified Emails', query: "`_verification_status` = 'valid'" },
+              { label: '📱 Has Phone Number', name: 'Has Phone', query: "`mobile_phone` IS NOT NULL AND toString(`mobile_phone`) != ''" },
+              { label: '💼 Corporate Emails', name: 'Corporate Emails', query: "(`business_email` IS NOT NULL AND toString(`business_email`) != '') AND `business_email` NOT LIKE '%gmail.com%' AND `business_email` NOT LIKE '%yahoo.com%' AND `business_email` NOT LIKE '%hotmail.com%' AND `business_email` NOT LIKE '%outlook.com%'" },
+              { label: '🔗 Has LinkedIn', name: 'Has LinkedIn', query: "`linkedin_url` IS NOT NULL AND toString(`linkedin_url`) != ''" },
+              { label: '📱+✉️ Phone + Email', name: 'Phone and Email', query: "(`mobile_phone` IS NOT NULL AND toString(`mobile_phone`) != '') AND ((`business_email` IS NOT NULL AND toString(`business_email`) != '') OR (`personal_emails` IS NOT NULL AND toString(`personal_emails`) != ''))" },
+              { label: '⚠️ Unverified Leads', name: 'Unverified Leads', query: "(`_verification_status` IS NULL OR `_verification_status` = '' OR `_verification_status` = 'unknown')" },
+              { label: '🆕 Last 7 Days', name: 'Recent Ingest (7d)', query: "`_ingested_at` >= now() - INTERVAL 7 DAY" },
+              { label: '📧 Gmail Users', name: 'Gmail Users', query: "(`personal_emails` LIKE '%gmail.com%' OR `business_email` LIKE '%gmail.com%')" },
+            ].map(t => (
+              <button key={t.label} onClick={() => {
+                const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                setName(`${t.name} — ${today}`);
+                setFilterQuery(t.query);
+                setFilterGroup(sqlToFilterGroup(t.query));
+                setError(null); setSuggestion(null);
+              }}
+                style={{
+                  padding: '6px 14px', borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)',
+                  transition: 'all 0.15s', whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ marginBottom: 20 }}>
           <label style={labelStyle}>Filter Conditions *</label>
           <FilterBuilder
             value={filterGroup}
