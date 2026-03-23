@@ -591,13 +591,13 @@ export default function TeamPage() {
                 }}
               >
                 {/* Mode Toggle */}
-                <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'var(--bg-hover)', padding: 4, borderRadius: 10, width: 'fit-content' }}>
+                <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'var(--bg-elevated)', padding: 4, borderRadius: 10, width: 'fit-content', border: '1px solid var(--border)' }}>
                   <button
                     onClick={() => setCreateMode('invite')}
                     style={{
                       padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
                       background: createMode === 'invite' ? 'var(--accent)' : 'transparent',
-                      color: createMode === 'invite' ? '#fff' : 'var(--text-secondary)',
+                      color: createMode === 'invite' ? 'var(--accent-contrast)' : 'var(--text-secondary)',
                       transition: 'all 0.2s',
                     }}
                   >
@@ -609,7 +609,7 @@ export default function TeamPage() {
                     style={{
                       padding: '8px 20px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
                       background: createMode === 'create' ? 'var(--accent)' : 'transparent',
-                      color: createMode === 'create' ? '#fff' : 'var(--text-secondary)',
+                      color: createMode === 'create' ? 'var(--accent-contrast)' : 'var(--text-secondary)',
                       transition: 'all 0.2s',
                     }}
                   >
