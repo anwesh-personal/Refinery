@@ -142,12 +142,12 @@ export default function SegmentsPage() {
 
       {/* Status messages */}
       {error && (
-        <div style={{ marginBottom: 16, padding: '12px 18px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#ef4444' }}>
+        <div style={{ marginBottom: 16, padding: '12px 18px', borderRadius: 10, background: 'var(--red-muted)', border: '1px solid var(--red)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--red)' }}>
           <AlertCircle size={16} /> {error}
         </div>
       )}
       {success && (
-        <div style={{ marginBottom: 16, padding: '12px 18px', borderRadius: 10, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#22c55e' }}>
+        <div style={{ marginBottom: 16, padding: '12px 18px', borderRadius: 10, background: 'var(--green-muted)', border: '1px solid var(--green)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--green)' }}>
           <CheckCircle2 size={16} /> {success}
         </div>
       )}

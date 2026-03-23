@@ -197,7 +197,7 @@ export default function ConfigPage() {
                 <div style={{ flex: 1 }}>
                   <h3 style={{ margin: 0, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                     {s.name}
-                    {s.is_default && <span style={{ fontSize: 10, background: 'var(--accent)', color: '#000', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>DEFAULT</span>}
+                    {s.is_default && <span style={{ fontSize: 10, background: 'var(--accent)', color: 'var(--accent-contrast)', padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>DEFAULT</span>}
                   </h3>
                   <div style={{ fontSize: 13, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{s.type}</div>
                 </div>

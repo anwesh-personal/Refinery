@@ -458,9 +458,9 @@ export default function EmailVerifierPage() {
           style={{
             marginBottom: 20, padding: '14px 20px', borderRadius: 12,
             display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, fontWeight: 600,
-            background: toast.type === 'error' ? 'rgba(239,68,68,0.12)' : toast.type === 'warning' ? 'rgba(245,158,11,0.12)' : 'rgba(59,130,246,0.12)',
-            border: `1px solid ${toast.type === 'error' ? 'rgba(239,68,68,0.3)' : toast.type === 'warning' ? 'rgba(245,158,11,0.3)' : 'rgba(59,130,246,0.3)'}`,
-            color: toast.type === 'error' ? '#ef4444' : toast.type === 'warning' ? '#f59e0b' : '#3b82f6',
+            background: toast.type === 'error' ? 'var(--red-muted)' : toast.type === 'warning' ? 'var(--yellow-muted)' : 'var(--blue-muted)',
+            border: `1px solid ${toast.type === 'error' ? 'var(--red)' : toast.type === 'warning' ? 'var(--yellow)' : 'var(--blue)'}`,
+            color: toast.type === 'error' ? 'var(--red)' : toast.type === 'warning' ? 'var(--yellow)' : 'var(--blue)',
           }}
         >
           {toast.type === 'error' ? <XCircle size={18} /> : <ShieldAlert size={18} />}
@@ -481,11 +481,11 @@ export default function EmailVerifierPage() {
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   onClick={() => setInputType('text')}
-                  style={{ padding: '6px 12px', fontSize: 12, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border)', background: inputType === 'text' ? 'var(--blue)' : 'transparent', color: inputType === 'text' ? '#fff' : 'var(--text-secondary)', transition: 'all 0.2s' }}
+                  style={{ padding: '6px 12px', fontSize: 12, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border)', background: inputType === 'text' ? 'var(--blue)' : 'transparent', color: inputType === 'text' ? 'var(--accent-contrast)' : 'var(--text-secondary)', transition: 'all 0.2s' }}
                 >Raw Text</button>
                 <button
                   onClick={() => setInputType('csv')}
-                  style={{ padding: '6px 12px', fontSize: 12, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border)', background: inputType === 'csv' ? 'var(--blue)' : 'transparent', color: inputType === 'csv' ? '#fff' : 'var(--text-secondary)', transition: 'all 0.2s' }}
+                  style={{ padding: '6px 12px', fontSize: 12, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--border)', background: inputType === 'csv' ? 'var(--blue)' : 'transparent', color: inputType === 'csv' ? 'var(--accent-contrast)' : 'var(--text-secondary)', transition: 'all 0.2s' }}
                 >CSV Upload</button>
               </div>
             </div>
@@ -630,8 +630,8 @@ export default function EmailVerifierPage() {
               <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: 8,
                 padding: '10px 20px', borderRadius: 10,
-                background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
-                fontSize: 13, fontWeight: 600, color: '#22c55e',
+                background: 'var(--green-muted)', border: '1px solid var(--green)',
+                fontSize: 13, fontWeight: 600, color: 'var(--green)',
               }}>
                 <CheckCircle size={16} />
                 Safe to navigate away — processing continues on server

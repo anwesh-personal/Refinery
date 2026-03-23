@@ -40,7 +40,7 @@ export default function ImpersonationBanner() {
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
         background: 'linear-gradient(90deg, var(--yellow) 0%, var(--accent) 100%)',
-        color: '#000', padding: '8px 24px',
+        color: 'var(--accent-contrast)', padding: '8px 24px',
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
         fontSize: 13, fontWeight: 700,
         boxShadow: '0 2px 12px rgba(0,0,0,0.2)',
@@ -54,13 +54,13 @@ export default function ImpersonationBanner() {
         onClick={handleReturn}
         style={{
           marginLeft: 12, padding: '4px 16px', borderRadius: 6,
-          fontSize: 12, fontWeight: 700, border: '2px solid #000',
-          background: 'transparent', color: '#000', cursor: 'pointer',
+          fontSize: 12, fontWeight: 700, border: '2px solid var(--accent-contrast)',
+          background: 'transparent', color: 'var(--accent-contrast)', cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: 6,
           transition: 'all 0.15s',
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = '#000'; e.currentTarget.style.color = 'var(--yellow)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#000'; }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-contrast)'; e.currentTarget.style.color = 'var(--yellow)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--accent-contrast)'; }}
       >
         <LogOut size={12} />
         End Session

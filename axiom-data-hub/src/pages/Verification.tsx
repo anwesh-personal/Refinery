@@ -355,7 +355,7 @@ export default function VerificationPage() {
     { label: '✅ Safe', color: 'var(--green)', bg: 'rgba(34,197,94,0.1)', categories: ['ok', 'ok_for_all'] },
     { label: '⚠️ Risky', color: 'var(--yellow)', bg: 'rgba(234,179,8,0.1)', categories: ['unknown', 'antispam_system', 'soft_bounce', 'departmental', 'invalid_vendor_response'] },
     { label: '❌ Dead', color: 'var(--red)', bg: 'rgba(239,68,68,0.1)', categories: ['email_disabled', 'dead_server', 'invalid_mx', 'invalid_syntax', 'smtp_protocol', 'hard_bounces'] },
-    { label: '🚫 Threats', color: '#a855f7', bg: 'rgba(168,85,247,0.1)', categories: ['complainers', 'sleeper_cell', 'seeds', 'email_bot', 'spamcops', 'spamtraps', 'threat_endings', 'threat_string', 'advisory_trap', 'blacklisted', 'disposables', 'bot_clickers', 'litigators', 'lashback'] },
+    { label: '🚫 Threats', color: 'var(--purple)', bg: 'var(--purple-muted)', categories: ['complainers', 'sleeper_cell', 'seeds', 'email_bot', 'spamcops', 'spamtraps', 'threat_endings', 'threat_string', 'advisory_trap', 'blacklisted', 'disposables', 'bot_clickers', 'litigators', 'lashback'] },
   ];
 
 
@@ -538,7 +538,7 @@ export default function VerificationPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <input type="file" accept=".csv" ref={fileInputRef} onChange={handleBulkUpload} style={{ display: 'none' }} id="v550-upload" />
             <label htmlFor="v550-upload" style={{
-              cursor: 'pointer', padding: '10px 20px', borderRadius: 10, background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'background 0.2s',
+              cursor: 'pointer', padding: '10px 20px', borderRadius: 10, background: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 13, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'background 0.2s',
               opacity: uploadingCSV ? 0.7 : 1, pointerEvents: uploadingCSV ? 'none' : 'auto'
             }}>
               <Upload size={16} /> {uploadingCSV ? 'Uploading to Verify550...' : 'Select & Upload CSV'}

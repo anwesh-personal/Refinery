@@ -749,7 +749,7 @@ export default function DatabasePage() {
                   display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8,
                   fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s',
                   background: quickToggles[t.key] ? 'var(--accent)' : 'var(--bg-card-hover)',
-                  color: quickToggles[t.key] ? '#fff' : 'var(--text-secondary)',
+                  color: quickToggles[t.key] ? 'var(--accent-contrast)' : 'var(--text-secondary)',
                   border: `1px solid ${quickToggles[t.key] ? 'var(--accent)' : 'var(--border)'}`,
                 }}>
                 {t.icon === 'mail' ? <Mail size={12} /> : t.icon === 'phone' ? <Phone size={12} /> : <Linkedin size={12} />} {t.label}
@@ -850,7 +850,7 @@ export default function DatabasePage() {
               <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.05em' }}>Active:</span>
                 {chips.map((c, i) => (
-                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: 'rgba(99,102,241,0.1)', color: 'var(--accent)', border: '1px solid rgba(99,102,241,0.2)' }}>
+                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: 'var(--accent-muted)', color: 'var(--accent)', border: '1px solid var(--accent)' }}>
                     {c.label}
                     <X size={10} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => { c.onRemove(); setPage(1); }} />
                   </span>
@@ -933,12 +933,12 @@ export default function DatabasePage() {
 
       {/* --- NOTIFICATIONS --- */}
       {error && (
-        <div style={{ marginBottom: 24, padding: '12px 18px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#ef4444' }}>
+        <div style={{ marginBottom: 24, padding: '12px 18px', borderRadius: 10, background: 'var(--red-muted)', border: '1px solid var(--red)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--red)' }}>
           <AlertCircle size={16} /> {error}
         </div>
       )}
       {success && activeTab === 'sql' && (
-        <div style={{ marginBottom: 24, padding: '12px 18px', borderRadius: 10, background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#22c55e' }}>
+        <div style={{ marginBottom: 24, padding: '12px 18px', borderRadius: 10, background: 'var(--green-muted)', border: '1px solid var(--green)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--green)' }}>
           <CheckCircle2 size={16} /> {success}
         </div>
       )}
@@ -976,7 +976,7 @@ export default function DatabasePage() {
                   <select value={dataSourceFilter} onChange={e => { setDataSourceFilter(e.target.value); setPage(1); }} style={{
                     background: dataSourceFilter ? 'var(--accent)' : 'var(--bg-input)',
                     border: '1px solid var(--border)', borderRadius: 6,
-                    color: dataSourceFilter ? '#fff' : 'var(--text-primary)',
+                    color: dataSourceFilter ? 'var(--accent-contrast)' : 'var(--text-primary)',
                     fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
                   }}>
                     <option value="">All Sources</option>
@@ -1069,7 +1069,7 @@ export default function DatabasePage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12, padding: '8px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 11, color: 'var(--text-tertiary)' }}>
           <span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Data Completeness</span>
           {(['all', 'high', 'medium', 'low'] as const).map(level => {
-            const colors: Record<string, string> = { all: 'var(--text-secondary)', high: '#22c55e', medium: '#eab308', low: '#ef4444' };
+            const colors: Record<string, string> = { all: 'var(--text-secondary)', high: 'var(--green)', medium: 'var(--yellow)', low: 'var(--red)' };
             const labels: Record<string, string> = { all: 'All', high: '>80%', medium: '40–80%', low: '<40%' };
             const isActive = completenessFilter === level;
             return (
@@ -1147,7 +1147,7 @@ export default function DatabasePage() {
                   // Completeness score using named constants
                   const values = Object.values(row).filter(v => v !== null && v !== '');
                   const score = values.length / resultCols.length;
-                  const completenessColor = score > COMPLETENESS_HIGH ? '#22c55e' : score > COMPLETENESS_LOW ? '#eab308' : '#ef4444';
+                  const completenessColor = score > COMPLETENESS_HIGH ? 'var(--green)' : score > COMPLETENESS_LOW ? 'var(--yellow)' : 'var(--red)';
 
                   return (
                     <tr key={i} style={{ transition: 'background 0.1s', cursor: 'pointer', background: isSelected ? 'var(--bg-hover)' : 'transparent' }}
@@ -1326,7 +1326,7 @@ export default function DatabasePage() {
               <div style={{ display: 'flex', gap: 8 }}>
                 {(['exact', 'contains'] as const).map(m => (
                   <button key={m} onClick={() => { setFrMatchMode(m); setFrPreviewCount(null); }}
-                    style={{ flex: 1, padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: frMatchMode === m ? 'var(--accent)' : 'var(--bg-hover)', color: frMatchMode === m ? '#fff' : 'var(--text-secondary)', border: `1px solid ${frMatchMode === m ? 'var(--accent)' : 'var(--border)'}` }}>
+                    style={{ flex: 1, padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: frMatchMode === m ? 'var(--accent)' : 'var(--bg-hover)', color: frMatchMode === m ? 'var(--accent-contrast)' : 'var(--text-secondary)', border: `1px solid ${frMatchMode === m ? 'var(--accent)' : 'var(--border)'}` }}>
                     {m === 'exact' ? 'Exact Match' : 'Contains'}
                   </button>
                 ))}
@@ -1336,7 +1336,7 @@ export default function DatabasePage() {
               <input type="text" placeholder="Replace with..." value={frReplace} onChange={e => setFrReplace(e.target.value)}
                 style={{ padding: '10px 12px', borderRadius: 10, fontSize: 13, background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)', outline: 'none' }} />
               {frPreviewCount !== null && (
-                <div style={{ padding: '8px 12px', borderRadius: 8, background: frPreviewCount > 0 ? 'rgba(234,179,8,0.1)' : 'rgba(34,197,94,0.1)', fontSize: 12, fontWeight: 600, color: frPreviewCount > 0 ? '#eab308' : '#22c55e' }}>
+                <div style={{ padding: '8px 12px', borderRadius: 8, background: frPreviewCount > 0 ? 'var(--yellow-muted)' : 'var(--green-muted)', fontSize: 12, fontWeight: 600, color: frPreviewCount > 0 ? 'var(--yellow)' : 'var(--green)' }}>
                   {frPreviewCount > 0 ? `⚠️ ${frPreviewCount.toLocaleString()} rows will be affected` : '✅ No matching rows found'}
                 </div>
               )}
@@ -1361,7 +1361,7 @@ export default function DatabasePage() {
                   } catch (e: any) { toastError(e.message); }
                   setFrProcessing(false);
                 }}
-                  style={{ flex: 1, padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: (!frColumn || !frFind || frProcessing) ? 'var(--bg-hover)' : 'var(--red)', color: (!frColumn || !frFind || frProcessing) ? 'var(--text-tertiary)' : '#fff', border: 'none', transition: 'all 0.15s' }}>
+                  style={{ flex: 1, padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: (!frColumn || !frFind || frProcessing) ? 'var(--bg-hover)' : 'var(--red)', color: (!frColumn || !frFind || frProcessing) ? 'var(--text-tertiary)' : 'var(--accent-contrast)', border: 'none', transition: 'all 0.15s' }}>
                   {frProcessing ? 'Processing...' : 'Replace All'}
                 </button>
               </div>
@@ -1394,7 +1394,7 @@ export default function DatabasePage() {
                 } catch (e: any) { toastError(e.message); }
                 setDupLoading(false);
               }}
-                style={{ padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: 'var(--accent)', color: '#fff', border: 'none', whiteSpace: 'nowrap' }}>
+                style={{ padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: 'var(--accent)', color: 'var(--accent-contrast)', border: 'none', whiteSpace: 'nowrap' }}>
                 {dupLoading ? <Loader2 size={14} className="spin" /> : 'Scan'}
               </button>
             </div>
