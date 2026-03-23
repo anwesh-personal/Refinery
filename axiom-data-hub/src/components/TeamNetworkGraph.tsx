@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { getAvatarUrl } from '../lib/avatar';
-import { apiCall } from '../lib/api';
 import { Activity, Database, Zap, Send, Clock, User, ShieldCheck } from 'lucide-react';
 
 interface Profile {
@@ -70,6 +69,26 @@ export const TeamNetworkGraph: React.FC = () => {
     const [globalTotals, setGlobalTotals] = useState({ ingestions: 0, verifications: 0, targets: 0, totalOps: 0 });
     const [loading, setLoading] = useState(true);
 
+    /** Fetch with a hard timeout so we never hang forever */
+    const fetchWithTimeout = async <T,>(url: string, timeoutMs = 5000): Promise<T | null> => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) return null;
+            const res = await fetch(
+                `${(import.meta as any).env?.VITE_API_URL || 'http://localhost:4000'}${url}`,
+                { headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }, signal: controller.signal },
+            );
+            clearTimeout(timer);
+            if (!res.ok) return null;
+            return await res.json() as T;
+        } catch {
+            clearTimeout(timer);
+            return null;
+        }
+    };
+
     // Layout & Physics State
     const nodesRef = useRef<NodeData[]>([]);
     const edgesRef = useRef<EdgeData[]>([]);
@@ -77,61 +96,55 @@ export const TeamNetworkGraph: React.FC = () => {
     const isDragging = useRef<string | null>(null);
 
     useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            try {
-                // Fetch profiles and stats in parallel
-                const [{ data, error }, statsRaw] = await Promise.all([
-                    supabase.from('profiles').select('*'),
-                    apiCall<any>('/api/dashboard/user-stats').catch(() => null)
-                ]);
+        let cancelled = false;
 
-                if (!error && data) setProfiles(data);
-
-                // Handle BOTH old format (flat array) and new format ({ perUser, totals })
-                const smap: Record<string, UserOperationStats> = {};
-                const perUserList: UserOperationStats[] = Array.isArray(statsRaw)
-                    ? statsRaw                    // old backend: flat array
-                    : statsRaw?.perUser || [];     // new backend: { perUser, totals }
-
-                perUserList.forEach(s => {
-                    smap[s.userId] = s;
-                    if (s.name) smap[s.name] = s;
-                });
-                setStatsMap(smap);
-
-                // Global totals: use new shape if available, otherwise compute from perUser
-                if (statsRaw?.totals) {
-                    setGlobalTotals(statsRaw.totals);
-                } else {
-                    // Fallback: sum from perUser entries OR fetch from existing endpoints
-                    const uniqueStats = [...new Map(perUserList.map(s => [s.userId, s])).values()];
-                    if (uniqueStats.length > 0) {
-                        setGlobalTotals({
-                            ingestions: uniqueStats.reduce((a, s) => a + s.ingestions, 0),
-                            verifications: uniqueStats.reduce((a, s) => a + s.verifications, 0),
-                            targets: uniqueStats.reduce((a, s) => a + s.targets, 0),
-                            totalOps: uniqueStats.reduce((a, s) => a + s.totalOps, 0),
-                        });
-                    } else {
-                        // Last resort: count from the activity feed which already works
-                        try {
-                            const activities = await apiCall<{ type: string }[]>('/api/dashboard/activity?limit=1000').catch(() => []);
-                            if (Array.isArray(activities) && activities.length > 0) {
-                                const ings = activities.filter(a => a.type === 'ingestion').length;
-                                const vers = activities.filter(a => a.type === 'verification').length;
-                                const trgs = activities.filter(a => a.type === 'target').length;
-                                setGlobalTotals({ ingestions: ings, verifications: vers, targets: trgs, totalOps: ings + vers + trgs });
-                            }
-                        } catch { /* */ }
-                    }
-                }
-            } catch (err) {
-                console.error('Failed to fetch network data:', err);
+        // Step 1: Load profiles FIRST (fast — Supabase, not ClickHouse)
+        const loadProfiles = async () => {
+            const { data, error } = await supabase.from('profiles').select('*');
+            if (!cancelled && !error && data) {
+                setProfiles(data);
+                setLoading(false); // Cards render immediately
+            } else if (!cancelled) {
+                setLoading(false);
             }
-            setLoading(false);
         };
-        fetchData();
+
+        // Step 2: Load stats async (slow — ClickHouse queries, but won't block cards)
+        const loadStats = async () => {
+            const statsRaw = await fetchWithTimeout<any>('/api/dashboard/user-stats', 5000);
+            if (cancelled) return;
+
+            const smap: Record<string, UserOperationStats> = {};
+            const perUserList: UserOperationStats[] = Array.isArray(statsRaw)
+                ? statsRaw
+                : statsRaw?.perUser || [];
+
+            perUserList.forEach(s => {
+                smap[s.userId] = s;
+                if (s.name) smap[s.name] = s;
+            });
+            setStatsMap(smap);
+
+            if (statsRaw?.totals) {
+                setGlobalTotals(statsRaw.totals);
+            } else {
+                const uniqueStats = [...new Map(perUserList.map(s => [s.userId, s])).values()];
+                if (uniqueStats.length > 0) {
+                    setGlobalTotals({
+                        ingestions: uniqueStats.reduce((a, s) => a + s.ingestions, 0),
+                        verifications: uniqueStats.reduce((a, s) => a + s.verifications, 0),
+                        targets: uniqueStats.reduce((a, s) => a + s.targets, 0),
+                        totalOps: uniqueStats.reduce((a, s) => a + s.totalOps, 0),
+                    });
+                }
+                // No more fallback to /activity?limit=1000 — that was causing the hang
+            }
+        };
+
+        loadProfiles();
+        loadStats();
+
+        return () => { cancelled = true; };
     }, []);
 
     useEffect(() => {
