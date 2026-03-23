@@ -162,6 +162,10 @@ async function start() {
     // Backfill user attribution for historical operations
     const { backfillUserAttribution } = await import('./services/dashboard.js');
     await backfillUserAttribution();
+
+    // Start segment auto-refresh scheduler
+    const { startSegmentScheduler } = await import('./services/segment-scheduler.js');
+    startSegmentScheduler();
   } catch (e: any) {
     console.warn(`[Server] ⚠ Database init skipped (ClickHouse unavailable): ${e.message}`);
     console.warn('[Server] ⚠ The API will start but database operations will fail until ClickHouse is available.');

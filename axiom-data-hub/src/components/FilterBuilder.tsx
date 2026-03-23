@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from './UI';
 import { apiCall } from '../lib/api';
-import { Plus, Trash2, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Loader2, Layers } from 'lucide-react';
 
 // ── Types ──
 export interface FilterRule {
@@ -14,6 +14,7 @@ export interface FilterRule {
 export interface FilterGroup {
   connector: 'AND' | 'OR';
   rules: FilterRule[];
+  groups?: FilterGroup[];
 }
 
 interface ColumnMeta {
@@ -65,21 +66,28 @@ function newRule(): FilterRule {
 
 // ── Convert filter group to SQL WHERE clause ──
 export function filterGroupToSQL(group: FilterGroup): string {
-  const parts = group.rules
+  const parts: string[] = [];
+
+  // Rules
+  group.rules
     .filter(r => r.column)
-    .map(r => {
-      if (r.operator === 'IS NULL') return `${r.column} IS NULL`;
-      if (r.operator === 'IS NOT NULL') return `${r.column} IS NOT NULL`;
+    .forEach(r => {
+      if (r.operator === 'IS NULL') { parts.push(`${r.column} IS NULL`); return; }
+      if (r.operator === 'IS NOT NULL') { parts.push(`${r.column} IS NOT NULL`); return; }
       if (r.operator === 'IN') {
         const items = r.value.split(',').map(v => `'${v.trim().replace(/'/g, "''")}'`).join(', ');
-        return `${r.column} IN (${items})`;
+        parts.push(`${r.column} IN (${items})`); return;
       }
-      if (r.operator === 'LIKE' || r.operator === 'NOT LIKE') {
-        return `${r.column} ${r.operator} '${r.value.replace(/'/g, "''")}'`;
-      }
-      return `${r.column} ${r.operator} '${r.value.replace(/'/g, "''")}'`;
+      parts.push(`${r.column} ${r.operator} '${r.value.replace(/'/g, "''")}' `);
     });
-  return parts.join(` ${group.connector} `);
+
+  // Nested groups (recursive)
+  (group.groups || []).forEach(sub => {
+    const subSQL = filterGroupToSQL(sub);
+    if (subSQL) parts.push(`(${subSQL})`);
+  });
+
+  return parts.join(` ${group.connector} `).trim();
 }
 
 // ── Parse SQL WHERE clause back into filter group ──
@@ -231,6 +239,22 @@ export default function FilterBuilder({ value, onChange, disabled }: Props) {
     onChange({ ...value, connector: value.connector === 'AND' ? 'OR' : 'AND' });
   };
 
+  const addGroup = () => {
+    const groups = value.groups || [];
+    onChange({ ...value, groups: [...groups, { connector: 'AND', rules: [newRule()] }] });
+  };
+
+  const updateGroup = (idx: number, updated: FilterGroup) => {
+    const groups = [...(value.groups || [])];
+    groups[idx] = updated;
+    onChange({ ...value, groups });
+  };
+
+  const removeGroup = (idx: number) => {
+    const groups = (value.groups || []).filter((_, i) => i !== idx);
+    onChange({ ...value, groups });
+  };
+
   const selectStyle: React.CSSProperties = {
     padding: '7px 10px', borderRadius: 7, fontSize: 12,
     background: 'var(--bg-input)', border: '1px solid var(--border)',
@@ -330,10 +354,34 @@ export default function FilterBuilder({ value, onChange, disabled }: Props) {
         );
       })}
 
-      {/* Add rule */}
-      <div style={{ marginTop: 8 }}>
+      {/* Nested sub-groups */}
+      {(value.groups || []).map((sub, gi) => (
+        <div key={`grp-${gi}`} style={{
+          marginTop: 8, paddingLeft: 16, borderLeft: '3px solid var(--accent)',
+          borderRadius: 4, position: 'relative',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Sub-group ({sub.connector})
+            </span>
+            <button onClick={() => removeGroup(gi)} disabled={disabled}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: 2, display: 'flex' }}
+              onMouseOver={e => (e.currentTarget.style.color = 'var(--red)')}
+              onMouseOut={e => (e.currentTarget.style.color = 'var(--text-tertiary)')}>
+              <Trash2 size={12} />
+            </button>
+          </div>
+          <FilterBuilder value={sub} onChange={g => updateGroup(gi, g)} disabled={disabled} />
+        </div>
+      ))}
+
+      {/* Add rule / group */}
+      <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
         <Button variant="ghost" icon={<Plus size={13} />} onClick={addRule} disabled={disabled}>
           Add Condition
+        </Button>
+        <Button variant="ghost" icon={<Layers size={13} />} onClick={addGroup} disabled={disabled}>
+          Add Group
         </Button>
       </div>
     </div>
