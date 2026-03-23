@@ -27,6 +27,7 @@ import verify550Routes from './routes/verify550.js';
 import logsRoutes from './routes/logs.js';
 import dashboardRoutes from './routes/dashboard.js';
 import mtaProvidersRoutes from './routes/mta-providers.js';
+import segmentColumnsRoutes from './routes/segment-columns.js';
 import { setupScheduler } from './services/ingestion-rules.js';
 import { ensureEnvServersRegistered } from './services/servers.js';
 
@@ -92,6 +93,7 @@ app.use('/api/v550', verify550Routes);
 app.use('/api/logs', logsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/mta-providers', mtaProvidersRoutes);
+app.use('/api/segment-columns', segmentColumnsRoutes);
 
 // ── v1 API (machine-to-machine, API key authenticated) ──
 app.use('/api/v1/keys', v1KeysRoutes);

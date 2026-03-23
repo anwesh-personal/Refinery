@@ -3,6 +3,8 @@ import { PageHeader, StatCard, SectionHeader, Button, Input } from '../component
 import { ServerSelector } from '../components/ServerSelector';
 import { useState, useEffect, useCallback } from 'react';
 import { apiCall } from '../lib/api';
+import FilterBuilder, { filterGroupToSQL, sqlToFilterGroup } from '../components/FilterBuilder';
+import type { FilterGroup } from '../components/FilterBuilder';
 
 interface Segment {
   id: string;
@@ -46,16 +48,14 @@ export default function SegmentsPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [editSuggestion, setEditSuggestion] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
-  // Live validation state
-  const [validating, setValidating] = useState(false);
-  const [queryValid, setQueryValid] = useState<boolean | null>(null);
+  const [editFilterGroup, setEditFilterGroup] = useState<FilterGroup>({ connector: 'AND', rules: [{ id: 'e0', column: '', operator: '=', value: '' }] });
 
   // Form
   const [name, setName] = useState('');
   const [niche, setNiche] = useState('');
   const [clientName, setClientName] = useState('');
   const [filterQuery, setFilterQuery] = useState('');
+  const [filterGroup, setFilterGroup] = useState<FilterGroup>({ connector: 'AND', rules: [{ id: 'r0', column: '', operator: '=', value: '' }] });
 
   const fetchSegments = useCallback(async () => {
     setLoading(true);
@@ -82,7 +82,7 @@ export default function SegmentsPage() {
         body: { name, niche: niche || undefined, clientName: clientName || undefined, filterQuery },
       });
       setSuccess(`Segment "${name}" created`);
-      setName(''); setNiche(''); setClientName(''); setFilterQuery(''); setQueryValid(null);
+      setName(''); setNiche(''); setClientName(''); setFilterQuery('');
       setPreview(null);
       fetchSegments();
       setTimeout(() => setSuccess(null), 3000);
@@ -112,27 +112,12 @@ export default function SegmentsPage() {
     setPreviewing(false);
   };
 
-  // Live validation with debounce
-  useEffect(() => {
-    if (!filterQuery.trim()) { setQueryValid(null); return; }
-    const t = setTimeout(async () => {
-      setValidating(true);
-      try {
-        const r = await apiCall<{valid: boolean; suggestion?: string}>('/api/segments/validate', {
-          method: 'POST', body: { filterQuery },
-        });
-        setQueryValid(r.valid);
-        if (!r.valid && r.suggestion) setSuggestion(r.suggestion);
-        else setSuggestion(null);
-      } catch { setQueryValid(null); }
-      setValidating(false);
-    }, 700);
-    return () => clearTimeout(t);
-  }, [filterQuery]);
 
   const openEdit = (seg: Segment) => {
     setEditingSegment(seg);
     setEditQuery(seg.filter_query);
+    const parsed = sqlToFilterGroup(seg.filter_query);
+    setEditFilterGroup(parsed);
     setEditError(null);
     setEditSuggestion(null);
   };
@@ -250,29 +235,16 @@ export default function SegmentsPage() {
           </div>
         </div>
         <div style={{ marginBottom: 20 }}>
-          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 8 }}>
-            Filter Query (WHERE clause) *
-            {validating && <Loader2 size={11} className="spin" style={{ color: 'var(--text-tertiary)' }} />}
-            {!validating && queryValid === true && <CheckCircle2 size={12} style={{ color: 'var(--green)' }} />}
-            {!validating && queryValid === false && <AlertCircle size={12} style={{ color: 'var(--red)' }} />}
-          </label>
-          <textarea
-            rows={3}
-            placeholder="e.g. primary_industry = 'Real Estate' AND personal_state = 'TX'"
-            value={filterQuery}
-            onChange={(e) => { setFilterQuery(e.target.value); setQueryValid(null); setSuggestion(null); }}
-            style={{
-              width: '100%', padding: '12px 16px', borderRadius: 12,
-              fontSize: 13, fontFamily: "'JetBrains Mono', monospace", fontWeight: 500,
-              outline: 'none', resize: 'vertical',
-              background: 'var(--bg-input)',
-              border: `1px solid ${queryValid === false ? 'var(--red)' : queryValid === true ? 'var(--green)' : 'var(--border)'}`,
-              color: 'var(--text-primary)', transition: 'border-color 0.2s',
-            }}
+          <label style={labelStyle}>Filter Conditions *</label>
+          <FilterBuilder
+            value={filterGroup}
+            onChange={g => { setFilterGroup(g); setFilterQuery(filterGroupToSQL(g)); setSuggestion(null); }}
           />
-          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 5 }}>
-            Tip: Always quote string values — <code>primary_industry = &apos;Finance&apos;</code> not <code>primary_industry = Finance</code>
-          </div>
+          {filterQuery && (
+            <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-tertiary)', wordBreak: 'break-all' }}>
+              <strong>SQL:</strong> {filterQuery}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <Button icon={creating ? <Loader2 size={14} className="spin" /> : <Plus size={14} />} onClick={createSegment} disabled={creating}>
@@ -390,20 +362,15 @@ export default function SegmentsPage() {
                   style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Apply</button>
               </div>
             )}
-            <textarea
-              rows={5}
-              value={editQuery}
-              onChange={e => { setEditQuery(e.target.value); setEditError(null); setEditSuggestion(null); }}
-              style={{
-                width: '100%', padding: '12px 16px', borderRadius: 10, fontSize: 13,
-                fontFamily: "'JetBrains Mono', monospace", fontWeight: 500,
-                background: 'var(--bg-input)', border: '1px solid var(--border)',
-                color: 'var(--text-primary)', outline: 'none', resize: 'vertical', marginBottom: 16,
-              }}
+            <FilterBuilder
+              value={editFilterGroup}
+              onChange={g => { setEditFilterGroup(g); setEditQuery(filterGroupToSQL(g)); setEditError(null); setEditSuggestion(null); }}
             />
-            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 16 }}>
-              Always quote strings: <code>primary_industry = &apos;Finance&apos;</code> not <code>primary_industry = Finance</code>
-            </div>
+            {editQuery && (
+              <div style={{ marginTop: 10, marginBottom: 16, padding: '8px 12px', borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border)', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-tertiary)', wordBreak: 'break-all' }}>
+                <strong>SQL:</strong> {editQuery}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 10 }}>
               <Button icon={saving ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />} onClick={saveEdit} disabled={saving}>
                 {saving ? 'Saving...' : 'Save & Validate'}
