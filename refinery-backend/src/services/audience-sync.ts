@@ -21,6 +21,7 @@ export interface PushOptions {
   excludeRoleBased?: boolean;
   excludeFreeProviders?: boolean;
   minVerificationScore?: number;
+  dedupDays?: number; // skip emails pushed in other lists within N days (default: 7)
 }
 
 export interface PushProgress {
@@ -30,9 +31,11 @@ export interface PushProgress {
   pushed: number;
   failed: number;
   mtaListId?: string;
+  deduped?: number;  // leads skipped due to cross-list dedup
 }
 
 const BATCH_SIZE = 1000;
+const DEFAULT_DEDUP_DAYS = 7;
 
 const FREE_PROVIDERS = [
   'gmail.com','yahoo.com','hotmail.com','outlook.com','aol.com',
@@ -84,8 +87,13 @@ export async function pushToMTA(options: PushOptions): Promise<PushProgress> {
     return { status: 'failed', message: 'No MTA provider configured', total: 0, pushed: 0, failed: 0 };
   }
 
-  // 1. Count total leads
+  // 1. Count total leads (including dedup check)
+  const dedupDays = options.dedupDays ?? DEFAULT_DEDUP_DAYS;
   const filters = buildFilters(options.segmentId, options.excludeRoleBased, options.excludeFreeProviders);
+
+  // Get recently pushed emails for dedup
+  const recentEmails = dedupDays > 0 ? await getRecentlyPushedEmails(options.targetListId, dedupDays) : new Set<string>();
+
   const [countResult] = await query<{ cnt: string }>(
     `SELECT count() as cnt FROM universal_person FINAL WHERE ${filters}`,
   );
@@ -117,6 +125,7 @@ export async function pushToMTA(options: PushOptions): Promise<PushProgress> {
   let pushed = 0;
   let failed = 0;
   let offset = 0;
+  let totalDeduped = 0;
 
   while (offset < total) {
     const batch = await query<Record<string, string>>(
@@ -140,16 +149,21 @@ export async function pushToMTA(options: PushOptions): Promise<PushProgress> {
       return sub;
     }).filter(s => s.email); // Skip rows with no email
 
-    if (subscribers.length > 0) {
+    // Cross-list dedup: remove emails already pushed recently
+    const deduped = subscribers.filter(s => !recentEmails.has(s.email.toLowerCase()));
+    const dedupSkipped = subscribers.length - deduped.length;
+
+    if (deduped.length > 0) {
       try {
-        const result = await adapter.addSubscribers(mtaList.id, subscribers);
+        const result = await adapter.addSubscribers(mtaList.id, deduped);
         pushed += result.added;
         failed += result.failed;
       } catch (e: any) {
         console.error(`[AudienceSync] Batch error at offset ${offset}:`, e.message);
-        failed += subscribers.length;
+        failed += deduped.length;
       }
     }
+    totalDeduped += dedupSkipped;
 
     offset += BATCH_SIZE;
   }
@@ -170,11 +184,12 @@ export async function pushToMTA(options: PushOptions): Promise<PushProgress> {
 
   return {
     status: 'complete',
-    message: `Pushed ${pushed.toLocaleString()} subscribers to ${adapter.provider}. ${failed} failed.`,
+    message: `Pushed ${pushed.toLocaleString()} to ${adapter.provider}. ${failed} failed. ${totalDeduped} deduped.`,
     total,
     pushed,
     failed,
     mtaListId: mtaList.id,
+    deduped: totalDeduped,
   };
 }
 
@@ -207,4 +222,72 @@ function buildFilters(segmentId: string, excludeRoleBased?: boolean, excludeFree
   }
 
   return parts.join(' AND ');
+}
+
+/**
+ * Get emails that were already pushed in other target lists within the dedup window.
+ * Returns a Set of lowercase emails for O(1) lookup during streaming.
+ */
+async function getRecentlyPushedEmails(excludeListId: string, days: number): Promise<Set<string>> {
+  try {
+    // Get segment IDs of recently pushed target lists (excluding the current one)
+    const recentLists = await query<{ segment_id: string }>(
+      `SELECT segment_id FROM target_lists FINAL
+       WHERE status = 'pushed'
+         AND id != '${esc(excludeListId)}'
+         AND created_at >= now() - INTERVAL ${days} DAY`,
+    );
+
+    if (recentLists.length === 0) return new Set();
+
+    // Collect all emails from those segments
+    const segConditions = recentLists.map(l => `has(_segment_ids, '${esc(l.segment_id)}')`).join(' OR ');
+    const emails = await query<{ email: string }>(
+      `SELECT DISTINCT lower(business_email) as email
+       FROM universal_person FINAL
+       WHERE (${segConditions})
+         AND business_email IS NOT NULL
+         AND business_email != ''
+       LIMIT 500000`,
+    );
+
+    return new Set(emails.map(e => e.email));
+  } catch (e: any) {
+    console.error('[AudienceSync] Dedup query failed:', e.message);
+    return new Set();
+  }
+}
+
+/** Check dedup overlap for a target list (used by the UI preview) */
+export async function checkDedupOverlap(
+  segmentId: string,
+  targetListId: string,
+  days: number = DEFAULT_DEDUP_DAYS,
+): Promise<{ total: number; overlap: number; unique: number }> {
+  const filters = buildFilters(segmentId);
+  const [countResult] = await query<{ cnt: string }>(
+    `SELECT count() as cnt FROM universal_person FINAL WHERE ${filters}`,
+  );
+  const total = Number(countResult?.cnt || 0);
+
+  const recentEmails = await getRecentlyPushedEmails(targetListId, days);
+
+  if (recentEmails.size === 0) {
+    return { total, overlap: 0, unique: total };
+  }
+
+  // Count how many of the current segment's emails are in the dedup set
+  const emails = await query<{ email: string }>(
+    `SELECT lower(business_email) as email
+     FROM universal_person FINAL
+     WHERE ${filters}
+     LIMIT 500000`,
+  );
+
+  let overlap = 0;
+  for (const e of emails) {
+    if (recentEmails.has(e.email)) overlap++;
+  }
+
+  return { total, overlap, unique: total - overlap };
 }

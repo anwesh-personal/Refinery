@@ -1,6 +1,6 @@
 import {
   CloudDownload, Database, ShieldCheck, Filter, Send, Activity, Zap,
-  Loader2, CheckCircle2, AlertCircle
+  Loader2, CheckCircle2, AlertCircle, Mail, MousePointerClick, Ban, Eye
 } from 'lucide-react';
 import { PageHeader, StatCard, GradientCard, ActionCard, SectionHeader, EmptyState } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
@@ -117,6 +117,7 @@ export default function DashboardPage() {
   const [segmentBreakdown, setSegmentBreakdown] = useState<SegmentBreakdown[]>([]);
 
   const [loading, setLoading] = useState(true);
+  const [engagement, setEngagement] = useState<any>(null);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -135,6 +136,8 @@ export default function DashboardPage() {
       setIngestionTrends(ingTrends);
       setVerificationTrends(verTrends);
       setSegmentBreakdown(segBreak);
+      // Fetch engagement metrics (non-blocking)
+      apiCall('/api/dashboard/engagement').then(setEngagement).catch(() => {});
     } catch { /* ignore */ }
     setLoading(false);
   }, []);
@@ -217,6 +220,20 @@ export default function DashboardPage() {
           delay={0.12}
         />
       </div>
+
+      {/* Engagement / Delivery Health */}
+      {engagement && (
+        <>
+          <SectionHeader title="Delivery Health (7d)" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 16, marginBottom: 36 }}>
+            <StatCard label="Opens" value={formatNumber(engagement.engagement?.unique_opens || '0')} sub="Unique opens" icon={<Eye size={18} />} color="var(--green)" colorMuted="var(--green-muted)" delay={0.06} />
+            <StatCard label="Clicks" value={formatNumber(engagement.engagement?.unique_clicks || '0')} sub="Unique clicks" icon={<MousePointerClick size={18} />} color="var(--accent)" colorMuted="var(--accent-muted)" delay={0.12} />
+            <StatCard label="Bounces" value={formatNumber(engagement.engagement?.bounces || '0')} sub={`${engagement.engagement?.hard_bounces || 0} hard`} icon={<AlertCircle size={18} />} color="var(--red)" colorMuted="var(--red-muted)" delay={0.18} />
+            <StatCard label="Complaints" value={formatNumber(engagement.engagement?.complaints || '0')} sub="Spam reports" icon={<Ban size={18} />} color="var(--yellow)" colorMuted="var(--yellow-muted)" delay={0.24} />
+            <StatCard label="Suppressed" value={formatNumber(String(Number(engagement.suppressed?.bounced || 0) + Number(engagement.suppressed?.unsubscribed || 0)))} sub={`${engagement.suppressed?.bounced || 0} bounced · ${engagement.suppressed?.unsubscribed || 0} unsub`} icon={<Mail size={18} />} color="var(--text-tertiary)" colorMuted="var(--bg-elevated)" delay={0.30} />
+          </div>
+        </>
+      )}
 
       {/* Charts Row */}
       <div className="animate-fadeIn stagger-2" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginBottom: 36 }}>

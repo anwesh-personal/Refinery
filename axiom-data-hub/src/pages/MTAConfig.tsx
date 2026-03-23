@@ -6,7 +6,7 @@ import MTAProviderModal from '../components/MTAProviderModal';
 import MTADomainPanel from '../components/MTADomainPanel';
 import {
   Radio, Plus, Trash2, Loader2, CheckCircle, XCircle, Zap,
-  RefreshCw, ChevronDown, ChevronRight, Star, Globe,
+  RefreshCw, ChevronDown, ChevronRight, Star, Globe, Shield,
 } from 'lucide-react';
 
 interface MTAProvider {
@@ -55,6 +55,9 @@ export default function MTAConfigPage() {
   const [testingId, setTestingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scanIps, setScanIps] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [blResults, setBlResults] = useState<any[]>([]);
   const { success, error: toastError } = useToast();
 
   const fetchData = useCallback(async () => {
@@ -113,6 +116,26 @@ export default function MTAConfigPage() {
   const totalDomains = domains.length;
   const healthyDomains = domains.filter(d => d.spf_ok && d.dkim_ok && d.dmarc_ok).length;
   const defaultProvider = providers.find(p => p.is_default);
+
+  const runBlacklistScan = async () => {
+    setScanning(true);
+    try {
+      const ips = scanIps.split(/[,\n]+/).map(s => s.trim()).filter(Boolean);
+      const domainNames = domains.map(d => d.domain);
+      const results = await apiCall<any[]>('/api/mta-providers/blacklist/check-all', {
+        method: 'POST',
+        body: { ips, domains: domainNames },
+      });
+      setBlResults(results);
+      const listed = results.filter(r => !r.is_clean);
+      if (listed.length > 0) {
+        toastError('Blacklisted!', `${listed.length} target(s) found on blacklists`);
+      } else {
+        success('All Clear', 'No blacklists detected');
+      }
+    } catch (e: any) { toastError('Scan Error', e.message); }
+    setScanning(false);
+  };
 
   return (
     <>
@@ -237,6 +260,65 @@ export default function MTAConfigPage() {
               </div>
             );
           })
+        )}
+      </div>
+
+      {/* Blacklist Scanner */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Blacklist Monitor</h3>
+      </div>
+      <div style={{
+        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, marginBottom: 36,
+      }}>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+          Enter your SMTP server IPs (one per line or comma-separated). All registered sending domains will be checked automatically.
+        </p>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}>
+            <textarea
+              value={scanIps}
+              onChange={e => setScanIps(e.target.value)}
+              placeholder="107.172.56.65&#10;107.172.56.66&#10;107.172.56.67"
+              rows={3}
+              style={{
+                width: '100%', padding: '10px 14px', borderRadius: 10, fontSize: 13, fontFamily: 'SF Mono, Menlo, monospace',
+                background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)',
+                outline: 'none', resize: 'vertical',
+              }}
+            />
+          </div>
+          <Button icon={scanning ? <Loader2 size={14} className="spin" /> : <Shield size={14} />}
+            onClick={runBlacklistScan} disabled={scanning}>
+            {scanning ? 'Scanning...' : 'Scan'}
+          </Button>
+        </div>
+
+        {blResults.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {blResults.map((r, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderRadius: 10,
+                background: r.is_clean ? 'var(--green-muted)' : 'var(--red-muted)',
+                border: `1px solid ${r.is_clean ? 'var(--green)' : 'var(--red)'}`,
+              }}>
+                {r.is_clean
+                  ? <CheckCircle size={16} style={{ color: 'var(--green)', flexShrink: 0 }} />
+                  : <XCircle size={16} style={{ color: 'var(--red)', flexShrink: 0 }} />}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>
+                    {r.target} <span style={{ fontWeight: 500, color: 'var(--text-tertiary)', fontSize: 11 }}>({r.type})</span>
+                  </div>
+                  {r.is_clean ? (
+                    <div style={{ fontSize: 12, color: 'var(--green)' }}>Clean — checked {r.total_checked} blacklists</div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: 'var(--red)' }}>
+                      Listed on: {r.listed_on.join(', ')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

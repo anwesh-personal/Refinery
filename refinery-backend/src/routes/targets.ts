@@ -55,6 +55,19 @@ router.get('/:id/export', async (req, res) => {
   }
 });
 
+// POST /api/targets/:id/dedup-check — check overlap with recently pushed lists
+router.post('/:id/dedup-check', async (req, res) => {
+  try {
+    const list = (await targetService.listTargetLists()).find((l: any) => l.id === req.params.id);
+    if (!list) return res.status(404).json({ error: 'Target list not found' });
+    const days = req.body.days || 7;
+    const result = await audienceSync.checkDedupOverlap((list as any).segment_id, req.params.id, days);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/targets/columns — available ClickHouse columns for mapping
 router.get('/columns', async (_req, res) => {
   try {

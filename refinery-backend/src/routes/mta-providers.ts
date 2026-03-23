@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import * as mtaProviders from '../services/mta-providers.js';
+import { checkIpBlacklists, checkDomainBlacklists, checkAll } from '../services/blacklist-monitor.js';
 
 // ═══════════════════════════════════════════════════════════════
 // MTA Provider Management Routes — UI-driven, no hardcoding
@@ -133,6 +134,43 @@ router.post('/domains/:domainId/check-dns', async (req, res) => {
   try {
     const result = await mtaProviders.checkDomainDNS(req.params.domainId);
     res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── Blacklist Monitor ───
+
+// POST /api/mta-providers/blacklist/check-ip   { ip }
+router.post('/blacklist/check-ip', async (req, res) => {
+  try {
+    const { ip } = req.body;
+    if (!ip) return res.status(400).json({ error: 'ip is required' });
+    const result = await checkIpBlacklists(ip);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/mta-providers/blacklist/check-domain   { domain }
+router.post('/blacklist/check-domain', async (req, res) => {
+  try {
+    const { domain } = req.body;
+    if (!domain) return res.status(400).json({ error: 'domain is required' });
+    const result = await checkDomainBlacklists(domain);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/mta-providers/blacklist/check-all   { ips: [], domains: [] }
+router.post('/blacklist/check-all', async (req, res) => {
+  try {
+    const { ips = [], domains = [] } = req.body;
+    const results = await checkAll(ips, domains);
+    res.json(results);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
