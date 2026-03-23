@@ -61,6 +61,7 @@ export default function MTAConfigPage() {
   const [blResults, setBlResults] = useState<any[]>([]);
   const [settingUpWebhook, setSettingUpWebhook] = useState(false);
   const [webhookInfo, setWebhookInfo] = useState<any>(null);
+  const [refineryUrl, setRefineryUrl] = useState(typeof window !== 'undefined' ? window.location.origin : '');
   const { success, error: toastError } = useToast();
 
   const fetchData = useCallback(async () => {
@@ -141,11 +142,12 @@ export default function MTAConfigPage() {
   };
 
   const handleWebhookSetup = async () => {
+    if (!refineryUrl) { toastError('Required', 'Enter your Refinery URL first'); return; }
     setSettingUpWebhook(true);
     try {
       const res = await apiCall<any>('/api/mta-providers/webhooks/setup', {
         method: 'POST',
-        body: { refinery_url: 'https://iiiemail.email' },
+        body: { refinery_url: refineryUrl.replace(/\/+$/, '') },
       });
       setWebhookInfo(res);
       success('Webhook URL Ready', 'Copy the URL and add it in MailWizz');
@@ -296,10 +298,25 @@ export default function MTAConfigPage() {
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
           Generate your Refinery webhook URL and add it to MailWizz so bounce/complaint/unsubscribe events flow back automatically.
         </p>
-        <Button icon={settingUpWebhook ? <Loader2 size={14} className="spin" /> : <Shield size={14} />}
-          onClick={handleWebhookSetup} disabled={settingUpWebhook}>
-          {settingUpWebhook ? 'Generating...' : 'Get Webhook URL'}
-        </Button>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Your Refinery URL</div>
+            <input
+              value={refineryUrl}
+              onChange={e => setRefineryUrl(e.target.value)}
+              placeholder="https://your-refinery-domain.com"
+              style={{
+                width: '100%', padding: '9px 14px', borderRadius: 10, fontSize: 13,
+                background: 'var(--bg-input)', border: '1px solid var(--border)',
+                color: 'var(--text-primary)', outline: 'none',
+              }}
+            />
+          </div>
+          <Button icon={settingUpWebhook ? <Loader2 size={14} className="spin" /> : <Shield size={14} />}
+            onClick={handleWebhookSetup} disabled={settingUpWebhook}>
+            {settingUpWebhook ? 'Generating...' : 'Get Webhook URL'}
+          </Button>
+        </div>
         {webhookInfo && (
           <div style={{ marginTop: 16 }}>
             <div style={{

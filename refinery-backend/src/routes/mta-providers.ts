@@ -207,19 +207,25 @@ router.post('/webhooks/setup', async (req, res) => {
   try {
     const adapter = await getMtaAdapter() as any;
     if (!adapter) return res.status(503).json({ error: 'MTA not configured' });
-    const refineryUrl = req.body.refinery_url || 'https://iiiemail.email';
+
+    // Use the refinery_url from the request, or fall back to FRONTEND_URL env var
+    const { env } = await import('../config/env.js');
+    const refineryUrl = (req.body.refinery_url || env.frontendUrl || '').replace(/\/+$/, '');
+    if (!refineryUrl) return res.status(400).json({ error: 'refinery_url is required (or set FRONTEND_URL in env)' });
+
     const webhookUrl = `${refineryUrl}/api/v1/webhooks/mta/mailwizz`;
-    // MailWizz webhook notifications are configured at the list level or globally
-    // We store the URL in MailWizz's common options table directly
-    const result = await adapter.request('POST', 'v1/delivery-servers/index'); // verify connection
+
+    // Get the MTA base URL from the adapter config to build instructions dynamically
+    const mtaBase = (adapter as any).config?.baseUrl?.replace(/\/api\/?.*$/, '') || 'your-mailwizz-url';
+
     res.json({
       ok: true,
       webhook_url: webhookUrl,
-      message: `Configure this URL in MailWizz → Backend → Settings → Webhooks`,
       instructions: [
-        `1. Go to mail.iiiemail.email/backend`,
-        `2. Settings → Sending Domains / Bounce Servers`,
-        `3. For each list: Lists → [List Name] → Webhooks → Add webhook URL: ${webhookUrl}`,
+        `1. Go to ${mtaBase}/backend`,
+        `2. Navigate to: Lists → [Your List] → Webhooks → Add Webhook`,
+        `3. Paste URL: ${webhookUrl}`,
+        `4. Or globally: Backend → Settings → Notification URLs`,
       ],
     });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
