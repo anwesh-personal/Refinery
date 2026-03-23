@@ -1,9 +1,10 @@
-import { ListOrdered, Send, Clock, CheckCircle, XCircle, Play, Pause, Loader2, AlertCircle, RefreshCw, Database } from 'lucide-react';
+import { ListOrdered, Send, Clock, CheckCircle, XCircle, Play, Pause, Loader2, AlertCircle, RefreshCw, Database, Rocket, BarChart3 } from 'lucide-react';
 import { PageHeader, StatCard, Button } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
 import { useState, useEffect, useCallback } from 'react';
 import { apiCall } from '../lib/api';
 import { useToast } from '../components/Toast';
+import CampaignBuilderModal from '../components/CampaignBuilderModal';
 
 /* ── Types ── */
 interface QueueJob {
@@ -24,6 +25,17 @@ interface QueueStats {
   sent: string;
   failed: string;
   active: string;
+}
+
+interface MTACampaign {
+  id: string;
+  name: string;
+  list_id: string;
+  status: string;
+  subject?: string;
+  from_name?: string;
+  from_email?: string;
+  created_at?: string;
 }
 
 interface TargetList {
@@ -67,6 +79,10 @@ export default function QueuePage() {
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [campaigns, setCampaigns] = useState<MTACampaign[]>([]);
+  const [campaignModalOpen, setCampaignModalOpen] = useState(false);
+  const [sendingCampaignId, setSendingCampaignId] = useState<string | null>(null);
+  const [pausingCampaignId, setPausingCampaignId] = useState<string | null>(null);
 
   const [selectedListId, setSelectedListId] = useState('');
 
@@ -82,6 +98,11 @@ export default function QueuePage() {
       setStats(statsData);
       // Only show target lists that are ready or pushed
       setTargetLists(listsData.filter(l => l.status === 'ready' || l.status === 'pushed'));
+      // Also fetch remote campaigns
+      try {
+        const campaignsData = await apiCall<MTACampaign[]>('/api/queue/campaigns');
+        setCampaigns(campaignsData);
+      } catch { /* MTA not configured yet */ }
     } catch {
       // ignore
     }
@@ -146,6 +167,38 @@ export default function QueuePage() {
     setActioningId(null);
   };
 
+  const sendCampaign = async (id: string) => {
+    setSendingCampaignId(id);
+    try {
+      const result = await apiCall<{ sent: boolean; message: string }>(`/api/queue/campaign/${id}/send`, { method: 'POST' });
+      if (result.sent) {
+        toastSuccess('Campaign Launched', result.message);
+      } else {
+        toastError('Send Failed', result.message);
+      }
+      fetchData(true);
+    } catch (e: any) { toastError('Error', e.message); }
+    setSendingCampaignId(null);
+  };
+
+  const pauseCampaign = async (id: string) => {
+    setPausingCampaignId(id);
+    try {
+      await apiCall(`/api/queue/campaign/${id}/pause`, { method: 'POST' });
+      toastSuccess('Paused', 'Campaign paused');
+      fetchData(true);
+    } catch (e: any) { toastError('Error', e.message); }
+    setPausingCampaignId(null);
+  };
+
+  const viewStats = async (id: string) => {
+    try {
+      const stats = await apiCall<Record<string, any>>(`/api/queue/campaign/${id}/stats`);
+      const msg = `Sent: ${stats.sent} | Opens: ${stats.unique_opens} (${((stats.open_rate||0)*100).toFixed(1)}%) | Clicks: ${stats.unique_clicks} | Bounces: ${stats.bounces}`;
+      toastSuccess('Campaign Stats', msg);
+    } catch (e: any) { toastError('Stats Error', e.message); }
+  };
+
 
 
   return (
@@ -206,7 +259,10 @@ export default function QueuePage() {
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <Button icon={starting ? <Loader2 size={14} className="spin" /> : <Play size={14} />} onClick={startJob} disabled={starting || !selectedListId}>
-            {starting ? 'Queueing...' : 'Dispatch List to Queue'}
+            {starting ? 'Queueing...' : 'Dispatch to Old Queue'}
+          </Button>
+          <Button icon={<Rocket size={14} />} onClick={() => setCampaignModalOpen(true)}>
+            Create MTA Campaign
           </Button>
         </div>
       </div>
@@ -333,6 +389,90 @@ export default function QueuePage() {
           </div>
         )}
       </div>
+
+      {/* ── Remote Campaigns (from MTA) ── */}
+      {campaigns.length > 0 && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, marginTop: 36 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>MTA Campaigns ({campaigns.length})</h3>
+          </div>
+
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    {['Campaign', 'Subject', 'From', 'Status', 'Actions'].map(h => (
+                      <th key={h} style={{
+                        padding: '12px 16px', textAlign: 'left', fontWeight: 700,
+                        fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em',
+                        color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)',
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {campaigns.map(c => {
+                    const cStatus = statusConfig[c.status] || { color: 'var(--text-tertiary)', bg: 'var(--bg-elevated)', label: c.status };
+                    return (
+                      <tr key={c.id}
+                        style={{ transition: 'background 0.1s' }}
+                        onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                        onMouseOut={e => (e.currentTarget.style.background = '')}
+                      >
+                        <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600 }}>
+                          {c.name}
+                          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>ID: {c.id}</div>
+                        </td>
+                        <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
+                          {c.subject || '—'}
+                        </td>
+                        <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 12 }}>
+                          {c.from_name} &lt;{c.from_email}&gt;
+                        </td>
+                        <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
+                          <span style={{
+                            fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                            padding: '4px 10px', borderRadius: 6,
+                            color: cStatus.color, background: cStatus.bg,
+                          }}>{cStatus.label}</span>
+                        </td>
+                        <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            {(c.status === 'draft' || c.status === 'paused') && (
+                              <Button variant="ghost"
+                                icon={sendingCampaignId === c.id ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
+                                onClick={() => sendCampaign(c.id)} disabled={sendingCampaignId !== null}>
+                                Send
+                              </Button>
+                            )}
+                            {c.status === 'sending' && (
+                              <Button variant="ghost"
+                                icon={pausingCampaignId === c.id ? <Loader2 size={14} className="spin" /> : <Pause size={14} />}
+                                onClick={() => pauseCampaign(c.id)} disabled={pausingCampaignId !== null}>
+                                Pause
+                              </Button>
+                            )}
+                            <Button variant="ghost" icon={<BarChart3 size={14} />} onClick={() => viewStats(c.id)}>
+                              Stats
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      <CampaignBuilderModal
+        open={campaignModalOpen}
+        onClose={() => setCampaignModalOpen(false)}
+        onCreated={() => fetchData(true)}
+      />
     </>
   );
 }
