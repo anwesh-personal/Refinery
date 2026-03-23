@@ -68,7 +68,6 @@ export const TeamNetworkGraph: React.FC = () => {
     const [globalTotals, setGlobalTotals] = useState({ ingestions: 0, verifications: 0, targets: 0, totalOps: 0 });
     const [loading, setLoading] = useState(true);
     const [selectedMember, setSelectedMember] = useState<Profile | null>(null);
-    const [isDragged, setIsDragged] = useState(false);
 
     /** Fetch with a hard timeout so we never hang forever */
     const fetchWithTimeout = async <T,>(url: string, timeoutMs = 5000): Promise<T | null> => {
@@ -241,7 +240,6 @@ export const TeamNetworkGraph: React.FC = () => {
             const K = 0.03; // Spring strength
             const REPULSION = 400000; // Strong repulsion to prevent overlapping cards
             const DAMPING = 0.75; // High friction so it settles quickly
-            let settled = false;
 
             // 1. Repulsion
             for (let i = 0; i < nodes.length; i++) {
@@ -322,7 +320,7 @@ export const TeamNetworkGraph: React.FC = () => {
                 if (n.y + n.height > ch - pad) { n.y = ch - n.height - pad; n.vy *= -0.5; }
             });
 
-            settled = totalKE < 0.05 && !isDragging.current;
+
 
             // 5. Draw Edges on Canvas
             const ctx = canvasRef.current?.getContext('2d');
@@ -390,7 +388,6 @@ export const TeamNetworkGraph: React.FC = () => {
 
     const handlePointerDown = (id: string, e: React.PointerEvent) => {
         isDragging.current = id;
-        setIsDragged(false);
         const node = nodesRef.current.find(n => n.id === id);
         if (node) {
             dragState.current = { startX: e.clientX, startY: e.clientY, nodeStartX: node.x, nodeStartY: node.y, profileId: id };
@@ -404,7 +401,7 @@ export const TeamNetworkGraph: React.FC = () => {
         if (!node) return;
         const dx = e.clientX - dragState.current.startX;
         const dy = e.clientY - dragState.current.startY;
-        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) setIsDragged(true);
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) { /* dragging */ }
         node.x = dragState.current.nodeStartX + dx;
         node.y = dragState.current.nodeStartY + dy;
         node.vx = 0;

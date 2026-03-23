@@ -9,7 +9,6 @@ import {
   Play, RefreshCw, Loader2, Trash2, Pencil, CloudUpload,
   CheckCircle2, AlertCircle, Clock, CalendarClock, ExternalLink,
 } from 'lucide-react';
-import { Button } from './UI';
 import { apiCall } from '../lib/api';
 
 export interface Segment {
