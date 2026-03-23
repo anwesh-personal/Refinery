@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as segService from '../services/segments.js';
+import { validateSegmentFilter } from '../services/segments.js';
 import { getRequestUser } from '../types/auth.js';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -38,6 +39,18 @@ router.post('/', async (req, res) => {
     const id = await segService.createSegment({ name, niche, clientName, filterQuery }, user.id, user.name);
     res.json({ id });
   } catch (e: any) {
+    res.status(500).json({ error: e.message, suggestion: (e as any).suggestion });
+  }
+});
+
+// POST /api/segments/validate  { filterQuery } — live syntax check without saving
+router.post('/validate', async (req, res) => {
+  try {
+    const { filterQuery } = req.body;
+    if (!filterQuery) return res.status(400).json({ error: 'filterQuery is required' });
+    const result = await validateSegmentFilter(filterQuery);
+    res.json(result);
+  } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
@@ -50,7 +63,7 @@ router.post('/preview', async (req, res) => {
     const result = await segService.previewSegment(filterQuery);
     res.json(result);
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message, suggestion: (e as any).suggestion });
   }
 });
 

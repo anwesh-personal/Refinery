@@ -1,4 +1,4 @@
-import { Filter, Plus, Layers, Users, Tag, Loader2, Play, Eye, Trash2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Filter, Plus, Layers, Users, Tag, Loader2, Play, Eye, Trash2, AlertCircle, CheckCircle2, Pencil, Wand2 } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
 import { useState, useEffect, useCallback } from 'react';
@@ -37,7 +37,19 @@ export default function SegmentsPage() {
   const [executing, setExecuting] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Inline editor for existing segments
+  const [editingSegment, setEditingSegment] = useState<Segment | null>(null);
+  const [editQuery, setEditQuery] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSuggestion, setEditSuggestion] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Live validation state
+  const [validating, setValidating] = useState(false);
+  const [queryValid, setQueryValid] = useState<boolean | null>(null);
 
   // Form
   const [name, setName] = useState('');
@@ -63,18 +75,20 @@ export default function SegmentsPage() {
     }
     setCreating(true);
     setError(null);
+    setSuggestion(null);
     try {
       await apiCall('/api/segments', {
         method: 'POST',
         body: { name, niche: niche || undefined, clientName: clientName || undefined, filterQuery },
       });
       setSuccess(`Segment "${name}" created`);
-      setName(''); setNiche(''); setClientName(''); setFilterQuery('');
+      setName(''); setNiche(''); setClientName(''); setFilterQuery(''); setQueryValid(null);
       setPreview(null);
       fetchSegments();
       setTimeout(() => setSuccess(null), 3000);
     } catch (e: any) {
       setError(e.message);
+      if (e.suggestion) setSuggestion(e.suggestion);
     }
     setCreating(false);
   };
@@ -83,6 +97,7 @@ export default function SegmentsPage() {
     if (!filterQuery.trim()) { setError('Enter a filter query'); return; }
     setPreviewing(true);
     setError(null);
+    setSuggestion(null);
     setPreview(null);
     try {
       const res = await apiCall<PreviewResult>('/api/segments/preview', {
@@ -92,8 +107,63 @@ export default function SegmentsPage() {
       setPreview(res);
     } catch (e: any) {
       setError(`Preview failed: ${e.message}`);
+      if (e.suggestion) setSuggestion(e.suggestion);
     }
     setPreviewing(false);
+  };
+
+  // Live validation with debounce
+  useEffect(() => {
+    if (!filterQuery.trim()) { setQueryValid(null); return; }
+    const t = setTimeout(async () => {
+      setValidating(true);
+      try {
+        const r = await apiCall<{valid: boolean; suggestion?: string}>('/api/segments/validate', {
+          method: 'POST', body: { filterQuery },
+        });
+        setQueryValid(r.valid);
+        if (!r.valid && r.suggestion) setSuggestion(r.suggestion);
+        else setSuggestion(null);
+      } catch { setQueryValid(null); }
+      setValidating(false);
+    }, 700);
+    return () => clearTimeout(t);
+  }, [filterQuery]);
+
+  const openEdit = (seg: Segment) => {
+    setEditingSegment(seg);
+    setEditQuery(seg.filter_query);
+    setEditError(null);
+    setEditSuggestion(null);
+  };
+
+  const saveEdit = async () => {
+    if (!editingSegment) return;
+    setSaving(true);
+    setEditError(null);
+    try {
+      // Validate first
+      const v = await apiCall<{valid: boolean; error?: string; suggestion?: string}>('/api/segments/validate', {
+        method: 'POST', body: { filterQuery: editQuery },
+      });
+      if (!v.valid) {
+        setEditError(v.error || 'Invalid query');
+        if (v.suggestion) setEditSuggestion(v.suggestion);
+        setSaving(false);
+        return;
+      }
+      await apiCall(`/api/segments/${editingSegment.id}`, {
+        method: 'PUT',
+        body: { filterQuery: editQuery },
+      });
+      setSuccess(`Segment query updated`);
+      setEditingSegment(null);
+      fetchSegments();
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (e: any) {
+      setEditError(e.message);
+    }
+    setSaving(false);
   };
 
   const executeSegment = async (id: string) => {
@@ -142,8 +212,18 @@ export default function SegmentsPage() {
 
       {/* Status messages */}
       {error && (
-        <div style={{ marginBottom: 16, padding: '12px 18px', borderRadius: 10, background: 'var(--red-muted)', border: '1px solid var(--red)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--red)' }}>
+        <div style={{ marginBottom: suggestion ? 0 : 16, padding: '12px 18px', borderRadius: suggestion ? '10px 10px 0 0' : 10, background: 'var(--red-muted)', border: '1px solid var(--red)', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--red)' }}>
           <AlertCircle size={16} /> {error}
+        </div>
+      )}
+      {suggestion && (
+        <div style={{ marginBottom: 16, padding: '10px 18px', borderRadius: error ? '0 0 10px 10px' : 10, background: 'var(--accent-muted)', border: '1px solid var(--accent)', borderTop: error ? 'none' : undefined, display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--accent)' }}>
+          <Wand2 size={14} />
+          <span style={{ flex: 1 }}>Auto-fix suggestion: <code style={{ fontFamily: 'monospace', fontWeight: 700 }}>{suggestion}</code></span>
+          <button onClick={() => { setFilterQuery(suggestion); setSuggestion(null); setError(null); }}
+            style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+            Apply Fix
+          </button>
         </div>
       )}
       {success && (
@@ -170,22 +250,29 @@ export default function SegmentsPage() {
           </div>
         </div>
         <div style={{ marginBottom: 20 }}>
-          <label style={labelStyle}>Filter Query (WHERE clause) *</label>
+          <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 8 }}>
+            Filter Query (WHERE clause) *
+            {validating && <Loader2 size={11} className="spin" style={{ color: 'var(--text-tertiary)' }} />}
+            {!validating && queryValid === true && <CheckCircle2 size={12} style={{ color: 'var(--green)' }} />}
+            {!validating && queryValid === false && <AlertCircle size={12} style={{ color: 'var(--red)' }} />}
+          </label>
           <textarea
             rows={3}
             placeholder="e.g. primary_industry = 'Real Estate' AND personal_state = 'TX'"
             value={filterQuery}
-            onChange={(e) => setFilterQuery(e.target.value)}
+            onChange={(e) => { setFilterQuery(e.target.value); setQueryValid(null); setSuggestion(null); }}
             style={{
               width: '100%', padding: '12px 16px', borderRadius: 12,
               fontSize: 13, fontFamily: "'JetBrains Mono', monospace", fontWeight: 500,
               outline: 'none', resize: 'vertical',
-              background: 'var(--bg-input)', border: '1px solid var(--border)', color: 'var(--text-primary)',
-              transition: 'border-color 0.2s',
+              background: 'var(--bg-input)',
+              border: `1px solid ${queryValid === false ? 'var(--red)' : queryValid === true ? 'var(--green)' : 'var(--border)'}`,
+              color: 'var(--text-primary)', transition: 'border-color 0.2s',
             }}
-            onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
           />
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 5 }}>
+            Tip: Always quote string values — <code>primary_industry = &apos;Finance&apos;</code> not <code>primary_industry = Finance</code>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <Button icon={creating ? <Loader2 size={14} className="spin" /> : <Plus size={14} />} onClick={createSegment} disabled={creating}>
@@ -260,11 +347,12 @@ export default function SegmentsPage() {
                     </td>
                     <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        {seg.status === 'draft' && (
+                        {(seg.status === 'draft' || seg.status === 'active') && (
                           <Button variant="ghost" icon={executing === seg.id ? <Loader2 size={14} className="spin" /> : <Play size={14} />} onClick={() => executeSegment(seg.id)} disabled={executing !== null}>
                             Execute
                           </Button>
                         )}
+                        <Button variant="ghost" icon={<Pencil size={14} />} onClick={() => openEdit(seg)} />
                         <Button variant="ghost" icon={<Trash2 size={14} />} onClick={() => deleteSegment(seg.id)} />
                       </div>
                     </td>
@@ -281,6 +369,50 @@ export default function SegmentsPage() {
           </div>
         )}
       </div>
+
+      {/* Inline Edit Modal */}
+      {editingSegment && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={e => { if (e.target === e.currentTarget) setEditingSegment(null); }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 28, width: '100%', maxWidth: 640 }} className="animate-fadeIn">
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Edit Filter Query</div>
+            <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 20 }}>{editingSegment.name}</div>
+            {editError && (
+              <div style={{ marginBottom: editSuggestion ? 0 : 16, padding: '10px 14px', borderRadius: editSuggestion ? '8px 8px 0 0' : 8, background: 'var(--red-muted)', border: '1px solid var(--red)', fontSize: 12, color: 'var(--red)' }}>
+                {editError}
+              </div>
+            )}
+            {editSuggestion && (
+              <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: editError ? '0 0 8px 8px' : 8, background: 'var(--accent-muted)', border: '1px solid var(--accent)', borderTop: editError ? 'none' : undefined, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--accent)' }}>
+                <Wand2 size={13} />
+                <span style={{ flex: 1 }}>Auto-fix: <code style={{ fontFamily: 'monospace', fontWeight: 700 }}>{editSuggestion}</code></span>
+                <button onClick={() => { setEditQuery(editSuggestion); setEditSuggestion(null); setEditError(null); }}
+                  style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Apply</button>
+              </div>
+            )}
+            <textarea
+              rows={5}
+              value={editQuery}
+              onChange={e => { setEditQuery(e.target.value); setEditError(null); setEditSuggestion(null); }}
+              style={{
+                width: '100%', padding: '12px 16px', borderRadius: 10, fontSize: 13,
+                fontFamily: "'JetBrains Mono', monospace", fontWeight: 500,
+                background: 'var(--bg-input)', border: '1px solid var(--border)',
+                color: 'var(--text-primary)', outline: 'none', resize: 'vertical', marginBottom: 16,
+              }}
+            />
+            <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 16 }}>
+              Always quote strings: <code>primary_industry = &apos;Finance&apos;</code> not <code>primary_industry = Finance</code>
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <Button icon={saving ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />} onClick={saveEdit} disabled={saving}>
+                {saving ? 'Saving...' : 'Save & Validate'}
+              </Button>
+              <Button variant="ghost" onClick={() => setEditingSegment(null)}>Cancel</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

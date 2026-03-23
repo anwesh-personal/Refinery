@@ -33,7 +33,51 @@ interface SegmentRow {
 // The query is NEVER executed — only parsed and validated.
 // ═══════════════════════════════════════════════════════════════
 
-async function validateFilterQuery(filterQuery: string): Promise<{ valid: boolean; error?: string }> {
+// ═══════════════════════════════════════════════════════════════
+// Auto-fix: attempt to quote unquoted bare string values
+// e.g. primary_industry = finance  →  primary_industry = 'finance'
+// e.g. state IN (TX, CA)           →  state IN ('TX', 'CA')
+// This is best-effort — complex expressions may not be fully fixed.
+// ═══════════════════════════════════════════════════════════════
+
+function tryAutoFixFilterQuery(sql: string): string | null {
+  let fixed = sql;
+  let changed = false;
+
+  // Fix: col = bareword  (not a number, not already quoted, not NULL/TRUE/FALSE)
+  fixed = fixed.replace(
+    /([a-zA-Z_][a-zA-Z0-9_]*)\s*([=!<>]+)\s*([a-zA-Z][a-zA-Z0-9_ -]*?)(?=\s*(AND|OR|LIMIT|ORDER|GROUP|HAVING|$|\)))/gi,
+    (match, col, op, val) => {
+      const trimVal = val.trim();
+      // Don't quote keywords or already-quoted values
+      if (/^(NULL|TRUE|FALSE|IS|NOT|AND|OR|IN|LIKE|BETWEEN)$/i.test(trimVal)) return match;
+      if (/^\d+(\.\d+)?$/.test(trimVal)) return match; // number
+      if (/^'.*'$/.test(trimVal)) return match; // already quoted
+      changed = true;
+      return `${col} ${op} '${trimVal.replace(/'/g, "''")}'`;
+    }
+  );
+
+  // Fix: col IN (a, b, c) — quote each bare word element
+  fixed = fixed.replace(
+    /([a-zA-Z_][a-zA-Z0-9_]*)\s+IN\s*\(([^)]+)\)/gi,
+    (match, col, list) => {
+      const items = list.split(',').map((item: string) => {
+        const t = item.trim();
+        if (/^'.*'$/.test(t)) return t; // already quoted
+        if (/^\d+(\.\d+)?$/.test(t)) return t; // number
+        if (/^(NULL|TRUE|FALSE)$/i.test(t)) return t;
+        changed = true;
+        return `'${t.replace(/'/g, "''")}'`;
+      });
+      return `${col} IN (${items.join(', ')})`;
+    }
+  );
+
+  return changed ? fixed : null;
+}
+
+async function validateFilterQuery(filterQuery: string): Promise<{ valid: boolean; error?: string; suggestion?: string }> {
   const trimmed = filterQuery.trim();
   if (!trimmed) return { valid: false, error: 'Filter query is empty' };
 
@@ -53,9 +97,12 @@ async function validateFilterQuery(filterQuery: string): Promise<{ valid: boolea
 
     // Common: unquoted string value
     if (msg.includes('Expected one of:') || msg.includes('Syntax error')) {
+      // Try to auto-fix the query and suggest it to the user
+      const suggestion = tryAutoFixFilterQuery(trimmed);
       return {
         valid: false,
         error: `Syntax error in filter query. Make sure string values are quoted: e.g. primary_industry = 'finance' (not primary_industry = finance). Full error: ${msg.substring(0, 200)}`,
+        suggestion: suggestion || undefined,
       };
     }
 
@@ -71,12 +118,19 @@ async function validateFilterQuery(filterQuery: string): Promise<{ valid: boolea
   }
 }
 
+/** Exported for use in routes (live validation endpoint) */
+export async function validateSegmentFilter(filterQuery: string) {
+  return validateFilterQuery(filterQuery);
+}
+
 /** Create a new segment */
 export async function createSegment(input: SegmentInput, performedBy?: string, performedByName?: string): Promise<string> {
   // Validate filter before persisting
   const validation = await validateFilterQuery(input.filterQuery);
   if (!validation.valid) {
-    throw new Error(validation.error);
+    const err: any = new Error(validation.error);
+    err.suggestion = validation.suggestion;
+    throw err;
   }
 
   const id = genId();
@@ -112,7 +166,9 @@ export async function previewSegment(filterQuery: string): Promise<{ count: numb
   // Validate first
   const validation = await validateFilterQuery(filterQuery);
   if (!validation.valid) {
-    throw new Error(validation.error);
+    const err: any = new Error(validation.error);
+    err.suggestion = validation.suggestion;
+    throw err;
   }
 
   // Count
@@ -140,7 +196,9 @@ export async function executeSegment(id: string): Promise<number> {
   // Re-validate (filter may have been created before validation was added)
   const validation = await validateFilterQuery(filterQuery);
   if (!validation.valid) {
-    throw new Error(`Segment has invalid filter query: ${validation.error}`);
+    const err: any = new Error(`Segment has invalid filter query: ${validation.error}`);
+    err.suggestion = validation.suggestion;
+    throw err;
   }
 
   // Count first
