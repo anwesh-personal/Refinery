@@ -44,28 +44,29 @@ function tryAutoFixFilterQuery(sql: string): string | null {
   let fixed = sql;
   let changed = false;
 
-  // Fix: col = bareword  (not a number, not already quoted, not NULL/TRUE/FALSE)
+  // Fix: col = bareword_or_multi_word (stops at AND/OR/end/closing paren)
+  // Handles: col = finance  AND  col = business finance  AND  col = New York
   fixed = fixed.replace(
-    /([a-zA-Z_][a-zA-Z0-9_]*)\s*([=!<>]+)\s*([a-zA-Z][a-zA-Z0-9_ -]*?)(?=\s*(AND|OR|LIMIT|ORDER|GROUP|HAVING|$|\)))/gi,
-    (match, col, op, val) => {
-      const trimVal = val.trim();
-      // Don't quote keywords or already-quoted values
-      if (/^(NULL|TRUE|FALSE|IS|NOT|AND|OR|IN|LIKE|BETWEEN)$/i.test(trimVal)) return match;
-      if (/^\d+(\.\d+)?$/.test(trimVal)) return match; // number
-      if (/^'.*'$/.test(trimVal)) return match; // already quoted
+    /\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(=|!=|<>)\s*([a-zA-Z][a-zA-Z0-9 _-]*?)(?=\s*(AND\b|OR\b|LIMIT\b|ORDER\b|GROUP\b|HAVING\b|\)|$))/gi,
+    (_match, col, op, val) => {
+      const trimVal = val.trimEnd();
+      // Don't quote SQL keywords or already-quoted values
+      if (/^(NULL|TRUE|FALSE|IS|NOT|AND|OR|IN|LIKE|BETWEEN)$/i.test(trimVal)) return _match;
+      if (/^\d+(\.\d+)?$/.test(trimVal)) return _match; // number
+      if (/^'.*'$/.test(trimVal)) return _match;         // already quoted
       changed = true;
       return `${col} ${op} '${trimVal.replace(/'/g, "''")}'`;
     }
   );
 
-  // Fix: col IN (a, b, c) — quote each bare word element
+  // Fix: col IN (a, b, c) — quote each unquoted element
   fixed = fixed.replace(
-    /([a-zA-Z_][a-zA-Z0-9_]*)\s+IN\s*\(([^)]+)\)/gi,
-    (match, col, list) => {
+    /\b([a-zA-Z_][a-zA-Z0-9_]*)\s+IN\s*\(([^)]+)\)/gi,
+    (_match, col, list) => {
       const items = list.split(',').map((item: string) => {
         const t = item.trim();
-        if (/^'.*'$/.test(t)) return t; // already quoted
-        if (/^\d+(\.\d+)?$/.test(t)) return t; // number
+        if (/^'.*'$/.test(t)) return t;
+        if (/^\d+(\.\d+)?$/.test(t)) return t;
         if (/^(NULL|TRUE|FALSE)$/i.test(t)) return t;
         changed = true;
         return `'${t.replace(/'/g, "''")}'`;
@@ -76,6 +77,7 @@ function tryAutoFixFilterQuery(sql: string): string | null {
 
   return changed ? fixed : null;
 }
+
 
 async function validateFilterQuery(filterQuery: string): Promise<{ valid: boolean; error?: string; suggestion?: string }> {
   const trimmed = filterQuery.trim();
