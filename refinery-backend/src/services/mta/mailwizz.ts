@@ -31,12 +31,17 @@ export class MailWizzAdapter implements MTAAdapter {
 
   private async request<T = any>(
     method: string,
-    path: string,
+    route: string,        // e.g. 'v1/lists/index'
     body?: unknown,
+    queryParams?: Record<string, string>,
   ): Promise<T> {
-    const url = `${this.config.baseUrl}${path}`;
+    // MailWizz uses ?r= routing: /api/index.php?r=v1/lists/index
+    const base = this.config.baseUrl.replace(/\/api\/?$/, '') + '/api/index.php';
+    const params = new URLSearchParams({ r: route, ...(queryParams || {}) });
+    const url = `${base}?${params}`;
+
     const headers: Record<string, string> = {
-      'X-Api-Key': this.config.apiKey,
+      'X-MW-PUBLIC-KEY': this.config.apiKey,
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     };
@@ -52,8 +57,13 @@ export class MailWizzAdapter implements MTAAdapter {
     let data: any;
     try { data = JSON.parse(text); } catch { data = { raw: text }; }
 
+    // MailWizz returns {status:'error', error:'...'} on failure
+    if (data?.status === 'error') {
+      throw new Error(data.error || 'MailWizz API error');
+    }
+
     if (!res.ok) {
-      const msg = data?.error?.message || data?.message || `MailWizz ${res.status}: ${text.slice(0, 200)}`;
+      const msg = data?.error || data?.message || `MailWizz ${res.status}: ${text.slice(0, 200)}`;
       throw new Error(msg);
     }
 
@@ -62,7 +72,7 @@ export class MailWizzAdapter implements MTAAdapter {
 
   async testConnection(): Promise<{ ok: boolean; message: string }> {
     try {
-      await this.request('GET', '/lists');
+      await this.request('GET', 'v1/lists/index', undefined, { page: '1', per_page: '1' });
       return { ok: true, message: 'MailWizz API connection successful' };
     } catch (e: any) {
       return { ok: false, message: e.message };
@@ -88,7 +98,7 @@ export class MailWizzAdapter implements MTAAdapter {
       company: defaults?.company || {},
     };
 
-    const res = await this.request<any>('POST', '/lists', payload);
+    const res = await this.request<any>('POST', 'v1/lists/create', payload);
 
     return {
       id: res.data?.record?.list_uid || res.list_uid || '',
@@ -99,7 +109,7 @@ export class MailWizzAdapter implements MTAAdapter {
   }
 
   async getLists(): Promise<MTAList[]> {
-    const res = await this.request<any>('GET', '/lists?page=1&per_page=100');
+    const res = await this.request<any>('GET', 'v1/lists/index', undefined, { page: '1', per_page: '100' });
     const records = res.data?.records || [];
 
     return records.map((r: any) => ({
@@ -127,13 +137,18 @@ export class MailWizzAdapter implements MTAAdapter {
 
     for (const chunk of chunks) {
       const results = await Promise.allSettled(
-        chunk.map(sub =>
-          this.request('POST', `/lists/${listId}/subscribers`, {
-            EMAIL: sub.email,
-            FNAME: sub.first_name || '',
-            LNAME: sub.last_name || '',
-          }),
-        ),
+        chunk.map(sub => {
+          const fields: Record<string, string> = { EMAIL: sub.email };
+          if (sub.first_name) fields.FNAME = sub.first_name;
+          if (sub.last_name) fields.LNAME = sub.last_name;
+          // Pass any extra mapped fields
+          for (const [k, v] of Object.entries(sub)) {
+            if (!['email','first_name','last_name'].includes(k) && typeof v === 'string') {
+              fields[k.toUpperCase()] = v;
+            }
+          }
+          return this.request('POST', `v1/list-subscribers/${listId}/create`, { details: fields });
+        }),
       );
 
       for (const r of results) {
@@ -164,7 +179,7 @@ export class MailWizzAdapter implements MTAAdapter {
       },
     };
 
-    const res = await this.request<any>('POST', '/campaigns', payload);
+    const res = await this.request<any>('POST', 'v1/campaigns/create', payload);
     const uid = res.data?.record?.campaign_uid || res.campaign_uid || '';
 
     return {
@@ -181,7 +196,7 @@ export class MailWizzAdapter implements MTAAdapter {
 
   async sendCampaign(campaignId: string): Promise<{ sent: boolean; message: string }> {
     try {
-      await this.request('PATCH', `/campaigns/${campaignId}`, {
+      await this.request('PUT', `v1/campaigns/${campaignId}/update`, {
         campaign: { status: 'sending' },
       });
       return { sent: true, message: 'Campaign sending initiated' };
@@ -192,7 +207,7 @@ export class MailWizzAdapter implements MTAAdapter {
 
   async pauseCampaign(campaignId: string): Promise<{ paused: boolean; message: string }> {
     try {
-      await this.request('PATCH', `/campaigns/${campaignId}`, {
+      await this.request('PUT', `v1/campaigns/${campaignId}/update`, {
         campaign: { status: 'paused' },
       });
       return { paused: true, message: 'Campaign paused' };
@@ -202,8 +217,9 @@ export class MailWizzAdapter implements MTAAdapter {
   }
 
   async getCampaignStats(campaignId: string): Promise<MTACampaignStats> {
-    const res = await this.request<any>('GET', `/campaigns/${campaignId}`);
-    const stats = res.data?.record?.stats || res.stats || {};
+    const res = await this.request<any>('GET', `v1/campaigns/${campaignId}`);
+    const record = res.data?.record || {};
+    const stats = record.stats || record.overview || {};
 
     const total = Number(stats.subscribers_count || 0);
     const sent = Number(stats.processed_count || 0);
@@ -237,7 +253,9 @@ export class MailWizzAdapter implements MTAAdapter {
   }
 
   async getCampaigns(page = 1, perPage = 50): Promise<MTACampaign[]> {
-    const res = await this.request<any>('GET', `/campaigns?page=${page}&per_page=${perPage}`);
+    const res = await this.request<any>('GET', 'v1/campaigns/index', undefined, {
+      page: String(page), per_page: String(perPage),
+    });
     const records = res.data?.records || [];
 
     return records.map((r: any) => ({
