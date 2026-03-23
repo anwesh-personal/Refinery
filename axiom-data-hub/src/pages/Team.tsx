@@ -947,11 +947,18 @@ export default function TeamPage() {
                               background: 'var(--bg-app)', border: '1px solid var(--border)',
                             }}
                           >
-                            <img
-                              src={getAvatarUrl(m.profile?.avatar_url, m.profile?.email || '', 32)}
-                              alt=""
-                              style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-                            />
+                            {(() => {
+                              const fallbackProfile = team.find(t => t.id === m.profile_id);
+                              const avatarUrl = m.profile?.avatar_url ?? fallbackProfile?.avatar_url ?? null;
+                              const emailSeed = m.profile?.email ?? fallbackProfile?.email ?? m.profile_id;
+                              return (
+                                <img
+                                  src={getAvatarUrl(avatarUrl, emailSeed, 32)}
+                                  alt=""
+                                  style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                                />
+                              );
+                            })()}
                             <div style={{ flex: 1 }}>
                               {(() => {
                                 const fallback = team.find(t => t.id === m.profile_id);
