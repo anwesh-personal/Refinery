@@ -29,7 +29,7 @@ export class MailWizzAdapter implements MTAAdapter {
     };
   }
 
-  private async request<T = any>(
+  public async request<T = any>(
     method: string,
     route: string,        // e.g. 'v1/lists/index'
     body?: unknown,

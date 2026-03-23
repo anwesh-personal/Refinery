@@ -4,6 +4,7 @@ import { apiCall } from '../lib/api';
 import { useToast } from '../components/Toast';
 import MTAProviderModal from '../components/MTAProviderModal';
 import MTADomainPanel from '../components/MTADomainPanel';
+import DeliveryServerPanel from '../components/DeliveryServerPanel';
 import {
   Radio, Plus, Trash2, Loader2, CheckCircle, XCircle, Zap,
   RefreshCw, ChevronDown, ChevronRight, Star, Globe, Shield,
@@ -58,6 +59,8 @@ export default function MTAConfigPage() {
   const [scanIps, setScanIps] = useState('');
   const [scanning, setScanning] = useState(false);
   const [blResults, setBlResults] = useState<any[]>([]);
+  const [settingUpWebhook, setSettingUpWebhook] = useState(false);
+  const [webhookInfo, setWebhookInfo] = useState<any>(null);
   const { success, error: toastError } = useToast();
 
   const fetchData = useCallback(async () => {
@@ -135,6 +138,19 @@ export default function MTAConfigPage() {
       }
     } catch (e: any) { toastError('Scan Error', e.message); }
     setScanning(false);
+  };
+
+  const handleWebhookSetup = async () => {
+    setSettingUpWebhook(true);
+    try {
+      const res = await apiCall<any>('/api/mta-providers/webhooks/setup', {
+        method: 'POST',
+        body: { refinery_url: 'https://iiiemail.email' },
+      });
+      setWebhookInfo(res);
+      success('Webhook URL Ready', 'Copy the URL and add it in MailWizz');
+    } catch (e: any) { toastError('Error', e.message); }
+    setSettingUpWebhook(false);
   };
 
   return (
@@ -260,6 +276,50 @@ export default function MTAConfigPage() {
               </div>
             );
           })
+        )}
+      </div>
+
+      {/* Delivery Servers */}
+      <div style={{
+        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, marginBottom: 28,
+      }}>
+        <DeliveryServerPanel onRefresh={fetchData} />
+      </div>
+
+      {/* Webhook Setup */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Webhook Setup</h3>
+      </div>
+      <div style={{
+        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, marginBottom: 28,
+      }}>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+          Generate your Refinery webhook URL and add it to MailWizz so bounce/complaint/unsubscribe events flow back automatically.
+        </p>
+        <Button icon={settingUpWebhook ? <Loader2 size={14} className="spin" /> : <Shield size={14} />}
+          onClick={handleWebhookSetup} disabled={settingUpWebhook}>
+          {settingUpWebhook ? 'Generating...' : 'Get Webhook URL'}
+        </Button>
+        {webhookInfo && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{
+              padding: '10px 16px', borderRadius: 10, background: 'var(--bg-elevated)',
+              border: '1px solid var(--accent)', fontFamily: 'SF Mono, Menlo, monospace',
+              fontSize: 12, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 10,
+            }}>
+              <CheckCircle size={14} />
+              {webhookInfo.webhook_url}
+              <button onClick={() => { navigator.clipboard.writeText(webhookInfo.webhook_url); success('Copied!', ''); }}
+                style={{ marginLeft: 'auto', fontSize: 11, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
+                Copy
+              </button>
+            </div>
+            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-tertiary)' }}>
+              {webhookInfo.instructions?.map((step: string, i: number) => (
+                <div key={i} style={{ marginBottom: 4 }}>{step}</div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
