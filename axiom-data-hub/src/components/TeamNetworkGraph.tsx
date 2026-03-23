@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { getAvatarUrl } from '../lib/avatar';
-import { Activity, Database, Zap, Send, Clock, User, ShieldCheck } from 'lucide-react';
+import { Activity, Database, Zap, Send, Clock, User, ShieldCheck, X, Mail, Calendar, Award } from 'lucide-react';
 
 interface Profile {
     id: string;
@@ -67,6 +67,8 @@ export const TeamNetworkGraph: React.FC = () => {
     const [statsMap, setStatsMap] = useState<Record<string, UserOperationStats>>({});
     const [globalTotals, setGlobalTotals] = useState({ ingestions: 0, verifications: 0, targets: 0, totalOps: 0 });
     const [loading, setLoading] = useState(true);
+    const [selectedMember, setSelectedMember] = useState<Profile | null>(null);
+    const [isDragged, setIsDragged] = useState(false);
 
     /** Fetch with a hard timeout so we never hang forever */
     const fetchWithTimeout = async <T,>(url: string, timeoutMs = 5000): Promise<T | null> => {
@@ -238,7 +240,8 @@ export const TeamNetworkGraph: React.FC = () => {
             // Tuned physics constants for heavy rectangular cards
             const K = 0.03; // Spring strength
             const REPULSION = 400000; // Strong repulsion to prevent overlapping cards
-            const DAMPING = 0.8; // High friction so it settles quickly
+            const DAMPING = 0.75; // High friction so it settles quickly
+            let settled = false;
 
             // 1. Repulsion
             for (let i = 0; i < nodes.length; i++) {
@@ -279,17 +282,17 @@ export const TeamNetworkGraph: React.FC = () => {
                 n2.vy -= (dy / dist) * force;
             });
 
-            // 3. Center Gravity (pulls everyone back inward so they don't drift away)
+            // 3. Center Gravity — very gentle, only relevant at start
             nodes.forEach(n => {
                 const dx = center.x - (n.x + n.width / 2);
                 const dy = center.y - (n.y + n.height / 2);
-                // Superadmins stay closer to center
-                const pull = n.profile.role === 'superadmin' ? 0.05 : 0.01;
-                n.vx += dx * pull;
-                n.vy += dy * pull;
+                const pull = n.profile.role === 'superadmin' ? 0.008 : 0.003;
+                n.vx += dx * pull * dt;
+                n.vy += dy * pull * dt;
             });
 
             // 4. Update Positions
+            let totalKE = 0;
             nodes.forEach(n => {
                 n.vx *= DAMPING;
                 n.vy *= DAMPING;
@@ -309,6 +312,8 @@ export const TeamNetworkGraph: React.FC = () => {
                     n.y += n.vy * (dt * 60);
                 }
 
+                totalKE += n.vx * n.vx + n.vy * n.vy;
+
                 // Keep inside bounds
                 const pad = 20;
                 if (n.x < pad) { n.x = pad; n.vx *= -0.5; }
@@ -316,6 +321,8 @@ export const TeamNetworkGraph: React.FC = () => {
                 if (n.y < pad) { n.y = pad; n.vy *= -0.5; }
                 if (n.y + n.height > ch - pad) { n.y = ch - n.height - pad; n.vy *= -0.5; }
             });
+
+            settled = totalKE < 0.05 && !isDragging.current;
 
             // 5. Draw Edges on Canvas
             const ctx = canvasRef.current?.getContext('2d');
@@ -360,14 +367,13 @@ export const TeamNetworkGraph: React.FC = () => {
                 });
             }
 
-            // 6. Update DOM purely via transforms for buttery 60fps
+            // 7. Update DOM via transforms
             nodes.forEach(n => {
                 const el = document.getElementById(`team-card-${n.id}`);
                 if (el) el.style.transform = `translate(${n.x}px, ${n.y}px)`;
             });
 
-            // Keep looping
-            // If system completely settles, we could pause, but the particles need animation anyway.
+            // Keep looping — particles on edges always animate; physics only when not settled
             animationRef.current = requestAnimationFrame(tick);
         };
 
@@ -380,20 +386,15 @@ export const TeamNetworkGraph: React.FC = () => {
     }, [profiles]);
 
     // Drag logic
-    const dragState = useRef({ startX: 0, startY: 0, nodeStartX: 0, nodeStartY: 0 });
+    const dragState = useRef({ startX: 0, startY: 0, nodeStartX: 0, nodeStartY: 0, profileId: '' });
 
     const handlePointerDown = (id: string, e: React.PointerEvent) => {
         isDragging.current = id;
+        setIsDragged(false);
         const node = nodesRef.current.find(n => n.id === id);
         if (node) {
-            dragState.current = {
-                startX: e.clientX,
-                startY: e.clientY,
-                nodeStartX: node.x,
-                nodeStartY: node.y
-            };
+            dragState.current = { startX: e.clientX, startY: e.clientY, nodeStartX: node.x, nodeStartY: node.y, profileId: id };
         }
-        // Prevent default to avoid text selection during drag
         e.preventDefault();
     };
 
@@ -401,17 +402,21 @@ export const TeamNetworkGraph: React.FC = () => {
         if (!isDragging.current) return;
         const node = nodesRef.current.find(n => n.id === isDragging.current);
         if (!node) return;
-
         const dx = e.clientX - dragState.current.startX;
         const dy = e.clientY - dragState.current.startY;
-
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) setIsDragged(true);
         node.x = dragState.current.nodeStartX + dx;
         node.y = dragState.current.nodeStartY + dy;
         node.vx = 0;
         node.vy = 0;
     };
 
-    const handlePointerUp = () => {
+    const handlePointerUp = (e: React.PointerEvent) => {
+        const dist = Math.hypot(e.clientX - dragState.current.startX, e.clientY - dragState.current.startY);
+        if (dist < 6 && dragState.current.profileId) {
+            const p = profiles.find(p => p.id === dragState.current.profileId);
+            if (p) setSelectedMember(p);
+        }
         isDragging.current = null;
     };
 
@@ -427,6 +432,7 @@ export const TeamNetworkGraph: React.FC = () => {
     }
 
     return (
+        <>
         <div
             ref={containerRef}
             onPointerMove={handlePointerMove}
@@ -579,5 +585,72 @@ export const TeamNetworkGraph: React.FC = () => {
             </div>
 
         </div>
+
+        {/* Member Detail Modal */}
+        {selectedMember && (() => {
+            const p = selectedMember;
+            const color = getRoleColor(p.role);
+            const stats = statsMap[p.id] || statsMap[p.full_name || ''] || statsMap[(p.email || '').split('@')[0]];
+            return (
+                <div
+                    onClick={() => setSelectedMember(null)}
+                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                    <div onClick={e => e.stopPropagation()} style={{
+                        background: 'var(--bg-card)', border: `1px solid ${color}44`, borderTop: `3px solid ${color}`,
+                        borderRadius: 20, width: 380, overflow: 'hidden', boxShadow: `0 40px 80px rgba(0,0,0,0.4), 0 0 40px ${color}22`,
+                        animation: 'fadeInScale 0.18s ease-out',
+                    }}>
+                        {/* Header */}
+                        <div style={{ background: 'var(--bg-elevated)', padding: '24px 24px 20px', display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
+                            <img src={getAvatarUrl(p.avatar_url, p.email, 80)} alt={p.full_name || p.email}
+                                style={{ width: 64, height: 64, borderRadius: '50%', border: `3px solid ${color}`, objectFit: 'cover' }} />
+                            <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>{p.full_name || p.email.split('@')[0]}</div>
+                                <div style={{ fontSize: 11, color, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, marginTop: 3 }}>{p.role}</div>
+                                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <Mail size={11} /> {p.email}
+                                </div>
+                            </div>
+                            <button onClick={() => setSelectedMember(null)}
+                                style={{ position: 'absolute', top: 16, right: 16, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 8, padding: 6, cursor: 'pointer', color: 'var(--text-tertiary)', display: 'flex' }}>
+                                <X size={14} />
+                            </button>
+                        </div>
+
+                        {/* Stats */}
+                        <div style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                            {[
+                                { label: 'Ingestions', value: stats?.ingestions || 0, icon: <Database size={14} color="var(--blue)" />, color: 'var(--blue)' },
+                                { label: 'Verifications', value: stats?.verifications || 0, icon: <ShieldCheck size={14} color="var(--green)" />, color: 'var(--green)' },
+                                { label: 'Targets', value: stats?.targets || 0, icon: <Send size={14} color="var(--accent)" />, color: 'var(--accent)' },
+                            ].map(s => (
+                                <div key={s.label} style={{ background: 'var(--bg-elevated)', borderRadius: 10, padding: '12px 14px', border: '1px solid var(--border)' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>{s.icon}<span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>{s.label}</span></div>
+                                    <div style={{ fontSize: 22, fontWeight: 800, color: s.color }}>{formatNum(s.value)}</div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Footer */}
+                        <div style={{ padding: '0 24px 20px', display: 'flex', gap: 12, fontSize: 12, color: 'var(--text-tertiary)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <Calendar size={12} />
+                                Joined {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <Clock size={12} />
+                                Active {timeAgo(stats?.lastActive || null)}
+                            </div>
+                            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <Award size={12} color={color} />
+                                <span style={{ color, fontWeight: 700 }}>{formatNum(stats?.totalOps || 0)} ops</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        })()}
+        </>
     );
 };
