@@ -6,6 +6,8 @@ export interface SegmentInput {
   niche?: string;
   clientName?: string;
   filterQuery: string;
+  performedByName?: string;
+  scheduleCron?: string | null;
 }
 
 interface SegmentRow {
@@ -18,6 +20,14 @@ interface SegmentRow {
   status: string;
   created_at: string;
   updated_at: string;
+  performed_by_name: string | null;
+  schedule_cron: string | null;
+  last_executed_at: string | null;
+  next_run_at: string | null;
+  mailwizz_list_id: string | null;
+  last_synced_at: string | null;
+  sync_status: string | null;
+  sync_count: number | null;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -163,6 +173,14 @@ export async function getSegment(id: string): Promise<SegmentRow | null> {
   return rows[0] || null;
 }
 
+/** Fast live count for a filter query — used by frontend while building */
+export async function liveCount(filterQuery: string): Promise<number> {
+  const validation = await validateFilterQuery(filterQuery);
+  if (!validation.valid) throw new Error(validation.error);
+  const [r] = await query<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE ${filterQuery}`);
+  return Number(r?.cnt || 0);
+}
+
 /** Preview a segment — returns the count of matching leads WITHOUT saving */
 export async function previewSegment(filterQuery: string): Promise<{ count: number; sample: Record<string, unknown>[] }> {
   // Validate first
@@ -209,14 +227,25 @@ export async function executeSegment(id: string): Promise<number> {
   );
   const count = Number(countResult?.cnt || 0);
 
-  // Tag rows (append segment ID to _segment_ids array)
   const escapedId = id.replace(/'/g, "\\'");
+
+  // Step 1: Remove stale tags — rows previously tagged but no longer matching
+  await command(`
+    ALTER TABLE universal_person UPDATE
+      _segment_ids = arrayFilter(x -> x != '${escapedId}', _segment_ids)
+    WHERE has(_segment_ids, '${escapedId}')
+      AND NOT (${filterQuery})
+  `);
+
+  // Step 2: Tag new matches (skip already-tagged)
   await command(`
     ALTER TABLE universal_person UPDATE
       _segment_ids = arrayConcat(_segment_ids, ['${escapedId}'])
     WHERE ${filterQuery}
       AND NOT has(_segment_ids, '${escapedId}')
   `);
+
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
   // Update segment with count and status
   await insertRows('segments', [{
@@ -227,8 +256,15 @@ export async function executeSegment(id: string): Promise<number> {
     filter_query: filterQuery,
     lead_count: count,
     status: 'active',
+    schedule_cron: seg.schedule_cron ?? null,
+    last_executed_at: now,
+    next_run_at: seg.next_run_at ?? null,
+    mailwizz_list_id: seg.mailwizz_list_id ?? null,
+    last_synced_at: seg.last_synced_at ?? null,
+    sync_status: seg.sync_status ?? null,
+    sync_count: seg.sync_count ?? null,
     created_at: seg.created_at,
-    updated_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    updated_at: now,
   }]);
 
   return count;
@@ -247,6 +283,7 @@ export async function updateSegment(id: string, input: Partial<SegmentInput>): P
     }
   }
 
+  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
   await insertRows('segments', [{
     id,
     name: input.name || seg.name,
@@ -255,8 +292,15 @@ export async function updateSegment(id: string, input: Partial<SegmentInput>): P
     filter_query: input.filterQuery || seg.filter_query,
     lead_count: seg.lead_count || 0,
     status: seg.status,
+    schedule_cron: input.scheduleCron !== undefined ? (input.scheduleCron ?? null) : (seg.schedule_cron ?? null),
+    last_executed_at: seg.last_executed_at ?? null,
+    next_run_at: seg.next_run_at ?? null,
+    mailwizz_list_id: seg.mailwizz_list_id ?? null,
+    last_synced_at: seg.last_synced_at ?? null,
+    sync_status: seg.sync_status ?? null,
+    sync_count: seg.sync_count ?? null,
     created_at: seg.created_at,
-    updated_at: new Date().toISOString().replace('T', ' ').slice(0, 19),
+    updated_at: now,
   }]);
 }
 

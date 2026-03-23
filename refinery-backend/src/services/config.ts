@@ -57,4 +57,6 @@ export const CONFIG_KEYS = {
   SMTP_PORT: 'smtp.port',
   SMTP_FROM: 'smtp.from_email',
   SMTP_PASSWORD: 'smtp.password',
+  MAILWIZZ_API_URL: 'mailwizz_api_url',
+  MAILWIZZ_API_KEY: 'mailwizz_api_key',
 } as const;
