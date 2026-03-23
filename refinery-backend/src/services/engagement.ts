@@ -84,19 +84,53 @@ export async function storeEvent(event: EngagementEvent): Promise<StoredEvent | 
 
   await insertRows('engagement_events', [row]);
 
-  // On hard bounce, mark contact's verification status
-  if (event.event_type === 'bounce' && event.bounce_type === 'hard' && upId) {
+  // ── Data Integrity: Flag leads in universal_person ──
+  // This closes the feedback loop — flagged leads are auto-excluded
+  // from future audience syncs in audience-sync.ts
+  if (upId) {
+    const sanitizedId = upId.replace(/'/g, "\\'");
     try {
-      const sanitizedId = upId.replace(/'/g, "\\'");
-      await query(
-        `ALTER TABLE universal_person
-         UPDATE _verification_status = 'bounced', _verified_at = now()
-         WHERE up_id = '${sanitizedId}'`,
-      );
-    } catch { /* non-critical, log and move on */ }
+      if (event.event_type === 'bounce' && event.bounce_type === 'hard') {
+        // Hard bounce: mark as bounced + update verification status
+        await safeAlterColumn('_bounced', 'UInt8');
+        await query(
+          `ALTER TABLE universal_person
+           UPDATE _verification_status = 'bounced', _verified_at = now(), _bounced = 1
+           WHERE up_id = '${sanitizedId}'`,
+        );
+      } else if (event.event_type === 'complaint') {
+        // Spam complaint: mark as bounced (treat same as hard bounce for suppression)
+        await safeAlterColumn('_bounced', 'UInt8');
+        await query(
+          `ALTER TABLE universal_person
+           UPDATE _bounced = 1
+           WHERE up_id = '${sanitizedId}'`,
+        );
+      } else if (event.event_type === 'unsubscribe') {
+        // Unsubscribe: flag so they're excluded from future sends
+        await safeAlterColumn('_unsubscribed', 'UInt8');
+        await query(
+          `ALTER TABLE universal_person
+           UPDATE _unsubscribed = 1
+           WHERE up_id = '${sanitizedId}'`,
+        );
+      }
+    } catch (e: any) {
+      console.error(`[Engagement] Failed to flag up_id=${upId} for ${event.event_type}:`, e.message);
+    }
   }
 
   return row as unknown as StoredEvent;
+}
+
+/** Ensure a column exists on universal_person (idempotent) */
+const _ensuredColumns = new Set<string>();
+async function safeAlterColumn(column: string, type: string) {
+  if (_ensuredColumns.has(column)) return;
+  try {
+    await query(`ALTER TABLE universal_person ADD COLUMN IF NOT EXISTS ${column} Nullable(${type}) DEFAULT NULL`);
+    _ensuredColumns.add(column);
+  } catch { /* column likely already exists */ }
 }
 
 /** Store a batch of engagement events. Returns count of newly stored (non-duplicate) events. */

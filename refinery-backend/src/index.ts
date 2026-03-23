@@ -38,6 +38,7 @@ import v1VerifyRoutes from './routes/v1/verify.js';
 import v1WebhooksRoutes from './routes/v1/webhooks.js';
 import v1StatsRoutes from './routes/v1/stats.js';
 import v1MtaRoutes from './routes/v1/mta.js';
+import v1MtaWebhooksRoutes from './routes/v1/mta-webhooks.js';
 import { requireApiKey } from './middleware/apiKeyAuth.js';
 import { apiKeyRateLimiter } from './middleware/rateLimiter.js';
 
@@ -100,6 +101,9 @@ app.use('/api/v1/verify', requireApiKey, apiKeyRateLimiter, v1VerifyRoutes);
 app.use('/api/v1/webhooks', requireApiKey, apiKeyRateLimiter, v1WebhooksRoutes);
 app.use('/api/v1/stats', requireApiKey, apiKeyRateLimiter, v1StatsRoutes);
 app.use('/api/v1/mta', requireApiKey, apiKeyRateLimiter, v1MtaRoutes);
+
+// ── Public MTA Webhook Receivers (no auth — MTAs POST directly) ──
+app.use('/api/v1/webhooks/mta', v1MtaWebhooksRoutes);
 
 // ── Health ──
 app.get('/api/health', (_req, res) => {
