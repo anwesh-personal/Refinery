@@ -26,7 +26,6 @@ interface UserOperationStats {
 interface NodeData {
     id: string;
     profile: Profile;
-    stats?: UserOperationStats;
     x: number;
     y: number;
     vx: number;
@@ -167,12 +166,10 @@ export const TeamNetworkGraph: React.FC = () => {
             // Start them reasonably spaced out so physics doesn't explode
             const row = Math.floor(i / 4);
             const col = i % 4;
-            const stats = statsMap[p.id] || statsMap[p.full_name || ''] || statsMap[(p.email || '').split('@')[0]];
 
             return {
                 id: p.id,
                 profile: p,
-                stats,
                 x: (width / 2) + (col * 240) - 360 + (Math.random() * 20 - 10),
                 y: (height / 2) + (row * 160) - 100 + (Math.random() * 20 - 10),
                 vx: 0,
@@ -380,7 +377,7 @@ export const TeamNetworkGraph: React.FC = () => {
             isActive = false;
             if (animationRef.current) cancelAnimationFrame(animationRef.current);
         };
-    }, [profiles, statsMap, globalTotals]);
+    }, [profiles]);
 
     // Drag logic
     const dragState = useRef({ startX: 0, startY: 0, nodeStartX: 0, nodeStartY: 0 });
@@ -456,7 +453,9 @@ export const TeamNetworkGraph: React.FC = () => {
             {/* Nodes / Rich Cards */}
             <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
                 {nodesRef.current.map(n => {
-                    const { profile: p, stats } = n;
+                    const { profile: p } = n;
+                    // Look up stats from React state — always fresh, survives async load
+                    const stats = statsMap[p.id] || statsMap[p.full_name || ''] || statsMap[(p.email || '').split('@')[0]];
                     const color = getRoleColor(p.role);
 
                     return (
