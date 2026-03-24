@@ -145,6 +145,9 @@ export default function VerificationPage() {
         if (segs.segments && segs.segments.length > 0 && !selectedSegmentId) {
           setSelectedSegmentId(segs.segments[0].id);
         }
+        if (segs.segments && segs.segments.length > 0 && !reverifySegmentId) {
+          setReverifySegmentId(segs.segments[0].id);
+        }
       }
 
       if (credsResp) setV550Credits(credsResp.credits);

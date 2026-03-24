@@ -348,7 +348,7 @@ export default function SegmentsPage() {
               { label: '🆕 Last 7 Days', name: 'Recent Ingest (7d)', query: "`_ingested_at` >= now() - INTERVAL 7 DAY" },
               { label: '📧 Gmail Users', name: 'Gmail Users', query: "(`personal_emails` LIKE '%gmail.com%' OR `business_email` LIKE '%gmail.com%')" },
               { label: '✅ V550 Safe', name: 'V550 Safe', query: "`_v550_category` IN ('ok', 'ok_for_all')" },
-              { label: '🚫 V550 Threats', name: 'V550 Threats', query: "`_v550_category` IN ('complainers', 'spamtraps', 'seeds', 'email_bot', 'spamcops', 'sleeper_cell', 'bot_clickers', 'litigators', 'lashback', 'advisory_trap', 'blacklisted', 'disposables')" },
+              { label: '🚫 V550 Threats', name: 'V550 Threats', query: "`_v550_category` IN ('complainers', 'spamtraps', 'seeds', 'email_bot', 'spamcops', 'sleeper_cell', 'bot_clickers', 'litigators', 'lashback', 'advisory_trap', 'blacklisted', 'disposables', 'threat_endings', 'threat_string', 'thread_endings', 'thread_string')" },
               { label: '⚠️ V550 Risky', name: 'V550 Risky', query: "`_v550_category` IN ('unknown', 'antispam_system', 'soft_bounce', 'departmental', 'invalid_vendor_response')" },
             ].map(t => (
               <button key={t.label} onClick={() => {
