@@ -27,6 +27,7 @@ interface Profile {
   avatar_url: string | null;
   created_at: string;
   is_active: boolean;
+  last_active_at: string | null;
 }
 
 interface UserStats {
@@ -47,6 +48,7 @@ interface TeamRow {
 interface TeamMembershipRow {
   team_id: string;
   profile_id: string;
+  joined_at: string | null;
 }
 
 // Data attached to each React Flow node
@@ -54,6 +56,7 @@ interface MemberNodeData {
   profile: Profile;
   stats: UserStats | null;
   teamName: string | null;
+  teamNames: { name: string; joinedAt: string | null }[];
   [key: string]: unknown;
 }
 
@@ -147,7 +150,7 @@ export const TeamNetworkGraph: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<MemberNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedMember, setSelectedMember] = useState<{ profile: Profile; stats: UserStats | null } | null>(null);
+  const [selectedMember, setSelectedMember] = useState<{ profile: Profile; stats: UserStats | null; teamNames: { name: string; joinedAt: string | null }[] } | null>(null);
   const [globalTotals, setGlobalTotals] = useState({ teammates: 0, ingestions: 0, verifications: 0, totalOps: 0 });
 
   const fetchWithTimeout = useCallback(async <T,>(url: string, timeoutMs = 5000): Promise<T | null> => {
@@ -181,7 +184,7 @@ export const TeamNetworkGraph: React.FC = () => {
       // 2. Teams + memberships (parallel)
       const [teamsRes, membershipsRes] = await Promise.all([
         supabase.from('teams').select('id, name'),
-        supabase.from('team_memberships').select('team_id, profile_id'),
+        supabase.from('team_memberships').select('team_id, profile_id, joined_at'),
       ]);
       const teams: TeamRow[] = teamsRes.data || [];
       const memberships: TeamMembershipRow[] = membershipsRes.data || [];
@@ -190,7 +193,15 @@ export const TeamNetworkGraph: React.FC = () => {
       const teamNameMap: Record<string, string> = {};
       teams.forEach(t => { teamNameMap[t.id] = t.name; });
       const profileTeamMap: Record<string, string> = {};
-      memberships.forEach(m => { profileTeamMap[m.profile_id] = teamNameMap[m.team_id] || ''; });
+      const profileTeamsMap: Record<string, { name: string; joinedAt: string | null }[]> = {};
+      memberships.forEach(m => {
+        const tName = teamNameMap[m.team_id] || '';
+        if (tName) {
+          profileTeamMap[m.profile_id] = profileTeamMap[m.profile_id] || tName; // first team for graph grouping
+          if (!profileTeamsMap[m.profile_id]) profileTeamsMap[m.profile_id] = [];
+          profileTeamsMap[m.profile_id].push({ name: tName, joinedAt: m.joined_at || null });
+        }
+      });
 
       // 3. Stats (async, don't block)
       const statsMap: Record<string, UserStats> = {};
@@ -253,7 +264,7 @@ export const TeamNetworkGraph: React.FC = () => {
             id: p.id,
             type: 'member',
             position: { x: clusterX + col * 240, y: row * 160 + 60 },
-            data: { profile: p, stats, teamName },
+            data: { profile: p, stats, teamName, teamNames: profileTeamsMap[p.id] || [] },
           });
 
           // Connect to first member in same team (hub pattern)
@@ -281,7 +292,11 @@ export const TeamNetworkGraph: React.FC = () => {
   }, [fetchWithTimeout, setNodes, setEdges]);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node<MemberNodeData>) => {
-    setSelectedMember({ profile: node.data.profile, stats: node.data.stats });
+    setSelectedMember({
+      profile: node.data.profile,
+      stats: node.data.stats,
+      teamNames: node.data.teamNames || [],
+    });
   }, []);
 
   if (loading) {
@@ -352,17 +367,29 @@ export const TeamNetworkGraph: React.FC = () => {
       {selectedMember && (() => {
         const p = selectedMember.profile;
         const stats = selectedMember.stats;
+        const teamNames = selectedMember.teamNames;
         const color = getRoleColor(p.role);
+        const isOnline = p.is_active && p.last_active_at && (Date.now() - new Date(p.last_active_at).getTime()) < 15 * 60 * 1000;
         return (
           <div onClick={() => setSelectedMember(null)}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div onClick={e => e.stopPropagation()} style={{
               background: 'var(--bg-card)', border: `1px solid ${color}44`, borderTop: `3px solid ${color}`,
-              borderRadius: 20, width: 380, overflow: 'hidden', boxShadow: `0 40px 80px rgba(0,0,0,0.4), 0 0 40px ${color}22`,
+              borderRadius: 20, width: 420, overflow: 'hidden', boxShadow: `0 40px 80px rgba(0,0,0,0.4), 0 0 40px ${color}22`,
             }}>
+              {/* Header */}
               <div style={{ background: 'var(--bg-elevated)', padding: '24px 24px 20px', display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
-                <img src={getAvatarUrl(p.avatar_url, p.email, 80)} alt=""
-                  style={{ width: 64, height: 64, borderRadius: '50%', border: `3px solid ${color}`, objectFit: 'cover' }} />
+                <div style={{ position: 'relative' }}>
+                  <img src={getAvatarUrl(p.avatar_url, p.email, 80)} alt=""
+                    style={{ width: 64, height: 64, borderRadius: '50%', border: `3px solid ${color}`, objectFit: 'cover' }} />
+                  {/* Online status dot */}
+                  <div style={{
+                    position: 'absolute', bottom: 2, right: 2, width: 14, height: 14, borderRadius: '50%',
+                    background: isOnline ? 'var(--green)' : 'var(--text-tertiary)',
+                    border: '2px solid var(--bg-elevated)',
+                    boxShadow: isOnline ? '0 0 8px var(--green)' : 'none',
+                  }} />
+                </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 18, fontWeight: 800 }}>{p.full_name || p.email.split('@')[0]}</div>
                   <div style={{ fontSize: 11, color, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, marginTop: 3 }}>{p.role}</div>
@@ -373,6 +400,33 @@ export const TeamNetworkGraph: React.FC = () => {
                   <X size={14} />
                 </button>
               </div>
+
+              {/* Team Badges */}
+              {teamNames.length > 0 && (
+                <div style={{ padding: '12px 24px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Teams:</span>
+                  {teamNames.map((t, i) => {
+                    const teamColor = TEAM_COLORS[i % TEAM_COLORS.length];
+                    return (
+                      <span key={t.name} style={{
+                        fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 6,
+                        background: `${teamColor}18`, color: teamColor,
+                        border: `1px solid ${teamColor}30`,
+                        textTransform: 'uppercase', letterSpacing: '0.04em',
+                      }}>
+                        {t.name}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              {teamNames.length === 0 && (
+                <div style={{ padding: '10px 24px', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: 11, fontStyle: 'italic', color: 'var(--text-tertiary)' }}>No team assigned</span>
+                </div>
+              )}
+
+              {/* Stats Grid */}
               <div style={{ padding: '20px 24px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                 {[
                   { label: 'Ingestions', value: stats?.ingestions || 0, icon: <Database size={14} color="var(--blue)" />, c: 'var(--blue)' },
@@ -385,10 +439,23 @@ export const TeamNetworkGraph: React.FC = () => {
                   </div>
                 ))}
               </div>
-              <div style={{ padding: '0 24px 20px', display: 'flex', gap: 12, fontSize: 12, color: 'var(--text-tertiary)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Calendar size={12} /> Joined {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Clock size={12} /> Active {timeAgo(stats?.lastActive || null)}</div>
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}><Award size={12} color={color} /><span style={{ color, fontWeight: 700 }}>{formatNum(stats?.totalOps || 0)} ops</span></div>
+
+              {/* Footer - Meta Info */}
+              <div style={{ padding: '0 24px 20px', display: 'flex', gap: 16, fontSize: 12, color: 'var(--text-tertiary)', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Calendar size={12} /> Joined {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Clock size={12} />
+                  {isOnline
+                    ? <span style={{ color: 'var(--green)', fontWeight: 600 }}>Online now</span>
+                    : <>Active {timeAgo(stats?.lastActive || p.last_active_at || null)}</>
+                  }
+                </div>
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Award size={12} color={color} />
+                  <span style={{ color, fontWeight: 700 }}>{formatNum(stats?.totalOps || 0)} total actions</span>
+                </div>
               </div>
             </div>
           </div>
