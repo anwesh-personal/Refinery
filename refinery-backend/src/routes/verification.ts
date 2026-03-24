@@ -208,6 +208,30 @@ router.get('/batches/:id/export', requireSuperadmin, async (req, res) => {
 import { triggerReverify } from '../services/reverify-scheduler.js';
 import { query as chQuery, command as chCommand } from '../db/clickhouse.js';
 
+// GET /api/verification/reverify-config/:id
+// Get auto re-verification settings for a segment
+router.get('/reverify-config/:id', requireSuperadmin, async (req, res) => {
+  try {
+    const segmentId = String(req.params.id);
+    if (!/^[a-zA-Z0-9_-]+$/.test(segmentId)) {
+      return res.status(400).json({ error: 'Invalid segment ID' });
+    }
+    const rows = await chQuery<{ reverify_enabled: number; reverify_days_threshold: number; reverify_engine: string; reverify_last_run_at: string | null }>(
+      `SELECT reverify_enabled, reverify_days_threshold, reverify_engine, reverify_last_run_at FROM segments FINAL WHERE id = '${segmentId}' LIMIT 1`
+    );
+    if (rows.length === 0) return res.json({ enabled: false, daysThreshold: 30, engine: 'verify550', lastRunAt: null });
+    const r = rows[0];
+    res.json({
+      enabled: r.reverify_enabled === 1,
+      daysThreshold: r.reverify_days_threshold,
+      engine: r.reverify_engine,
+      lastRunAt: r.reverify_last_run_at,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/verification/reverify/:id
 // Manually trigger re-verification for stale leads in a segment
 router.post('/reverify/:id', requireSuperadmin, async (req, res) => {

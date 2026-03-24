@@ -83,6 +83,8 @@ export default function VerificationPage() {
   const [reverifyEngine, setReverifyEngine] = useState<'verify550' | 'builtin'>('verify550');
   const [reverifyRunning, setReverifyRunning] = useState(false);
   const [reverifyResult, setReverifyResult] = useState<{ staleCount: number; resetCount: number; batchId: string | null } | null>(null);
+  const [reverifyAutoEnabled, setReverifyAutoEnabled] = useState(false);
+  const [reverifyLastRunAt, setReverifyLastRunAt] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -108,6 +110,21 @@ export default function VerificationPage() {
     fetchData();
     return () => { if (pollTimer.current) clearTimeout(pollTimer.current); };
   }, [selectedServerId]);
+
+  // Fetch reverify config when segment changes
+  useEffect(() => {
+    if (!reverifySegmentId) return;
+    apiCall<{ enabled: boolean; daysThreshold: number; engine: string; lastRunAt: string | null }>(`/api/verification/reverify-config/${reverifySegmentId}`)
+      .then(cfg => {
+        setReverifyAutoEnabled(cfg.enabled);
+        setReverifyLastRunAt(cfg.lastRunAt);
+        if (cfg.enabled) {
+          setReverifyDays(String(cfg.daysThreshold));
+          setReverifyEngine(cfg.engine === 'builtin' ? 'builtin' : 'verify550');
+        }
+      })
+      .catch(() => { setReverifyAutoEnabled(false); setReverifyLastRunAt(null); });
+  }, [reverifySegmentId]);
 
   const fetchData = async (background = false) => {
     try {
@@ -406,12 +423,18 @@ export default function VerificationPage() {
   const handleToggleAutoReverify = async () => {
     if (!reverifySegmentId) return;
     const days = Number(reverifyDays) || 30;
+    const newEnabled = !reverifyAutoEnabled;
     try {
       await apiCall(`/api/verification/reverify-config/${reverifySegmentId}`, {
         method: 'POST',
-        body: { enabled: true, daysThreshold: days, engine: reverifyEngine },
+        body: { enabled: newEnabled, daysThreshold: days, engine: reverifyEngine },
       });
-      alert(`Auto re-verification enabled for this segment.\nThreshold: ${days} days\nEngine: ${reverifyEngine}\nScheduler checks every 30 minutes.`);
+      setReverifyAutoEnabled(newEnabled);
+      if (newEnabled) {
+        alert(`Auto re-verification ENABLED.\nThreshold: ${days} days\nEngine: ${reverifyEngine}\nScheduler checks every 30 minutes.`);
+      } else {
+        alert('Auto re-verification DISABLED for this segment.');
+      }
     } catch (e: any) {
       alert(`Failed: ${e.message}`);
     }
@@ -453,6 +476,28 @@ export default function VerificationPage() {
         <StatCard label="Pending" value={stats?.pending.toLocaleString() || "0"} sub="Awaiting verification" icon={<Clock size={18} />} color="var(--yellow)" colorMuted="var(--yellow-muted)" delay={0.18} />
         <StatCard label="Yield Rate" value={stats ? `${stats.yieldRate}%` : "—"} sub="Success conversion" icon={<Activity size={18} />} color="var(--blue)" colorMuted="var(--blue-muted)" delay={0.24} />
       </div>
+
+      {/* V550 Credit Warning */}
+      {v550Credits !== null && v550Credits < 5000 && (
+        <div style={{
+          marginBottom: 20, padding: '12px 16px', borderRadius: 10,
+          background: v550Credits < 1000 ? 'rgba(239,68,68,0.1)' : 'rgba(234,179,8,0.1)',
+          border: `1px solid ${v550Credits < 1000 ? 'var(--red)' : 'var(--yellow)'}`,
+          display: 'flex', alignItems: 'center', gap: 10, fontSize: 13,
+        }}>
+          <span style={{ fontSize: 18 }}>{v550Credits < 1000 ? '🚨' : '⚠️'}</span>
+          <div>
+            <strong style={{ color: v550Credits < 1000 ? 'var(--red)' : 'var(--yellow)' }}>
+              {v550Credits < 1000 ? 'Critical: ' : ''}V550 Credits Low — {v550Credits.toLocaleString()} remaining
+            </strong>
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+              {v550Credits < 1000
+                ? 'Verification batches may fail. Top up your Verify550 balance immediately.'
+                : 'Consider topping up before running large segment batches.'}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* V550 Category Breakdown */}
       {v550Breakdown && Object.keys(v550Breakdown).length > 0 && (() => {
@@ -659,26 +704,38 @@ export default function VerificationPage() {
           columns={[
             { key: 'jobId', label: 'Job ID' },
             { key: 'file_name', label: 'Filename' },
-            { key: 'count', label: 'Total Logs' },
+            { key: 'count', label: 'Total' },
             { key: 'processed', label: 'Processed' },
-            { key: 'uploadTime', label: 'Upload Time' },
+            { key: 'uploadTime', label: 'Uploaded' },
+            { key: 'duration', label: 'Duration' },
             { key: 'status', label: 'Status' },
             { key: 'action', label: '' }
           ]}
-          rows={v550Jobs.map(job => ({
-            jobId: <span style={{ fontFamily: 'monospace', fontSize: 12, cursor: 'pointer', color: 'var(--accent)' }} onClick={() => fetchV550JobDetail(job.jobId)}>{job.jobId}</span>,
-            file_name: <span style={{ fontSize: 13, fontWeight: 500 }}>{job.file_name}</span>,
-            count: (job.count || 0).toLocaleString(),
-            processed: (job.processed || 0).toLocaleString(),
-            uploadTime: new Date(job.uploadTime).toLocaleString(),
-            status: <Badge label={job.status} color={job.status === 'finished' ? 'var(--green)' : 'var(--blue)'} colorMuted={job.status === 'finished' ? 'var(--green-muted)' : 'var(--blue-muted)'} />,
-            action: <div style={{ display: 'flex', gap: 6 }}>
-              <Button variant="secondary" style={{ padding: '6px 10px', fontSize: 11 }} onClick={() => fetchV550JobDetail(job.jobId)} icon={v550DetailLoading ? <RefreshCw size={12} className="spin" /> : <Activity size={12} />} disabled={v550DetailLoading}>Details</Button>
-              {job.status === 'finished' && (
-                <Button variant="secondary" style={{ padding: '6px 10px', fontSize: 11 }} onClick={() => handleV550Export(job.jobId)} icon={<Download size={12} />}>Export</Button>
-              )}
-            </div>
-          }))}
+          rows={v550Jobs.map(job => {
+            const duration = job.completionTime && job.startTime
+              ? (() => {
+                  const ms = new Date(job.completionTime).getTime() - new Date(job.startTime).getTime();
+                  const secs = Math.floor(ms / 1000);
+                  if (secs < 60) return `${secs}s`;
+                  return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+                })()
+              : job.status === 'finished' ? '—' : 'In progress…';
+            return {
+              jobId: <span style={{ fontFamily: 'monospace', fontSize: 12, cursor: 'pointer', color: 'var(--accent)' }} onClick={() => fetchV550JobDetail(job.jobId)}>{job.jobId}</span>,
+              file_name: <span style={{ fontSize: 13, fontWeight: 500 }}>{job.file_name}</span>,
+              count: (job.count || 0).toLocaleString(),
+              processed: (job.processed || 0).toLocaleString(),
+              uploadTime: <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{new Date(job.uploadTime).toLocaleString()}</span>,
+              duration: <span style={{ fontSize: 12, fontWeight: 600, color: duration.includes('progress') ? 'var(--blue)' : 'var(--text-secondary)' }}>{duration}</span>,
+              status: <Badge label={job.status} color={job.status === 'finished' ? 'var(--green)' : 'var(--blue)'} colorMuted={job.status === 'finished' ? 'var(--green-muted)' : 'var(--blue-muted)'} />,
+              action: <div style={{ display: 'flex', gap: 6 }}>
+                <Button variant="secondary" style={{ padding: '6px 10px', fontSize: 11 }} onClick={() => fetchV550JobDetail(job.jobId)} icon={v550DetailLoading ? <RefreshCw size={12} className="spin" /> : <Activity size={12} />} disabled={v550DetailLoading}>Details</Button>
+                {job.status === 'finished' && (
+                  <Button variant="secondary" style={{ padding: '6px 10px', fontSize: 11 }} onClick={() => handleV550Export(job.jobId)} icon={<Download size={12} />}>Export</Button>
+                )}
+              </div>
+            };
+          })}
           emptyIcon={<Activity size={24} />}
           emptyTitle="No external Verify550 jobs"
           emptySub="Upload a CSV above to process it directly through Verify550."
@@ -728,12 +785,18 @@ export default function VerificationPage() {
             {reverifyRunning ? 'Running...' : 'Re-Verify Now'}
           </Button>
           <Button
-            variant="secondary"
+            variant={reverifyAutoEnabled ? 'danger' : 'secondary'}
             onClick={handleToggleAutoReverify}
             disabled={!reverifySegmentId}
+            style={reverifyAutoEnabled ? { background: 'rgba(239,68,68,0.1)', color: 'var(--red)', border: '1px solid var(--red)' } : {}}
           >
-            Enable Auto (every 30min check)
+            {reverifyAutoEnabled ? '⏸ Disable Auto' : '▶ Enable Auto'}
           </Button>
+          {reverifyAutoEnabled && (
+            <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+              ● Auto-reverify active{reverifyLastRunAt ? ` · Last: ${new Date(reverifyLastRunAt).toLocaleDateString()}` : ''}
+            </span>
+          )}
           {reverifyResult && (
             <span style={{ fontSize: 12, color: 'var(--green)', fontWeight: 600 }}>
               ✓ {reverifyResult.staleCount} stale leads reset{reverifyResult.batchId ? `, batch ${reverifyResult.batchId.substring(0, 8)}… started` : ''}
@@ -749,30 +812,54 @@ export default function VerificationPage() {
           { key: 'engine', label: 'Engine' },
           { key: 'segment', label: 'Target Segment' },
           { key: 'total', label: 'Volume' },
-          { key: 'verified', label: 'Verified' },
-          { key: 'bounced', label: 'Bounced' },
+          { key: 'progress', label: 'Progress' },
           { key: 'status', label: 'State' },
+          { key: 'time', label: 'When' },
           { key: 'by', label: 'By' },
           { key: 'action', label: '' },
         ]}
-        rows={batches.map(b => ({
-          id: <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{b.id.substring(0, 8)}…</span>,
-          engine: <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: (!b.engine || b.engine === 'verify550') ? 'var(--purple-muted, rgba(168,85,247,.15))' : 'var(--blue-muted)', color: (!b.engine || b.engine === 'verify550') ? 'var(--purple)' : 'var(--blue)' }}>{(!b.engine || b.engine === 'verify550') ? 'Verify550' : 'Native SMTP'}</span>,
-          segment: segments.find(s => s.id === b.segment_id)?.name || b.segment_id,
-          total: (b.total_leads || 0).toLocaleString(),
-          verified: (b.verified_count || 0).toLocaleString(),
-          bounced: (b.bounced_count || 0).toLocaleString(),
-          status: <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {getStatusBadge(b.status)}
-            {b.error_message && <span style={{ fontSize: 11, color: 'var(--red)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={b.error_message}>{b.error_message}</span>}
-          </div>,
-          action: ['pending', 'submitting', 'processing'].includes(b.status) ? (
-            <Button variant="danger" style={{ padding: '6px 12px', fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleCancel(b.id); }} icon={<StopCircle size={12} />}>Halt</Button>
-          ) : ['complete', 'cancelled'].includes(b.status) ? (
-            <Button variant="secondary" style={{ padding: '6px 12px', fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleExportCSV(b.id); }} icon={<Download size={12} />}>CSV</Button>
-          ) : null,
-          by: <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{b.performed_by_name || '—'}</span>,
-        }))}
+        rows={batches.map(b => {
+          const done = (b.verified_count || 0) + (b.bounced_count || 0);
+          const total = b.total_leads || 1;
+          const pct = Math.min(100, Math.round((done / total) * 100));
+          const isRunning = ['pending', 'submitting', 'processing'].includes(b.status);
+          const timeAgo = b.started_at ? (() => {
+            const diff = Date.now() - new Date(b.started_at).getTime();
+            const mins = Math.floor(diff / 60000);
+            if (mins < 1) return 'just now';
+            if (mins < 60) return `${mins}m ago`;
+            const hrs = Math.floor(mins / 60);
+            if (hrs < 24) return `${hrs}h ago`;
+            return `${Math.floor(hrs / 24)}d ago`;
+          })() : '—';
+          return {
+            id: <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{b.id.substring(0, 8)}…</span>,
+            engine: <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: (!b.engine || b.engine === 'verify550') ? 'var(--purple-muted, rgba(168,85,247,.15))' : 'var(--blue-muted)', color: (!b.engine || b.engine === 'verify550') ? 'var(--purple)' : 'var(--blue)' }}>{(!b.engine || b.engine === 'verify550') ? 'Verify550' : 'Native SMTP'}</span>,
+            segment: segments.find(s => s.id === b.segment_id)?.name || b.segment_id,
+            total: (b.total_leads || 0).toLocaleString(),
+            progress: <div style={{ minWidth: 100 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
+                <span style={{ color: 'var(--green)', fontWeight: 600 }}>{(b.verified_count || 0).toLocaleString()}</span>
+                <span style={{ color: 'var(--red)', fontWeight: 600 }}>{(b.bounced_count || 0).toLocaleString()}</span>
+              </div>
+              <div style={{ height: 4, borderRadius: 2, background: 'var(--border)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: 2, width: `${pct}%`, background: isRunning ? 'var(--blue)' : 'var(--green)', transition: 'width 0.5s ease' }} />
+              </div>
+              {isRunning && <div style={{ fontSize: 10, color: 'var(--blue)', fontWeight: 600, marginTop: 2 }}>{pct}%</div>}
+            </div>,
+            status: <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {getStatusBadge(b.status)}
+              {b.error_message && <span style={{ fontSize: 11, color: 'var(--red)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={b.error_message}>{b.error_message}</span>}
+            </div>,
+            time: <span style={{ fontSize: 11, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{timeAgo}</span>,
+            action: isRunning ? (
+              <Button variant="danger" style={{ padding: '6px 12px', fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleCancel(b.id); }} icon={<StopCircle size={12} />}>Halt</Button>
+            ) : ['complete', 'cancelled'].includes(b.status) ? (
+              <Button variant="secondary" style={{ padding: '6px 12px', fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleExportCSV(b.id); }} icon={<Download size={12} />}>CSV</Button>
+            ) : null,
+            by: <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{b.performed_by_name || '—'}</span>,
+          };
+        })}
         emptyIcon={<ShieldCheck size={24} />}
         emptyTitle="No verification history"
         emptySub="Select an engine and launch a segment batch to begin."
