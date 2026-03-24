@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import Papa from 'papaparse';
-import { Network, CheckCircle, XCircle, ShieldAlert, Zap } from 'lucide-react';
+import { Network, CheckCircle, XCircle, ShieldAlert, Zap, Database } from 'lucide-react';
 import { PageHeader, SectionHeader, Button, Badge } from '../components/UI';
 import { apiCall } from '../lib/api';
 
@@ -171,6 +171,8 @@ export default function EmailVerifierPage() {
   const [progress, setProgress] = useState(0);
   const [jobStatus, setJobStatus] = useState<string>('');
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const [pushingToDB, setPushingToDB] = useState(false);
+  const [pushResult, setPushResult] = useState<{ matched: number; totalProcessed: number; updated: Record<string, number> } | null>(null);
 
   const processedResults = React.useMemo(() => {
     if (!result?.results) return [];
@@ -402,6 +404,24 @@ export default function EmailVerifierPage() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }, [result]);
+
+  const handlePushToDB = async () => {
+    if (!result?.results || result.results.length === 0) return;
+    if (!window.confirm(`Push ${result.results.length} verification results to ClickHouse?\n\nThis will update _verification_status for all matching emails in your database.`)) return;
+    setPushingToDB(true);
+    setPushResult(null);
+    try {
+      const resp = await apiCall<{ matched: number; totalProcessed: number; updated: Record<string, number> }>('/api/verify/push-to-db', {
+        method: 'POST',
+        body: { results: result.results.map(r => ({ email: r.email, classification: r.classification, riskScore: r.riskScore })) },
+      });
+      setPushResult(resp);
+    } catch (e: any) {
+      alert(`Push failed: ${e.message}`);
+    } finally {
+      setPushingToDB(false);
+    }
+  };
 
   const CheckToggle = ({ id, label, info, disabled = false }: { id: keyof CheckConfig; label: string; info: string; disabled?: boolean }) => (
     <div
@@ -642,11 +662,36 @@ export default function EmailVerifierPage() {
           {/* Results Unit */}
           {result && (
             <div className="animate-fadeIn stagger-2" style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', padding: 24, overflow: 'hidden' }}>
-              <SectionHeader
-                title="Pipeline Results"
-                action="Export CSV"
-                onAction={handleExportCSV}
-              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <SectionHeader title="Pipeline Results" />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button
+                    onClick={handlePushToDB}
+                    disabled={pushingToDB || !result.results || result.results.length === 0}
+                    icon={pushingToDB ? <ShieldAlert size={14} className="animate-pulse" /> : <Database size={14} />}
+                    variant="secondary"
+                    style={pushingToDB ? {} : { background: 'var(--green)', color: '#fff', border: 'none' }}
+                  >
+                    {pushingToDB ? 'Pushing...' : 'Push to DB'}
+                  </Button>
+                  <Button onClick={handleExportCSV} variant="secondary">Export CSV</Button>
+                </div>
+              </div>
+
+              {/* Push Result Banner */}
+              {pushResult && (
+                <div style={{ marginBottom: 16, padding: 14, borderRadius: 12, background: 'var(--green-muted)', border: '1px solid var(--green)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: 'var(--green)', fontSize: 13, marginBottom: 6 }}>
+                    <CheckCircle size={16} /> Pushed to Database
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    {pushResult.matched.toLocaleString()} of {pushResult.totalProcessed.toLocaleString()} emails matched.
+                    Updated: <strong style={{ color: 'var(--green)' }}>{pushResult.updated.valid || 0} valid</strong>,{' '}
+                    <strong style={{ color: 'var(--yellow)' }}>{pushResult.updated.risky || 0} risky</strong>,{' '}
+                    <strong style={{ color: 'var(--red)' }}>{pushResult.updated.invalid || 0} invalid</strong>
+                  </div>
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
                 <div style={{ padding: 16, borderRadius: 12, background: 'var(--green-muted)', border: '1px solid rgba(34,197,94,0.2)' }}>

@@ -297,4 +297,84 @@ router.get('/jobs/:id', requireSuperadmin, async (req, res) => {
   }
 });
 
+// ─── POST /api/verify/push-to-db ───
+// Push Pipeline Studio results into ClickHouse.
+// Maps pipeline classifications to _verification_status.
+
+const PIPELINE_STATUS_MAP: Record<string, string> = {
+  safe: 'valid',
+  uncertain: 'risky',
+  risky: 'risky',
+  reject: 'invalid',
+};
+
+router.post('/push-to-db', requireSuperadmin, async (req, res) => {
+  try {
+    const { results } = req.body as {
+      results: { email: string; classification: string; riskScore: number }[];
+    };
+
+    if (!results || !Array.isArray(results) || results.length === 0) {
+      return res.status(400).json({ error: 'results array is required' });
+    }
+
+    const user = getRequestUser(req);
+    console.log(`[Pipeline→DB] User ${user.name} pushing ${results.length} results to ClickHouse`);
+
+    const BATCH_SIZE = 500;
+    let totalMatched = 0;
+    const statusCounts: Record<string, number> = { valid: 0, risky: 0, invalid: 0 };
+
+    // Group by classification for efficient batch processing
+    const grouped = new Map<string, string[]>();
+    for (const r of results) {
+      const internalStatus = PIPELINE_STATUS_MAP[r.classification] || 'risky';
+      if (!grouped.has(internalStatus)) grouped.set(internalStatus, []);
+      grouped.get(internalStatus)!.push(r.email.toLowerCase().trim());
+    }
+
+    for (const [internalStatus, emails] of grouped) {
+      for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+        const batch = emails.slice(i, i + BATCH_SIZE);
+        const emailList = batch.map(e => `'${e.replace(/'/g, "''")}'`).join(',');
+
+        // Count matches
+        const [matchCount] = await chQuery<{ cnt: string }>(`
+          SELECT count() as cnt FROM universal_person
+          WHERE lower(business_email) IN (${emailList})
+             OR lower(personal_emails) IN (${emailList})
+        `);
+        const matched = Number(matchCount?.cnt || 0);
+        totalMatched += matched;
+        statusCounts[internalStatus] = (statusCounts[internalStatus] || 0) + matched;
+
+        // Update
+        if (matched > 0) {
+          const bouncedFlag = internalStatus === 'invalid' ? 1 : 0;
+          await chCommand(`
+            ALTER TABLE universal_person UPDATE
+              _verification_status = '${internalStatus}',
+              _verified_at = now(),
+              _bounced = ${bouncedFlag}
+            WHERE (lower(business_email) IN (${emailList})
+               OR lower(personal_emails) IN (${emailList}))
+              AND (_verification_status IS NULL
+                OR _verification_status != '${internalStatus}')
+          `);
+        }
+      }
+    }
+
+    console.log(`[Pipeline→DB] Complete: ${totalMatched} matched out of ${results.length}. V:${statusCounts.valid || 0} R:${statusCounts.risky || 0} I:${statusCounts.invalid || 0}`);
+    res.json({
+      totalProcessed: results.length,
+      matched: totalMatched,
+      updated: statusCounts,
+    });
+  } catch (e: any) {
+    console.error('[Pipeline→DB] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
