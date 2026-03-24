@@ -166,6 +166,10 @@ async function start() {
     // Start segment auto-refresh scheduler
     const { startSegmentScheduler } = await import('./services/segment-scheduler.js');
     startSegmentScheduler();
+
+    // Start re-verification scheduler
+    const { startReverifyScheduler } = await import('./services/reverify-scheduler.js');
+    startReverifyScheduler();
   } catch (e: any) {
     console.warn(`[Server] ⚠ Database init skipped (ClickHouse unavailable): ${e.message}`);
     console.warn('[Server] ⚠ The API will start but database operations will fail until ClickHouse is available.');

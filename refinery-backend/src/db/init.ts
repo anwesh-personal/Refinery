@@ -300,6 +300,13 @@ export async function initDatabase(): Promise<void> {
   await command(`ALTER TABLE universal_person ADD COLUMN IF NOT EXISTS _bounced UInt8 DEFAULT 0`);
   console.log('[DB] ✓ V550 category + bounced columns ensured on universal_person');
 
+  // ── Re-Verification Columns on Segments ──
+  await command(`ALTER TABLE segments ADD COLUMN IF NOT EXISTS reverify_enabled UInt8 DEFAULT 0`);
+  await command(`ALTER TABLE segments ADD COLUMN IF NOT EXISTS reverify_days_threshold UInt32 DEFAULT 30`);
+  await command(`ALTER TABLE segments ADD COLUMN IF NOT EXISTS reverify_engine String DEFAULT 'verify550'`);
+  await command(`ALTER TABLE segments ADD COLUMN IF NOT EXISTS reverify_last_run_at Nullable(DateTime)`);
+  console.log('[DB] ✓ Re-verification columns ensured on segments');
+
   console.log('[DB] ✓ All tables initialized');
 }
 

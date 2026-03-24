@@ -205,4 +205,52 @@ router.get('/batches/:id/export', requireSuperadmin, async (req, res) => {
   }
 });
 
+import { triggerReverify } from '../services/reverify-scheduler.js';
+import { query as chQuery, command as chCommand } from '../db/clickhouse.js';
+
+// POST /api/verification/reverify/:id
+// Manually trigger re-verification for stale leads in a segment
+router.post('/reverify/:id', requireSuperadmin, async (req, res) => {
+  try {
+    const segmentId = String(req.params.id);
+    if (!/^[a-zA-Z0-9_-]+$/.test(segmentId)) {
+      return res.status(400).json({ error: 'Invalid segment ID' });
+    }
+    const daysThreshold = Number(req.body.daysThreshold) || 30;
+    const engine = (req.body.engine === 'builtin' ? 'builtin' : 'verify550') as 'verify550' | 'builtin';
+
+    const result = await triggerReverify(segmentId, daysThreshold, engine);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/verification/reverify-config/:id
+// Configure auto re-verification settings for a segment
+router.post('/reverify-config/:id', requireSuperadmin, async (req, res) => {
+  try {
+    const segmentId = String(req.params.id);
+    if (!/^[a-zA-Z0-9_-]+$/.test(segmentId)) {
+      return res.status(400).json({ error: 'Invalid segment ID' });
+    }
+
+    const { enabled, daysThreshold, engine } = req.body;
+    const updates: string[] = [];
+
+    if (enabled !== undefined) updates.push(`reverify_enabled = ${enabled ? 1 : 0}`);
+    if (daysThreshold !== undefined) updates.push(`reverify_days_threshold = ${Math.max(1, Math.min(365, Number(daysThreshold) || 30))}`);
+    if (engine !== undefined) updates.push(`reverify_engine = '${engine === 'builtin' ? 'builtin' : 'verify550'}'`);
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No configuration provided' });
+    }
+
+    await chCommand(`ALTER TABLE segments UPDATE ${updates.join(', ')} WHERE id = '${segmentId}'`);
+    res.json({ message: 'Re-verification config updated', segmentId });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
