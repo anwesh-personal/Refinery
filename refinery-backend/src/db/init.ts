@@ -75,7 +75,9 @@ const SCHEMAS = [
     _ingested_at                       DateTime DEFAULT now(),
     _segment_ids                       Array(String) DEFAULT [],
     _verification_status               Nullable(String),
-    _verified_at                       Nullable(DateTime)
+    _verified_at                       Nullable(DateTime),
+    _v550_category                     Nullable(String),
+    _bounced                           UInt8 DEFAULT 0
   ) ENGINE = MergeTree()
     PARTITION BY personal_state
     ORDER BY (personal_state, primary_industry, up_id)
@@ -292,6 +294,11 @@ export async function initDatabase(): Promise<void> {
     await command(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS performed_by_name Nullable(String)`);
   }
   console.log(`[DB] ✓ User attribution columns ensured on ${ATTRIBUTION_TABLES.length} tables`);
+
+  // ── V550 Category Column ──
+  await command(`ALTER TABLE universal_person ADD COLUMN IF NOT EXISTS _v550_category Nullable(String)`);
+  await command(`ALTER TABLE universal_person ADD COLUMN IF NOT EXISTS _bounced UInt8 DEFAULT 0`);
+  console.log('[DB] ✓ V550 category + bounced columns ensured on universal_person');
 
   console.log('[DB] ✓ All tables initialized');
 }

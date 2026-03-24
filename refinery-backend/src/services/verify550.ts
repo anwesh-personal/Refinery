@@ -153,3 +153,181 @@ export async function exportJob(
 
   return { buffer, contentType, filename };
 }
+
+// ═══════════════════════════════════════════════════════════════
+// V550 → ClickHouse Import System
+//
+// Maps all 26 Verify550 categories to our internal status:
+//   valid   — safe to send (ok, ok_for_all)
+//   risky   — use with caution (unknown, antispam_system, soft_bounce, departmental, invalid_vendor_response)
+//   invalid — do not send (email_disabled, dead_server, invalid_mx, invalid_syntax, smtp_protocol, hard_bounces)
+//   threat  — blacklist immediately (complainers, sleeper_cell, seeds, email_bot, spamcops, spamtraps, etc.)
+// ═══════════════════════════════════════════════════════════════
+
+import AdmZip from 'adm-zip';
+import { command } from '../db/clickhouse.js';
+
+export const CATEGORY_STATUS_MAP: Record<string, 'valid' | 'risky' | 'invalid' | 'threat'> = {
+  // ✅ Safe
+  ok: 'valid',
+  ok_for_all: 'valid',
+  // ⚠️ Risky
+  unknown: 'risky',
+  antispam_system: 'risky',
+  soft_bounce: 'risky',
+  departmental: 'risky',
+  invalid_vendor_response: 'risky',
+  // ❌ Dead
+  email_disabled: 'invalid',
+  dead_server: 'invalid',
+  invalid_mx: 'invalid',
+  invalid_syntax: 'invalid',
+  smtp_protocol: 'invalid',
+  hard_bounces: 'invalid',
+  // 🚫 Threats
+  complainers: 'threat',
+  sleeper_cell: 'threat',
+  seeds: 'threat',
+  email_bot: 'threat',
+  spamcops: 'threat',
+  spamtraps: 'threat',
+  threat_endings: 'threat',
+  threat_string: 'threat',
+  advisory_trap: 'threat',
+  blacklisted: 'threat',
+  disposables: 'threat',
+  bot_clickers: 'threat',
+  litigators: 'threat',
+  lashback: 'threat',
+};
+
+/**
+ * Download a V550 job's results, unzip the .zip, parse CSVs to extract emails by category.
+ * Returns a map of category → email[].
+ */
+export async function exportAndParseJobEmails(
+  apiKey: string,
+  jobId: string,
+  categories?: string[],
+): Promise<Map<string, string[]>> {
+  const { buffer } = await exportJob(apiKey, jobId, 'csv', categories);
+
+  const zip = new AdmZip(buffer);
+  const entries = zip.getEntries();
+  const categoryEmails = new Map<string, string[]>();
+
+  for (const entry of entries) {
+    if (entry.isDirectory) continue;
+    const filename = entry.name.toLowerCase();
+    if (!filename.endsWith('.csv') && !filename.endsWith('.txt')) continue;
+
+    // V550 names files like "ok.csv", "email_disabled.csv", etc.
+    const category = filename.replace(/\.[^.]+$/, '').toLowerCase();
+    const content = entry.getData().toString('utf-8');
+    const lines = content.split(/\r?\n/).filter(l => l.trim());
+
+    const emails: string[] = [];
+    for (const line of lines) {
+      // Each line is just an email (V550 CSV format)
+      const email = line.trim().replace(/^["']|["']$/g, '').toLowerCase();
+      if (email && email.includes('@') && !email.startsWith('email')) {
+        emails.push(email);
+      }
+    }
+
+    if (emails.length > 0) {
+      categoryEmails.set(category, emails);
+    }
+  }
+
+  return categoryEmails;
+}
+
+/**
+ * Import a completed V550 job's results into ClickHouse.
+ * For each email, updates _verification_status, _verified_at, and _v550_category.
+ * Returns counts of how many were matched & updated per status.
+ */
+export async function importJobToClickHouse(
+  apiKey: string,
+  jobId: string,
+): Promise<{
+  totalProcessed: number;
+  matched: number;
+  updated: { valid: number; risky: number; invalid: number; threat: number };
+  categories: Record<string, number>;
+}> {
+  // 1. Get job detail to know which categories have data
+  const jobDetail = await getJob(apiKey, jobId);
+  const jobData = jobDetail?.data || jobDetail;
+  if (!jobData || jobData.status !== 'finished') {
+    throw new Error(`Job ${jobId} is not finished (status: ${jobData?.status || 'unknown'})`);
+  }
+
+  const suppressionResults: Record<string, number> = jobData.suppression_results || {};
+  const activeCategories = Object.entries(suppressionResults)
+    .filter(([_, count]) => count > 0)
+    .map(([cat]) => cat);
+
+  if (activeCategories.length === 0) {
+    throw new Error('No categories with results found in this job');
+  }
+
+  // 2. Export all categories at once & parse
+  const categoryEmails = await exportAndParseJobEmails(apiKey, jobId, activeCategories);
+
+  let totalProcessed = 0;
+  let matched = 0;
+  const updated = { valid: 0, risky: 0, invalid: 0, threat: 0 };
+  const categoryCounts: Record<string, number> = {};
+
+  // 3. For each category, match emails against ClickHouse and update
+  for (const [category, emails] of categoryEmails) {
+    const status = CATEGORY_STATUS_MAP[category] || 'risky';
+    categoryCounts[category] = emails.length;
+    totalProcessed += emails.length;
+
+    // Process in batches of 500 to avoid SQL length limits
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+      const batch = emails.slice(i, i + BATCH_SIZE);
+      const emailList = batch.map(e => `'${e.replace(/'/g, "''")}'`).join(',');
+
+      // Map V550 status to our internal status
+      const internalStatus = status === 'threat' ? 'invalid' : status;
+      const bouncedFlag = status === 'invalid' || status === 'threat' ? 1 : 0;
+
+      // Count matches before update
+      const [matchCount] = await query<{ cnt: string }>(`
+        SELECT count() as cnt FROM universal_person
+        WHERE lower(business_email) IN (${emailList})
+           OR lower(personal_emails) IN (${emailList})
+      `);
+      const batchMatched = Number(matchCount?.cnt || 0);
+      matched += batchMatched;
+      updated[status] += batchMatched;
+
+      // Update matching leads
+      if (batchMatched > 0) {
+        await command(`
+          ALTER TABLE universal_person UPDATE
+            _verification_status = '${internalStatus}',
+            _v550_category = '${category}',
+            _verified_at = now(),
+            _bounced = ${bouncedFlag}
+          WHERE (lower(business_email) IN (${emailList})
+             OR lower(personal_emails) IN (${emailList}))
+            AND (_verification_status IS NULL
+              OR _verification_status != '${internalStatus}'
+              OR _v550_category IS NULL
+              OR _v550_category != '${category}')
+        `);
+      }
+    }
+  }
+
+  console.log(`[V550 Import] Job ${jobId}: ${totalProcessed} emails processed, ${matched} matched in DB. Valid:${updated.valid} Risky:${updated.risky} Invalid:${updated.invalid} Threat:${updated.threat}`);
+
+  return { totalProcessed, matched, updated, categories: categoryCounts };
+}
+

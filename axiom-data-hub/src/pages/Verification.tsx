@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { ShieldCheck, CheckCircle, XCircle, Clock, Upload, RefreshCw, Activity, StopCircle, Play, Download } from 'lucide-react';
+import { ShieldCheck, CheckCircle, XCircle, Clock, Upload, RefreshCw, Activity, StopCircle, Play, Download, Database } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, DataTable, Button, Input, Badge } from '../components/UI';
 import { ServerSelector, useServers } from '../components/ServerSelector';
 import { apiCall } from '../lib/api';
@@ -73,6 +73,8 @@ export default function VerificationPage() {
   const [v550DetailLoading, setV550DetailLoading] = useState(false);
   const [v550ExportCategories, setV550ExportCategories] = useState<Set<string>>(new Set());
   const [v550ExportFormat, setV550ExportFormat] = useState<'csv' | 'xlsx'>('csv');
+  const [importingV550, setImportingV550] = useState(false);
+  const [importResult, setImportResult] = useState<{ matched: number; totalProcessed: number; updated: { valid: number; risky: number; invalid: number; threat: number } } | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -347,6 +349,21 @@ export default function VerificationPage() {
       alert(`Failed to fetch job details: ${e.message}`);
     } finally {
       setV550DetailLoading(false);
+    }
+  };
+
+  const handleV550Import = async (jobId: string) => {
+    if (!window.confirm('Import all V550 results into your ClickHouse database?\n\nThis will update _verification_status and _v550_category for all matching emails.')) return;
+    setImportingV550(true);
+    setImportResult(null);
+    try {
+      const result = await apiCall<{ matched: number; totalProcessed: number; updated: { valid: number; risky: number; invalid: number; threat: number } }>(`/api/v550/import/${jobId}`, { method: 'POST' });
+      setImportResult(result);
+      fetchData(false); // refresh stats
+    } catch (e: any) {
+      alert(`Import failed: ${e.message}`);
+    } finally {
+      setImportingV550(false);
     }
   };
 
@@ -791,6 +808,36 @@ export default function VerificationPage() {
                   {v550DetailJob.completionTime && <span>Completed: {new Date(v550DetailJob.completionTime).toLocaleString()}</span>}
                 </div>
               )}
+
+              {/* Import Result Banner */}
+              {importResult && (
+                <div style={{ marginTop: 16, padding: 16, borderRadius: 12, background: 'var(--green-muted)', border: '1px solid var(--green)', fontSize: 13 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--green)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <CheckCircle size={16} /> Import Complete
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--green)' }}>{importResult.updated.valid.toLocaleString()}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 600 }}>VALID</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--yellow)' }}>{importResult.updated.risky.toLocaleString()}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 600 }}>RISKY</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--red)' }}>{importResult.updated.invalid.toLocaleString()}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 600 }}>INVALID</div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--purple)' }}>{importResult.updated.threat.toLocaleString()}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 600 }}>THREATS</div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-secondary)' }}>
+                    {importResult.matched.toLocaleString()} of {importResult.totalProcessed.toLocaleString()} emails matched in your database
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Footer — Export controls */}
@@ -809,7 +856,15 @@ export default function VerificationPage() {
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <Button variant="secondary" onClick={() => setV550DetailJob(null)}>Close</Button>
+                <Button variant="secondary" onClick={() => { setV550DetailJob(null); setImportResult(null); }}>Close</Button>
+                <Button
+                  onClick={() => handleV550Import(v550DetailJob.jobId)}
+                  disabled={v550DetailJob.status !== 'finished' || importingV550}
+                  icon={importingV550 ? <RefreshCw size={14} className="animate-spin" /> : <Database size={14} />}
+                  style={{ background: importingV550 ? 'var(--bg-elevated)' : 'var(--green)', color: importingV550 ? 'var(--text-tertiary)' : '#fff' }}
+                >
+                  {importingV550 ? 'Importing...' : '⬇️ Import to DB'}
+                </Button>
                 <Button
                   onClick={() => handleV550ExportFiltered(v550DetailJob.jobId)}
                   icon={<Download size={14} />}

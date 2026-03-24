@@ -121,4 +121,24 @@ router.get('/export/:id', async (req, res) => {
   }
 });
 
+// POST /api/v550/import/:id — Import V550 job results → ClickHouse
+router.post('/import/:id', async (req, res) => {
+  try {
+    const user = getRequestUser(req);
+    const apiKey = await v550.resolveApiKey(user.id);
+    const jobId = req.params.id;
+
+    console.log(`[V550 Import] User ${user.name} (${user.id}) importing job ${jobId}`);
+    const result = await v550.importJobToClickHouse(apiKey, jobId);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/v550/categories — Get category → status mapping (for UI)
+router.get('/categories', (_req, res) => {
+  res.json(v550.CATEGORY_STATUS_MAP);
+});
+
 export default router;
