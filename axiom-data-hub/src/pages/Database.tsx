@@ -70,7 +70,7 @@ const COLUMN_GROUPS: Record<string, string[]> = {
   'Company': ['company_name', 'company_domain', 'company_phone', 'company_linkedin_url', 'company_revenue', 'company_employee_count', 'primary_industry', 'company_description', 'company_sic', 'company_naics'],
   'Location': ['personal_address', 'personal_city', 'personal_state', 'personal_zip', 'personal_country', 'company_address', 'company_city', 'company_state', 'company_zip', 'company_country'],
   'Job': ['job_title', 'seniority_level', 'department', 'job_title_last_updated'],
-  'Metadata': ['_ingestion_job_id', '_ingested_at', '_segment_ids', '_verification_status', '_verified_at', 'topic_type', 'source_table', 'topic_id'],
+  'Metadata': ['_ingestion_job_id', '_ingested_at', '_segment_ids', '_verification_status', '_verified_at', '_v550_category', '_bounced', 'topic_type', 'source_table', 'topic_id'],
 };
 
 // --- Helpers ---
@@ -864,7 +864,7 @@ export default function DatabasePage() {
 
               // 6. Completeness filter (computed column ratio)
               if (hasCompleteness) {
-                const cols = allColumns.filter(c => !['_ingestion_job_id', '_ingested_at', '_segment_ids', '_verification_status', '_verified_at', 'topic_type', 'source_table', 'topic_id'].includes(c));
+                const cols = allColumns.filter(c => !['_ingestion_job_id', '_ingested_at', '_segment_ids', '_verification_status', '_verified_at', '_v550_category', '_bounced', 'topic_type', 'source_table', 'topic_id'].includes(c));
                 const filledExpr = cols.map(c => `if(\`${c}\` IS NOT NULL AND toString(\`${c}\`) != '', 1, 0)`).join(' + ');
                 const total = cols.length;
                 if (completenessFilter === 'high') {

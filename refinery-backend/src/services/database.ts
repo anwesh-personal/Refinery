@@ -71,7 +71,7 @@ export async function checkHealth() {
 
 // ── Dynamic column discovery ──
 // Internal columns (metadata) that should appear last
-const INTERNAL_COLS = new Set(['_ingestion_job_id', '_ingested_at', '_segment_ids', '_verification_status', '_verified_at']);
+const INTERNAL_COLS = new Set(['_ingestion_job_id', '_ingested_at', '_segment_ids', '_verification_status', '_verified_at', '_v550_category', '_bounced']);
 
 // Cache columns for 60 seconds to avoid hitting system.columns on every request
 let columnsCache: string[] = [];
