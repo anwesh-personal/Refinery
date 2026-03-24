@@ -193,6 +193,9 @@ export const CATEGORY_STATUS_MAP: Record<string, 'valid' | 'risky' | 'invalid' |
   spamtraps: 'threat',
   threat_endings: 'threat',
   threat_string: 'threat',
+  // V550 bulk API uses "thread" spelling (inconsistency in their API)
+  thread_endings: 'threat',
+  thread_string: 'threat',
   advisory_trap: 'threat',
   blacklisted: 'threat',
   disposables: 'threat',

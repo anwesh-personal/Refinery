@@ -419,7 +419,7 @@ export default function VerificationPage() {
     { label: '✅ Safe', color: 'var(--green)', bg: 'rgba(34,197,94,0.1)', categories: ['ok', 'ok_for_all'] },
     { label: '⚠️ Risky', color: 'var(--yellow)', bg: 'rgba(234,179,8,0.1)', categories: ['unknown', 'antispam_system', 'soft_bounce', 'departmental', 'invalid_vendor_response'] },
     { label: '❌ Dead', color: 'var(--red)', bg: 'rgba(239,68,68,0.1)', categories: ['email_disabled', 'dead_server', 'invalid_mx', 'invalid_syntax', 'smtp_protocol', 'hard_bounces'] },
-    { label: '🚫 Threats', color: 'var(--purple)', bg: 'var(--purple-muted)', categories: ['complainers', 'sleeper_cell', 'seeds', 'email_bot', 'spamcops', 'spamtraps', 'threat_endings', 'threat_string', 'advisory_trap', 'blacklisted', 'disposables', 'bot_clickers', 'litigators', 'lashback'] },
+    { label: '🚫 Threats', color: 'var(--purple)', bg: 'var(--purple-muted)', categories: ['complainers', 'sleeper_cell', 'seeds', 'email_bot', 'spamcops', 'spamtraps', 'threat_endings', 'threat_string', 'thread_endings', 'thread_string', 'advisory_trap', 'blacklisted', 'disposables', 'bot_clickers', 'litigators', 'lashback'] },
   ];
 
 
