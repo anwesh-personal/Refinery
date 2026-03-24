@@ -322,3 +322,113 @@ export async function deleteSegment(id: string): Promise<void> {
   const escaped = id.replace(/'/g, "\\'");
   await command(`ALTER TABLE segments DELETE WHERE id = '${escaped}'`);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// CSV Upload → Segment
+// Takes a list of emails, matches against universal_person,
+// and creates a segment containing only matching leads.
+// ═══════════════════════════════════════════════════════════════
+
+export async function createSegmentFromUpload(
+  name: string,
+  emails: string[],
+  matchColumn: 'business_email' | 'personal_emails' | 'any',
+  performedBy?: string,
+  performedByName?: string,
+): Promise<{ id: string; matched: number; unmatched: number; total: number }> {
+  // Deduplicate and normalize emails
+  const unique = [...new Set(emails.map(e => e.trim().toLowerCase()).filter(e => e && e.includes('@')))];
+
+  if (unique.length === 0) {
+    throw new Error('No valid emails found in upload');
+  }
+
+  if (unique.length > 500_000) {
+    throw new Error('Upload exceeds 500,000 email limit. Split into multiple segments.');
+  }
+
+  // Build the match condition
+  const escaped = unique.map(e => `'${e.replace(/'/g, "\\'")}'`);
+
+  let filterQuery: string;
+  if (matchColumn === 'any') {
+    filterQuery = `(lower(\`business_email\`) IN (${escaped.join(',')}) OR lower(\`personal_emails\`) IN (${escaped.join(',')}))`;
+  } else {
+    filterQuery = `lower(\`${matchColumn}\`) IN (${escaped.join(',')})`;
+  }
+
+  // If list is too large for a single IN(), use a batch approach
+  // ClickHouse handles IN with up to ~100K values efficiently
+  if (unique.length > 100_000) {
+    // Create a temporary table and join
+    const tmpTable = `_upload_seg_${Date.now()}`;
+    await command(`CREATE TABLE IF NOT EXISTS ${tmpTable} (email String) ENGINE = Memory`);
+    
+    // Insert in batches of 10K
+    for (let i = 0; i < unique.length; i += 10_000) {
+      const batch = unique.slice(i, i + 10_000);
+      await insertRows(tmpTable, batch.map(e => ({ email: e })));
+    }
+
+    if (matchColumn === 'any') {
+      filterQuery = `(lower(\`business_email\`) IN (SELECT email FROM ${tmpTable}) OR lower(\`personal_emails\`) IN (SELECT email FROM ${tmpTable}))`;
+    } else {
+      filterQuery = `lower(\`${matchColumn}\`) IN (SELECT email FROM ${tmpTable})`;
+    }
+
+    // Count matches
+    const [countResult] = await query<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE ${filterQuery}`);
+    const matched = Number(countResult?.cnt || 0);
+
+    // Create the final segment with a self-contained filter (copy emails into IN clause for persistence)
+    // We need to persist the filter — temp table may get dropped
+    // For >100K, store the list in a permanent small table
+    const permTable = `_seg_list_${Date.now()}`;
+    await command(`RENAME TABLE ${tmpTable} TO ${permTable}`);
+
+    if (matchColumn === 'any') {
+      filterQuery = `(lower(\`business_email\`) IN (SELECT email FROM ${permTable}) OR lower(\`personal_emails\`) IN (SELECT email FROM ${permTable}))`;
+    } else {
+      filterQuery = `lower(\`${matchColumn}\`) IN (SELECT email FROM ${permTable})`;
+    }
+
+    const id = genId();
+    await insertRows('segments', [{
+      id,
+      name,
+      niche: null,
+      client_name: null,
+      filter_query: filterQuery,
+      status: 'draft',
+      ...(performedBy ? { performed_by: performedBy } : {}),
+      ...(performedByName ? { performed_by_name: performedByName } : {}),
+    }]);
+
+    return { id, matched, unmatched: unique.length - matched, total: unique.length };
+  }
+
+  // For smaller lists, validate the filter
+  const validation = await validateFilterQuery(filterQuery);
+  if (!validation.valid) {
+    throw new Error(`Filter validation failed: ${validation.error}`);
+  }
+
+  // Count matches
+  const [countResult] = await query<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE ${filterQuery}`);
+  const matched = Number(countResult?.cnt || 0);
+
+  // Create the segment
+  const id = genId();
+  await insertRows('segments', [{
+    id,
+    name,
+    niche: null,
+    client_name: null,
+    filter_query: filterQuery,
+    status: 'draft',
+    ...(performedBy ? { performed_by: performedBy } : {}),
+    ...(performedByName ? { performed_by_name: performedByName } : {}),
+  }]);
+
+  return { id, matched, unmatched: unique.length - matched, total: unique.length };
+}

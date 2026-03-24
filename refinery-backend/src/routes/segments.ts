@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import multer from 'multer';
+import os from 'os';
+import fs from 'fs';
 import * as segService from '../services/segments.js';
 import { validateSegmentFilter } from '../services/segments.js';
 import { getRequestUser } from '../types/auth.js';
@@ -6,6 +9,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { syncSegmentToMailwizz } from '../services/mailwizz-sync.js';
 
 const router = Router();
+const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB max
 router.use(requireAuth);
 
 // GET /api/segments
@@ -51,6 +55,63 @@ router.post('/', async (req, res) => {
     const id = await segService.createSegment({ name, niche, clientName, filterQuery }, user.id, user.name);
     res.json({ id });
   } catch (e: any) { res.status(500).json({ error: e.message, suggestion: (e as any).suggestion }); }
+});
+
+// POST /api/segments/upload — Create segment from uploaded CSV of emails
+router.post('/upload', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const user = getRequestUser(req);
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Segment name is required' });
+
+    const matchColumn = (req.body.matchColumn || 'any') as 'business_email' | 'personal_emails' | 'any';
+    const emailColumnHeader = String(req.body.emailColumn || '').trim().toLowerCase();
+
+    // Read and parse CSV
+    const raw = fs.readFileSync(req.file.path, 'utf-8');
+    fs.unlinkSync(req.file.path); // cleanup
+
+    const lines = raw.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length === 0) return res.status(400).json({ error: 'CSV file is empty' });
+
+    // Detect if first line is a header
+    const firstLine = lines[0];
+    const delim = firstLine.includes('\t') ? '\t' : ',';
+    const headers = firstLine.split(delim).map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+
+    // Find the email column index
+    let emailIdx = 0; // default: first column
+    if (emailColumnHeader) {
+      const idx = headers.findIndex(h => h === emailColumnHeader);
+      if (idx >= 0) emailIdx = idx;
+    } else {
+      // Auto-detect: find column with "email" in header
+      const idx = headers.findIndex(h => h.includes('email') || h === 'e-mail' || h === 'emailaddress');
+      if (idx >= 0) emailIdx = idx;
+    }
+
+    // Check if first line is a header (not an email)
+    const isHeader = !headers[emailIdx].includes('@');
+    const dataLines = isHeader ? lines.slice(1) : lines;
+
+    // Extract emails
+    const emails: string[] = [];
+    for (const line of dataLines) {
+      const cols = line.split(delim);
+      const email = (cols[emailIdx] || '').trim().replace(/^["']|["']$/g, '');
+      if (email && email.includes('@')) {
+        emails.push(email);
+      }
+    }
+
+    if (emails.length === 0) return res.status(400).json({ error: 'No valid emails found in the uploaded file' });
+
+    const result = await segService.createSegmentFromUpload(name, emails, matchColumn, user.id, user.name);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // GET /api/segments/:id

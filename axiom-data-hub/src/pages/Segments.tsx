@@ -1,7 +1,7 @@
-import { Filter, Plus, Layers, Users, Loader2, Eye, AlertCircle, CheckCircle2, Wand2, Tag } from 'lucide-react';
+import { Filter, Plus, Layers, Users, Loader2, Eye, AlertCircle, CheckCircle2, Wand2, Tag, Upload } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiCall } from '../lib/api';
 import FilterBuilder, { filterGroupToSQL, sqlToFilterGroup } from '../components/FilterBuilder';
 import type { FilterGroup } from '../components/FilterBuilder';
@@ -28,6 +28,14 @@ export default function SegmentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // CSV Upload state
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadName, setUploadName] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadMatch, setUploadMatch] = useState<'any' | 'business_email' | 'personal_emails'>('any');
+  const uploadRef = useRef<HTMLInputElement>(null);
 
   // Inline editor for existing segments
   const [editingSegment, setEditingSegment] = useState<Segment | null>(null);
@@ -217,7 +225,101 @@ export default function SegmentsPage() {
       )}
 
       {/* Create Form */}
-      <SectionHeader title="New Segment" />
+      <SectionHeader title="New Segment" action="📤 Upload CSV" onAction={() => setShowUpload(!showUpload)} />
+
+      {/* ═══════ CSV Upload Panel ═══════ */}
+      {showUpload && (
+        <div className="animate-fadeIn" style={{ background: 'var(--bg-card)', border: '1px solid var(--accent)', borderRadius: 16, padding: 28, marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <Upload size={18} color="var(--accent)" />
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Create Segment from CSV</span>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Upload a CSV with emails → matches against your database → creates a segment</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 16, marginBottom: 16, alignItems: 'end' }}>
+            <div>
+              <label style={labelStyle}>Segment Name *</label>
+              <Input placeholder="e.g. Verified Batch — Verify550" value={uploadName} onChange={(v: string) => setUploadName(v)} />
+            </div>
+            <div>
+              <label style={labelStyle}>Match Against</label>
+              <select
+                value={uploadMatch}
+                onChange={e => setUploadMatch(e.target.value as typeof uploadMatch)}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13,
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+                  color: 'var(--text-primary)', cursor: 'pointer',
+                }}
+              >
+                <option value="any">Any email column</option>
+                <option value="business_email">Business email only</option>
+                <option value="personal_emails">Personal email only</option>
+              </select>
+            </div>
+            <button
+              onClick={async () => {
+                if (!uploadFile || !uploadName.trim()) { setError('Select a file and enter a segment name'); return; }
+                setUploading(true); setError(null);
+                try {
+                  const form = new FormData();
+                  form.append('file', uploadFile);
+                  form.append('name', uploadName.trim());
+                  form.append('matchColumn', uploadMatch);
+                  const result = await apiCall<{ id: string; matched: number; unmatched: number; total: number }>('/api/segments/upload', {
+                    method: 'POST', body: form,
+                  });
+                  setSuccess(`Segment created! ${result.matched.toLocaleString()} matched, ${result.unmatched.toLocaleString()} unmatched out of ${result.total.toLocaleString()} emails`);
+                  setShowUpload(false); setUploadFile(null); setUploadName('');
+                  fetchSegments();
+                  setTimeout(() => setSuccess(null), 6000);
+                } catch (e: any) { setError(e.message); }
+                setUploading(false);
+              }}
+              disabled={uploading || !uploadFile || !uploadName.trim()}
+              style={{
+                padding: '8px 20px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                background: uploading ? 'var(--bg-elevated)' : 'var(--accent)', color: uploading ? 'var(--text-tertiary)' : 'var(--accent-contrast)',
+                border: 'none', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+              }}
+            >
+              {uploading ? <><Loader2 size={14} className="spin" /> Matching...</> : <><Upload size={14} /> Upload & Create</>}
+            </button>
+          </div>
+
+          {/* Drop zone */}
+          <div
+            onClick={() => uploadRef.current?.click()}
+            onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--accent)'; }}
+            onDragLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+            onDrop={e => { e.preventDefault(); e.currentTarget.style.borderColor = 'var(--border)'; const f = e.dataTransfer.files[0]; if (f) { setUploadFile(f); if (!uploadName) setUploadName(f.name.replace(/\.[^.]+$/, '')); } }}
+            style={{
+              padding: 24, borderRadius: 12, border: '2px dashed var(--border)', textAlign: 'center',
+              cursor: 'pointer', transition: 'border-color 0.2s', background: 'var(--bg-elevated)',
+            }}
+          >
+            <input ref={uploadRef} type="file" accept=".csv,.txt,.tsv" style={{ display: 'none' }} onChange={e => {
+              const f = e.target.files?.[0];
+              if (f) { setUploadFile(f); if (!uploadName) setUploadName(f.name.replace(/\.[^.]+$/, '')); }
+            }} />
+            {uploadFile ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <CheckCircle2 size={16} color="var(--green)" />
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{uploadFile.name}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>({(uploadFile.size / 1024).toFixed(0)} KB)</span>
+                <button onClick={e => { e.stopPropagation(); setUploadFile(null); }} style={{ background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 11 }}>Remove</button>
+              </div>
+            ) : (
+              <div>
+                <Upload size={20} color="var(--text-tertiary)" style={{ marginBottom: 6 }} />
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Drop a CSV file here or click to browse</div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>Supports .csv, .txt, .tsv — auto-detects email column</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="animate-fadeIn stagger-3" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 28, marginBottom: 36 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 20 }}>
           <div>
