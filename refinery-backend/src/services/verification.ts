@@ -590,3 +590,20 @@ export async function exportBatchResults(
     verified_at: r._verified_at,
   }));
 }
+
+/** Get breakdown of leads by _v550_category */
+export async function getV550CategoryBreakdown(): Promise<Record<string, number>> {
+  const rows = await query<{ category: string; cnt: string }>(`
+    SELECT _v550_category AS category, count() AS cnt
+    FROM universal_person
+    WHERE _v550_category IS NOT NULL AND _v550_category != ''
+    GROUP BY _v550_category
+    ORDER BY cnt DESC
+  `);
+  const result: Record<string, number> = {};
+  for (const r of rows) {
+    result[r.category] = Number(r.cnt);
+  }
+  return result;
+}
+

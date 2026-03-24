@@ -75,6 +75,7 @@ export default function VerificationPage() {
   const [v550ExportFormat, setV550ExportFormat] = useState<'csv' | 'xlsx'>('csv');
   const [importingV550, setImportingV550] = useState(false);
   const [importResult, setImportResult] = useState<{ matched: number; totalProcessed: number; updated: { valid: number; risky: number; invalid: number; threat: number } } | null>(null);
+  const [v550Breakdown, setV550Breakdown] = useState<Record<string, number> | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -104,7 +105,7 @@ export default function VerificationPage() {
   const fetchData = async (background = false) => {
     try {
       const opts = { serverId: selectedServerId || undefined };
-      const [s, c, b, segs, credsResp, completedResp, runningResp] = await Promise.all([
+      const [s, c, b, segs, credsResp, completedResp, runningResp, breakdownResp] = await Promise.all([
         apiCall<VerifyStats>('/api/verification/stats', opts).catch(() => null),
         !background ? apiCall<Record<string, string>>('/api/verification/config', opts).catch(() => null) : Promise.resolve(null),
         apiCall<Batch[]>('/api/verification/batches', opts).catch(() => []),
@@ -112,6 +113,7 @@ export default function VerificationPage() {
         apiCall<{ credits: number }>('/api/v550/credits', opts).catch(() => null),
         apiCall<any>('/api/v550/jobs/completed', opts).catch(() => null),
         apiCall<any>('/api/v550/jobs/running', opts).catch(() => null),
+        apiCall<Record<string, number>>('/api/verification/v550-breakdown', opts).catch(() => null),
       ]);
       if (s) setStats(s);
       if (c) {
@@ -139,6 +141,7 @@ export default function VerificationPage() {
       }
 
       if (credsResp) setV550Credits(credsResp.credits);
+      if (breakdownResp && Object.keys(breakdownResp).length > 0) setV550Breakdown(breakdownResp);
 
       const vjobs: any[] = [];
       const runningArr = Array.isArray(runningResp) ? runningResp : runningResp?.data || [];
@@ -403,6 +406,45 @@ export default function VerificationPage() {
         <StatCard label="Pending" value={stats?.pending.toLocaleString() || "0"} sub="Awaiting verification" icon={<Clock size={18} />} color="var(--yellow)" colorMuted="var(--yellow-muted)" delay={0.18} />
         <StatCard label="Yield Rate" value={stats ? `${stats.yieldRate}%` : "—"} sub="Success conversion" icon={<Activity size={18} />} color="var(--blue)" colorMuted="var(--blue-muted)" delay={0.24} />
       </div>
+
+      {/* V550 Category Breakdown */}
+      {v550Breakdown && Object.keys(v550Breakdown).length > 0 && (() => {
+        const totalCategorized = Object.values(v550Breakdown).reduce((a, b) => a + b, 0);
+        return (
+          <div style={{ marginBottom: 36, background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', padding: 24 }} className="animate-fadeIn stagger-3">
+            <SectionHeader title="V550 Category Intelligence" />
+            <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '-8px 0 16px' }}>{totalCategorized.toLocaleString()} leads categorized by Verify550</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+              {V550_GROUPS.map(group => {
+                const groupTotal = group.categories.reduce((sum, cat) => sum + (v550Breakdown[cat] || 0), 0);
+                if (groupTotal === 0) return null;
+                return (
+                  <div key={group.label} style={{ padding: 16, borderRadius: 12, background: group.bg, border: `1px solid ${group.color}22` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: group.color }}>{group.label}</span>
+                      <span style={{ fontSize: 18, fontWeight: 800, color: group.color }}>{groupTotal.toLocaleString()}</span>
+                    </div>
+                    {group.categories.map(cat => {
+                      const count = v550Breakdown[cat] || 0;
+                      if (count === 0) return null;
+                      const pct = totalCategorized > 0 ? (count / totalCategorized) * 100 : 0;
+                      return (
+                        <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-secondary)', minWidth: 120, fontWeight: 500 }}>{cat.replace(/_/g, ' ')}</span>
+                          <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'rgba(0,0,0,0.15)', overflow: 'hidden' }}>
+                            <div style={{ width: `${Math.max(pct, 1)}%`, height: '100%', borderRadius: 3, background: group.color, transition: 'width 0.6s ease' }} />
+                          </div>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: group.color, minWidth: 50, textAlign: 'right' }}>{count.toLocaleString()}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       <SectionHeader title="Engine Configuration" />
 

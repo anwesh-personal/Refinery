@@ -63,6 +63,20 @@ router.get('/stats', async (_req, res) => {
   }
 });
 
+// GET /api/verification/v550-breakdown
+// Returns count of leads per V550 category
+router.get('/v550-breakdown', async (_req, res) => {
+  try {
+    const breakdown = await verifyService.getV550CategoryBreakdown();
+    res.json(breakdown);
+  } catch (e: any) {
+    if (isClickHouseDown(e)) {
+      return res.status(503).json({ error: 'Database unavailable' });
+    }
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/verification/batches
 // Returns recent verification batches
 router.get('/batches', async (req, res) => {
