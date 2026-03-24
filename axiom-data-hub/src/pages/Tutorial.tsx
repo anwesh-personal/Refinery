@@ -11,7 +11,7 @@ import {
   ChevronDown, CheckCircle2, AlertTriangle,
   Lightbulb, Code2, Settings, Users, Zap,
   RefreshCw, Copy, ExternalLink,
-  Target, Shield, Eye,
+  Target, Shield, Eye, Mail, Rocket, BarChart3, BookOpen,
   Layers, Cpu, FileText, Workflow,
 } from 'lucide-react';
 
@@ -24,22 +24,25 @@ const fadeUp = { initial: { opacity: 0, y: 24 }, animate: { opacity: 1, y: 0 }, 
 
 // ─── Data Flow Nodes for React Flow ───
 const flowNodes: Node[] = [
-  { id: 's3', position: { x: 0, y: 0 }, data: { label: '☁️ S3 Bucket' }, style: rfNodeStyle('var(--blue)'), sourcePosition: Position.Right, targetPosition: Position.Left },
+  { id: 's3', position: { x: 0, y: 0 }, data: { label: '☁️ S3 / CSV Upload' }, style: rfNodeStyle('var(--blue)'), sourcePosition: Position.Right, targetPosition: Position.Left },
   { id: 'ingest', position: { x: 240, y: 0 }, data: { label: '📥 Ingestion Engine' }, style: rfNodeStyle('var(--blue)'), sourcePosition: Position.Right, targetPosition: Position.Left },
   { id: 'ch', position: { x: 500, y: 0 }, data: { label: '⚡ ClickHouse' }, style: rfNodeStyle('var(--green)'), sourcePosition: Position.Right, targetPosition: Position.Left },
-  { id: 'seg', position: { x: 280, y: 120 }, data: { label: '🎯 Segments' }, style: rfNodeStyle('var(--purple)'), sourcePosition: Position.Right, targetPosition: Position.Left },
-  { id: 'verify', position: { x: 520, y: 120 }, data: { label: '🛡️ Verification' }, style: rfNodeStyle('var(--yellow)'), sourcePosition: Position.Right, targetPosition: Position.Left },
-  { id: 'targets', position: { x: 400, y: 240 }, data: { label: '📋 Targets' }, style: rfNodeStyle('var(--cyan)'), sourcePosition: Position.Right, targetPosition: Position.Left },
-  { id: 'api', position: { x: 700, y: 60 }, data: { label: '🔌 v1 API' }, style: rfNodeStyle('var(--accent)'), sourcePosition: Position.Right, targetPosition: Position.Left },
+  { id: 'verify', position: { x: 740, y: 0 }, data: { label: '🛡️ Verification' }, style: rfNodeStyle('var(--yellow)'), sourcePosition: Position.Bottom, targetPosition: Position.Left },
+  { id: 'seg', position: { x: 300, y: 130 }, data: { label: '🎯 Quality Segments' }, style: rfNodeStyle('var(--purple)'), sourcePosition: Position.Right, targetPosition: Position.Left },
+  { id: 'targets', position: { x: 560, y: 130 }, data: { label: '📋 Target Lists' }, style: rfNodeStyle('var(--cyan)'), sourcePosition: Position.Right, targetPosition: Position.Left },
+  { id: 'mta', position: { x: 780, y: 130 }, data: { label: '📧 MailWizz MTA' }, style: rfNodeStyle('var(--red)'), sourcePosition: Position.Bottom, targetPosition: Position.Left },
+  { id: 'webhooks', position: { x: 540, y: 260 }, data: { label: '🔄 Feedback Loop' }, style: rfNodeStyle('var(--accent)'), sourcePosition: Position.Left, targetPosition: Position.Right },
 ];
 
 const flowEdges: Edge[] = [
   { id: 'e1', source: 's3', target: 'ingest', animated: true, style: { stroke: 'var(--blue)' }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--blue)' } },
   { id: 'e2', source: 'ingest', target: 'ch', animated: true, style: { stroke: 'var(--green)' }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--green)' } },
-  { id: 'e3', source: 'ch', target: 'seg', style: { stroke: 'var(--purple)' }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--purple)' } },
-  { id: 'e4', source: 'seg', target: 'verify', animated: true, style: { stroke: 'var(--yellow)' }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--yellow)' } },
-  { id: 'e5', source: 'verify', target: 'targets', style: { stroke: 'var(--cyan)' }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--cyan)' } },
-  { id: 'e6', source: 'ch', target: 'api', animated: true, style: { stroke: 'var(--accent)' }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--accent)' } },
+  { id: 'e3', source: 'ch', target: 'verify', animated: true, style: { stroke: 'var(--yellow)' }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--yellow)' } },
+  { id: 'e4', source: 'ch', target: 'seg', style: { stroke: 'var(--purple)' }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--purple)' } },
+  { id: 'e5', source: 'seg', target: 'targets', animated: true, style: { stroke: 'var(--cyan)' }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--cyan)' } },
+  { id: 'e6', source: 'targets', target: 'mta', animated: true, style: { stroke: 'var(--red)' }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--red)' } },
+  { id: 'e7', source: 'mta', target: 'webhooks', animated: true, style: { stroke: 'var(--accent)' }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--accent)' } },
+  { id: 'e8', source: 'webhooks', target: 'ch', animated: true, style: { stroke: 'var(--accent)' }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--accent)' } },
 ];
 
 function rfNodeStyle(color: string) {
@@ -62,13 +65,16 @@ interface TutorialSection {
 }
 
 const SECTIONS: TutorialSection[] = [
-  { id: 'overview', icon: <Workflow size={20} />, color: 'var(--accent)', title: 'Data Flow Overview', subtitle: 'The complete pipeline from raw CSV to verified prospect' },
+  { id: 'playbook', icon: <BookOpen size={20} />, color: 'var(--accent)', title: '🚀 E2E Playbook', subtitle: 'The complete flow from raw co-op leads to revenue — start here' },
+  { id: 'overview', icon: <Workflow size={20} />, color: 'var(--accent)', title: 'System Architecture', subtitle: 'The complete pipeline and data flow visualization' },
   { id: 'ingestion', icon: <CloudDownload size={20} />, color: 'var(--blue)', title: 'S3 Ingestion', subtitle: 'Connect S3 buckets, auto-rules, format detection', route: '/ingestion' },
   { id: 'database', icon: <Database size={20} />, color: 'var(--green)', title: 'ClickHouse Database', subtitle: 'Browse, query, filter billions of rows', route: '/database' },
-  { id: 'segments', icon: <Filter size={20} />, color: 'var(--purple)', title: 'Segmentation', subtitle: 'Build complex filters, preview audiences', route: '/segments' },
+  { id: 'strategy', icon: <Layers size={20} />, color: 'var(--purple)', title: '⚡ Segmentation Strategy', subtitle: 'Quality-first tiers: Gold → Silver → Bronze → Quarantine' },
+  { id: 'segments', icon: <Filter size={20} />, color: 'var(--purple)', title: 'Segments (How-To)', subtitle: 'Build complex filters, quick templates, preview audiences', route: '/segments' },
   { id: 'verification', icon: <ShieldCheck size={20} />, color: 'var(--yellow)', title: 'Verification Engine', subtitle: '9-check pipeline, SMTP probing, risk scoring', route: '/verification' },
   { id: 'pipeline', icon: <Cpu size={20} />, color: 'var(--cyan)', title: 'Pipeline Studio', subtitle: 'Standalone email list verifier with granular control', route: '/email-verifier' },
-  { id: 'targets', icon: <Target size={20} />, color: 'var(--green)', title: 'Targets & Export', subtitle: 'Build target lists, export CSV/XLSX', route: '/targets' },
+  { id: 'targets', icon: <Target size={20} />, color: 'var(--green)', title: 'Targets & MTA Push', subtitle: 'Build target lists, column map, push to MailWizz', route: '/targets' },
+  { id: 'delivery', icon: <Mail size={20} />, color: 'var(--red)', title: '📧 Email Delivery', subtitle: 'MailWizz campaigns, deliverability dashboard, warmup strategy', route: '/queue' },
   { id: 'api', icon: <Code2 size={20} />, color: 'var(--accent)', title: 'v1 REST API', subtitle: 'Machine-to-machine API with key auth', route: undefined },
   { id: 'config', icon: <Settings size={20} />, color: 'var(--text-tertiary)', title: 'Configuration', subtitle: 'System config, servers, API keys, team', route: '/config' },
 ];
@@ -79,7 +85,7 @@ const SECTIONS: TutorialSection[] = [
 
 export default function TutorialPage() {
   const navigate = useNavigate();
-  const [openSection, setOpenSection] = useState<string | null>('overview');
+  const [openSection, setOpenSection] = useState<string | null>('playbook');
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const heroRef = useRef<HTMLDivElement>(null);
 
@@ -282,17 +288,52 @@ function Section({ section: s, index, isOpen, onToggle, navigate }: {
 
 function SectionContent({ id, color }: { id: string; color: string }) {
   switch (id) {
+    case 'playbook': return <PlaybookSection color={color} />;
     case 'overview': return <OverviewSection color={color} />;
     case 'ingestion': return <IngestionSection color={color} />;
     case 'database': return <DatabaseSection color={color} />;
+    case 'strategy': return <StrategySection color={color} />;
     case 'segments': return <SegmentsSection color={color} />;
     case 'verification': return <VerificationSection color={color} />;
     case 'pipeline': return <PipelineSection color={color} />;
     case 'targets': return <TargetsSection color={color} />;
+    case 'delivery': return <DeliverySection color={color} />;
     case 'api': return <ApiSection color={color} />;
     case 'config': return <ConfigSection color={color} />;
     default: return null;
   }
+}
+
+// ─── 0. E2E Playbook ───
+
+function PlaybookSection({ color }: { color: string }) {
+  return (
+    <div>
+      <P>This is the master guide. Follow these 7 stages in order and you'll go from a raw co-op CSV to sending verified, targeted campaigns that land in inboxes.</P>
+
+      <H3 color={color}>The 7 Stages</H3>
+      <StepList color={color} steps={[
+        { title: '📥 Stage 1: Ingest Raw Data', desc: 'Upload co-op CSVs via S3 Ingestion. Each file gets its own ingestion job with a unique ID so you can always trace data back to its source. Map columns, set transform rules (lowercase emails, trim whitespace), and ingest. Dedup happens automatically on business_email.' },
+        { title: '🧹 Stage 2: Clean with Janitor', desc: 'Go to Database Janitor. Remove exact duplicates, dead rows (no email AND no phone), and obviously bad data (test@test.com). This shrinks your dataset to only actionable leads.' },
+        { title: '🛡️ Stage 3: Verify (CRITICAL)', desc: 'Create a segment for the new batch (e.g. _ingestion_job_id = \'batch-xyz\'). Run the 17-module verification engine: syntax → disposable → free provider → role → MX → SMTP probe → domain age → SPF/DKIM/DMARC → DNSBL. Each lead gets _verification_status: valid, risky, invalid, or unknown. NEVER skip this step.' },
+        { title: '🎯 Stage 4: Segment by Quality', desc: 'Create QUALITY TIERS first (see Segmentation Strategy section). Gold = verified corporate. Silver = verified free providers. Bronze = risky. Quarantine = invalid. Then slice Gold by audience (industry, geo, seniority). This ensures you NEVER accidentally send to bad leads.' },
+        { title: '📋 Stage 5: Create Target Lists', desc: 'Go to Targets → Create from your audience segment. The list generates with all matching leads. Click Push to MTA to open the column mapper.' },
+        { title: '🚀 Stage 6: Push & Send', desc: 'Map your columns to MailWizz fields (business_email → EMAIL, first_name → FNAME, etc.). Pre-flight exclusions auto-remove role-based and free providers if enabled. Push to MailWizz. Then go to Queue → Create Campaign → Send. MailWizz handles rotation across 50 delivery servers.' },
+        { title: '🔄 Stage 7: Feedback Loop (Automatic)', desc: 'MailWizz fires webhooks on bounce/complaint/open/click/unsubscribe. Refinery receives them and updates ClickHouse: bounced → mark invalid, complained → mark complained. When segments auto-refresh, bad leads drop out of Gold into Quarantine automatically. Your lists are SELF-CLEANING.' },
+      ]} />
+
+      <H3 color={color}>Daily Workflow Checklist</H3>
+      <FeatureGrid items={[
+        { icon: <BarChart3 size={16} />, title: 'Morning Check', desc: 'Dashboard → new ingestion jobs? Verification → unverified batches? Run verification on new data.' },
+        { icon: <Rocket size={16} />, title: 'Before Campaign', desc: 'Select audience segment from Gold tier → Create target list → Push to MTA → Create campaign → Send.' },
+        { icon: <RefreshCw size={16} />, title: 'Ongoing', desc: 'Monitor deliverability dashboard. Webhooks auto-clean your database. Segments auto-refresh nightly.' },
+      ]} color={color} />
+
+      <Tip icon={<AlertTriangle size={14} />} color="var(--red)">
+        The Golden Rule: NEVER send to un-verified leads. NEVER send to quarantine. ALWAYS start campaigns with Gold tier leads. Expand to Silver after warmup. Bronze only after 30 days of clean sending.
+      </Tip>
+    </div>
+  );
 }
 
 // ─── 1. Overview ───
@@ -320,12 +361,13 @@ function OverviewSection({ color }: { color: string }) {
       </div>
 
       <StepList color={color} steps={[
-        { title: 'S3 → Ingestion', desc: 'Raw CSVs, GZips, Parquets are pulled from S3 buckets on a schedule or manually. Auto-rules detect new files and ingest them.' },
-        { title: 'Ingestion → ClickHouse', desc: 'Data is parsed, normalized, and inserted into the universal_person table — 70+ columns per contact.' },
-        { title: 'ClickHouse → Segments', desc: 'Build SQL-like filters to slice the database. "CEOs in California who work at SaaS companies with 50+ employees."' },
-        { title: 'Segments → Verification', desc: 'Run the 9-check verification engine on your segment. Syntax, disposable, role, MX, SMTP probe, catch-all, and more.' },
-        { title: 'Verification → Targets', desc: 'Verified contacts become export-ready target lists. Download as CSV or serve via v1 API.' },
-        { title: 'ClickHouse → v1 API', desc: 'External systems (like MarketX) query contacts, segments, and verification status via authenticated REST endpoints.' },
+        { title: 'S3 / CSV → Ingestion', desc: 'Raw CSVs, GZips, Parquets are pulled from S3 buckets on a schedule or manually. Auto-rules detect new files and ingest them. Column mapping normalizes your data.' },
+        { title: 'Ingestion → ClickHouse', desc: 'Data is parsed, normalized, deduped by business_email, and inserted into the universal_person table — 70+ columns per contact.' },
+        { title: 'ClickHouse → Verification', desc: 'Run the 17-check verification engine on segments. Syntax, disposable, role, MX, SMTP probe, catch-all, domain age, SPF/DKIM — the works.' },
+        { title: 'ClickHouse → Quality Segments', desc: 'Build quality tiers (Gold/Silver/Bronze/Quarantine) then slice by audience. Segments tag matching contacts.' },
+        { title: 'Segments → Target Lists', desc: 'Create export-ready target lists from any segment. Download as CSV or push to MailWizz.' },
+        { title: 'Targets → MailWizz MTA', desc: 'Push target lists to MailWizz via column-mapped API sync. Create campaigns, set subjects, and send.' },
+        { title: 'MailWizz → Feedback Loop → ClickHouse', desc: 'Webhooks auto-update ClickHouse: bounces mark leads invalid, complaints flagged, engagement tracked. Lists are self-cleaning.' },
       ]} />
 
       <Tip icon={<Lightbulb size={14} />} color="var(--yellow)">
@@ -503,6 +545,56 @@ AND _ingested_at > now() - INTERVAL 7 DAY`}</CodeBlock>
   );
 }
 
+// ─── 4b. Segmentation Strategy ───
+
+function StrategySection({ color }: { color: string }) {
+  return (
+    <div>
+      <P>Most people segment by "industry" or "job title" first. <strong>That's wrong.</strong> You segment by DELIVERABILITY QUALITY first, then slice by audience. This ensures you never accidentally send to bad leads regardless of how you target.</P>
+
+      <H3 color={color}>Tier 1: Quality Segments (Create Once, Auto-Refresh)</H3>
+      <div style={{ overflowX: 'auto', marginBottom: 20 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead><tr style={{ background: 'var(--bg-hover)' }}><th style={thStyle}>Tier</th><th style={thStyle}>Filter</th><th style={thStyle}>Purpose</th></tr></thead>
+          <tbody>
+            {[
+              ['🟢 Gold — Send-Ready', "_verification_status = 'valid' AND business_email NOT LIKE '%gmail.com%'", 'Verified corporate emails. Your money list. Send immediately.'],
+              ['🟡 Silver — Verified Free', "_verification_status = 'valid' AND (business_email LIKE '%gmail.com%' OR ...)", 'Verified but free providers. Lower engagement. Send carefully.'],
+              ['🟠 Bronze — Risky', "_verification_status = 'risky'", 'Catch-all domains, soft issues. Only after 30 days of clean sending.'],
+              ['🔴 Quarantine', "_verification_status = 'invalid' OR _verification_status = 'unknown'", 'DO NOT SEND. Re-verify monthly or discard.'],
+              ['⚪ Unverified', "_verification_status IS NULL OR _verification_status = ''", 'New leads not yet verified. Run verification ASAP.'],
+            ].map(([tier, filter, purpose], i) => (
+              <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ ...tdStyle, fontWeight: 700, whiteSpace: 'nowrap' }}>{tier}</td>
+                <td style={{ ...tdStyle, fontFamily: 'monospace', fontSize: 11, color }}>{filter}</td>
+                <td style={tdStyle}>{purpose}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <H3 color={color}>Tier 2: Audience Segments (Slice Gold by Target)</H3>
+      <P>Within your Gold tier, create audience-specific segments:</P>
+      <BulletList color={color} items={[
+        'Real Estate — Texas: Gold + primary_industry LIKE \'%real estate%\' AND personal_state = \'TX\'',
+        'C-Level Decision Makers: Gold + seniority_level IN (\'c_level\', \'vp\', \'director\')',
+        'SaaS Companies: Gold + primary_industry LIKE \'%software%\'',
+        'Has Phone + Email: Gold + mobile_phone IS NOT NULL (for multi-channel follow-up)',
+        'High Completeness: Gold + completeness > 80% (rich data for personalization)',
+        'Recent Ingest (7 days): Gold + _ingested_at >= now() - INTERVAL 7 DAY',
+      ]} />
+
+      <H3 color={color}>Tier 3: Campaign-Specific (Disposable)</H3>
+      <P>Short-lived segments for specific campaigns: "Client A — March Drop", "Webinar Invite — Apr 2026", "Re-engage: No Opens 60d". Create, use, archive.</P>
+
+      <Tip icon={<AlertTriangle size={14} />} color="var(--red)">
+        NEVER send to un-verified leads. NEVER send to quarantine. ALWAYS start with Gold. Expand to Silver after warmup. Bronze only after 30 days of clean sending. If bounce rate exceeds 2%, PAUSE and re-verify.
+      </Tip>
+    </div>
+  );
+}
+
 // ─── 5. Verification Engine ───
 
 function VerificationSection({ color }: { color: string }) {
@@ -646,23 +738,97 @@ function PipelineSection({ color }: { color: string }) {
   );
 }
 
-// ─── 7. Targets ───
+// ─── 7. Targets & MTA Push ───
 
 function TargetsSection({ color }: { color: string }) {
   return (
     <div>
-      <P>Targets are export-ready contact lists generated from verified segments. Once you've verified a segment, create a target list for download or API access.</P>
+      <P>Targets are export-ready contact lists generated from verified segments. They're also the bridge to MailWizz — you push target lists to MailWizz as subscriber lists for campaigns.</P>
 
       <H3 color={color}>Creating a Target List</H3>
       <StepList color={color} steps={[
-        { title: 'Pick a segment', desc: 'Select an executed segment that has been through verification.' },
-        { title: 'Choose export format', desc: 'CSV (most common) or XLSX for Excel compatibility.' },
-        { title: 'Generate', desc: 'Refinery pulls all matching contacts and packages them. Large lists may take a moment.' },
-        { title: 'Download', desc: 'Click download to get the file. Or access via the v1 API.' },
+        { title: 'Pick a segment', desc: 'Select an executed segment (ideally from your Gold or Silver tier). The segment must have been verified.' },
+        { title: 'Generate the list', desc: 'Refinery pulls all matching contacts and packages them. Large lists may take a moment.' },
+        { title: 'Download or Push', desc: 'Download as CSV/XLSX for external use. OR click the 🚀 Push to MTA button to send leads directly to MailWizz.' },
+      ]} />
+
+      <H3 color={color}>Push to MTA — The Column Mapper</H3>
+      <P>When you click Push to MTA, the <strong>AudiencePushModal</strong> opens with these steps:</P>
+      <StepList color={color} steps={[
+        { title: 'Column Mapping', desc: 'Map your ClickHouse columns to MailWizz subscriber fields: business_email → EMAIL, first_name → FNAME, last_name → LNAME, company_name → COMPANY. The UI auto-suggests mappings.' },
+        { title: 'Pre-flight Exclusions', desc: 'Automatically excludes role-based emails (admin@, info@, support@) and optionally free providers (Gmail, Yahoo). These are configurable toggles.' },
+        { title: 'Audience Preview', desc: 'See the final count after exclusions. Review a sample before pushing.' },
+        { title: 'Push', desc: 'audience-sync.ts sends leads in chunks to MailWizz via API. They become subscribers on a MailWizz List. Progress bar shows sync status.' },
       ]} />
 
       <Tip icon={<Lightbulb size={14} />} color="var(--yellow)">
-        Target lists are snapshots. If you ingest new data and re-execute the segment, create a new target list to include the latest contacts.
+        You never upload a CSV directly to MailWizz. Everything flows through Refinery → MailWizz API. This keeps Refinery as the single source of truth for your data.
+      </Tip>
+
+      <H3 color={color}>Auto-Sync (Scheduled)</H3>
+      <P>Segments with a linked <code style={{ color }}>mailwizz_list_id</code> auto-sync when the segment scheduler refreshes them. New leads matching the segment are automatically pushed to MailWizz — no manual intervention needed.</P>
+    </div>
+  );
+}
+
+// ─── 7b. Email Delivery ───
+
+function DeliverySection({ color }: { color: string }) {
+  return (
+    <div>
+      <P>Once leads are in MailWizz, you create campaigns and send from the Queue page. MailWizz handles the actual SMTP delivery, rotation across 50 delivery servers, and daily quotas.</P>
+
+      <H3 color={color}>Creating a Campaign</H3>
+      <StepList color={color} steps={[
+        { title: 'Go to Queue page', desc: 'The Queue page shows all MTA campaigns with their status (draft, sending, done).' },
+        { title: 'Click Create MTA Campaign', desc: 'Select the MailWizz list you just pushed to. Set subject line, from name, and from email address.' },
+        { title: 'Campaign is created via API', desc: 'Refinery talks to MailWizz API to create the campaign. MailWizz validates the list and prepares for sending.' },
+        { title: 'Send', desc: 'Hit Send. MailWizz\'s cron picks up the campaign and starts delivering. It rotates through your delivery servers, respecting daily quotas (e.g. 3,000/day per mailbox).' },
+      ]} />
+
+      <H3 color={color}>Live Deliverability Dashboard</H3>
+      <P>Click <strong>Stats</strong> on any campaign to see real-time metrics:</P>
+      <FeatureGrid items={[
+        { icon: <Mail size={16} />, title: 'Sent / Total', desc: 'Progress bar showing how many emails have been delivered out of the total list size.' },
+        { icon: <Eye size={16} />, title: 'Opens & Clicks', desc: 'Open rate and click rate with visual progress bars. Track engagement in real-time.' },
+        { icon: <AlertTriangle size={16} />, title: 'Bounces', desc: 'Hard bounce and soft bounce breakdown. Hard bounces > 2% = STOP and re-verify your list.' },
+        { icon: <Shield size={16} />, title: 'Complaints & Unsubs', desc: 'Spam complaints and unsubscribes. Complaint rate > 0.1% is dangerous territory.' },
+      ]} color={color} />
+
+      <H3 color={color}>Warmup Schedule (First 30 Days)</H3>
+      <div style={{ overflowX: 'auto', marginBottom: 20 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead><tr style={{ background: 'var(--bg-hover)' }}><th style={thStyle}>Week</th><th style={thStyle}>Daily Volume</th><th style={thStyle}>Source Tier</th><th style={thStyle}>Notes</th></tr></thead>
+          <tbody>
+            {[
+              ['1', '500/day', '🟢 Gold ONLY', '10 emails per mailbox × 50 mailboxes'],
+              ['2', '1,500/day', '🟢 Gold ONLY', '30 per mailbox'],
+              ['3', '5,000/day', '🟢 Gold + 🟡 Silver', '100 per mailbox'],
+              ['4', '15,000/day', '🟢 Gold + 🟡 Silver', '300 per mailbox'],
+              ['5+', '50,000+/day', '🟢 + 🟡 + 🟠 Bronze', 'Full throttle, 1000+ per mailbox'],
+            ].map(([week, vol, tier, notes], i) => (
+              <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                <td style={{ ...tdStyle, fontWeight: 700 }}>{week}</td>
+                <td style={{ ...tdStyle, fontFamily: 'monospace', color, fontWeight: 700 }}>{vol}</td>
+                <td style={tdStyle}>{tier}</td>
+                <td style={{ ...tdStyle, color: 'var(--text-tertiary)' }}>{notes}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <H3 color={color}>Feedback Loop (Automated)</H3>
+      <P>This runs without you doing anything. It's the reason your lists are self-cleaning:</P>
+      <StepList color={color} steps={[
+        { title: 'MailWizz tracks events', desc: 'Opens, clicks, bounces, complaints, and unsubscribes are tracked per campaign per subscriber.' },
+        { title: 'Webhooks fire to Refinery', desc: 'MailWizz sends webhook events to /api/v1/webhooks. Refinery processes them in real-time.' },
+        { title: 'ClickHouse is updated', desc: 'Bounce → lead marked as invalid. Complaint → marked as complained. Unsubscribe → marked as unsubscribed. Open/Click → engagement data stored.' },
+        { title: 'Segments auto-refresh', desc: 'When quality segments refresh (nightly/weekly), bounced leads automatically fall out of Gold → into Quarantine. No manual cleanup needed.' },
+      ]} />
+
+      <Tip icon={<AlertTriangle size={14} />} color="var(--red)">
+        If bounce rate exceeds 2% at ANY point during warmup, PAUSE immediately. Re-verify the segment. Continuing with high bounces will get your IPs blacklisted.
       </Tip>
     </div>
   );
