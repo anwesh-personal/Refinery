@@ -77,6 +77,13 @@ export default function VerificationPage() {
   const [importResult, setImportResult] = useState<{ matched: number; totalProcessed: number; updated: { valid: number; risky: number; invalid: number; threat: number } } | null>(null);
   const [v550Breakdown, setV550Breakdown] = useState<Record<string, number> | null>(null);
 
+  // Re-verification state
+  const [reverifySegmentId, setReverifySegmentId] = useState('');
+  const [reverifyDays, setReverifyDays] = useState('30');
+  const [reverifyEngine, setReverifyEngine] = useState<'verify550' | 'builtin'>('verify550');
+  const [reverifyRunning, setReverifyRunning] = useState(false);
+  const [reverifyResult, setReverifyResult] = useState<{ staleCount: number; resetCount: number; batchId: string | null } | null>(null);
+
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -370,6 +377,43 @@ export default function VerificationPage() {
     }
   };
 
+  const handleManualReverify = async () => {
+    if (!reverifySegmentId) return;
+    const days = Number(reverifyDays) || 30;
+    if (!window.confirm(`Re-verify leads in this segment older than ${days} days?\n\nStale verification statuses will be reset and a new batch started.`)) return;
+    setReverifyRunning(true);
+    setReverifyResult(null);
+    try {
+      const result = await apiCall<{ staleCount: number; resetCount: number; batchId: string | null }>(`/api/verification/reverify/${reverifySegmentId}`, {
+        method: 'POST',
+        body: { daysThreshold: days, engine: reverifyEngine },
+      });
+      setReverifyResult(result);
+      if (result.staleCount === 0) {
+        alert('No stale leads found — all verifications are fresh.');
+      }
+      fetchData(false);
+    } catch (e: any) {
+      alert(`Re-verify failed: ${e.message}`);
+    } finally {
+      setReverifyRunning(false);
+    }
+  };
+
+  const handleToggleAutoReverify = async () => {
+    if (!reverifySegmentId) return;
+    const days = Number(reverifyDays) || 30;
+    try {
+      await apiCall(`/api/verification/reverify-config/${reverifySegmentId}`, {
+        method: 'POST',
+        body: { enabled: true, daysThreshold: days, engine: reverifyEngine },
+      });
+      alert(`Auto re-verification enabled for this segment.\nThreshold: ${days} days\nEngine: ${reverifyEngine}\nScheduler checks every 30 minutes.`);
+    } catch (e: any) {
+      alert(`Failed: ${e.message}`);
+    }
+  };
+
   // V550 Category grouping for display
   const V550_GROUPS: { label: string; color: string; bg: string; categories: string[] }[] = [
     { label: '✅ Safe', color: 'var(--green)', bg: 'rgba(34,197,94,0.1)', categories: ['ok', 'ok_for_all'] },
@@ -636,6 +680,63 @@ export default function VerificationPage() {
           emptyTitle="No external Verify550 jobs"
           emptySub="Upload a CSV above to process it directly through Verify550."
         />
+      </div>
+
+      {/* ── Re-Verification Panel ── */}
+      <div style={{ marginBottom: 36, background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', padding: 24 }} className="animate-fadeIn stagger-5">
+        <SectionHeader title="🔄 Scheduled Re-Verification" />
+        <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '-8px 0 16px' }}>
+          Re-verify leads whose verification is older than N days. Reset stale statuses and re-run verification automatically.
+        </p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 16 }}>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 6 }}>Target Segment</label>
+            <select
+              value={reverifySegmentId}
+              onChange={e => setReverifySegmentId(e.target.value)}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }}
+            >
+              {segments.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {segments.length === 0 && <option value="" disabled>No segments</option>}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 6 }}>Age Threshold (days)</label>
+            <Input value={reverifyDays} onChange={(v: string) => setReverifyDays(v)} placeholder="30" type="number" />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', display: 'block', marginBottom: 6 }}>Engine</label>
+            <select
+              value={reverifyEngine}
+              onChange={e => setReverifyEngine(e.target.value as 'verify550' | 'builtin')}
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }}
+            >
+              <option value="verify550">Verify550 API</option>
+              <option value="builtin">Native SMTP</option>
+            </select>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <Button
+            onClick={handleManualReverify}
+            disabled={reverifyRunning || !reverifySegmentId}
+            icon={reverifyRunning ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          >
+            {reverifyRunning ? 'Running...' : 'Re-Verify Now'}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={handleToggleAutoReverify}
+            disabled={!reverifySegmentId}
+          >
+            Enable Auto (every 30min check)
+          </Button>
+          {reverifyResult && (
+            <span style={{ fontSize: 12, color: 'var(--green)', fontWeight: 600 }}>
+              ✓ {reverifyResult.staleCount} stale leads reset{reverifyResult.batchId ? `, batch ${reverifyResult.batchId.substring(0, 8)}… started` : ''}
+            </span>
+          )}
+        </div>
       </div>
 
       <SectionHeader title="Native Verification History" action="Start Custom Batch" onAction={() => setIsModalOpen(true)} />
