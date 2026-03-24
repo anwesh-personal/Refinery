@@ -328,8 +328,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
+      // Always update the session (keeps the access token fresh)
       setSession(s);
+
+      if (event === 'TOKEN_REFRESHED') {
+        // Token refreshed — update session but do NOT re-set user state.
+        // Re-setting user would generate a new object reference, causing the
+        // entire React tree to re-render and lose all local component state
+        // (selections, modals, form inputs, etc.)
+        if (s?.user) setRawUser(s.user);
+        return;
+      }
+
+      if (event === 'SIGNED_OUT') {
+        setRawUser(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      // SIGNED_IN, USER_UPDATED, etc. — full profile re-fetch
       if (s?.user && s.access_token) {
         setRawUser(s.user);
         setUser(parseUserFromMeta(s.user));
