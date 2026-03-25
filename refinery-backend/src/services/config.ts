@@ -2,9 +2,9 @@ import { query, insertRows } from '../db/clickhouse.js';
 
 /** Default values for numeric config — used when key is not yet set in system_config */
 const CONFIG_DEFAULTS: Record<string, number> = {
-  'pipeline.max_emails_per_job': 50_000,
+  'pipeline.max_emails_per_job': 200_000,
   'pipeline.smtp_concurrency': 10,
-  'segment.export_limit': 50_000,
+  'segment.export_limit': 200_000,
 };
 
 /** Get a config value */

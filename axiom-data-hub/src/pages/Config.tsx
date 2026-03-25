@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { PageHeader, SectionHeader, Button } from '../components/UI';
 import { apiCall } from '../lib/api';
 import { useServers } from '../components/ServerSelector';
-import { Server, Plus, Trash2, Edit2, Play, CheckCircle, XCircle, Database, Cloud } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, Play, CheckCircle, XCircle, Database, Cloud, Settings, Save } from 'lucide-react';
 import { Can } from '../auth/ProtectedRoute';
 
 interface ServerData {
@@ -57,8 +57,74 @@ export default function ConfigPage() {
 
   const { refresh: refreshGlobalServers } = useServers();
 
+  // ── System Config (key-value settings from ClickHouse system_config) ──
+  const [sysConfig, setSysConfig] = useState<Record<string, string>>({});
+  const [sysConfigDraft, setSysConfigDraft] = useState<Record<string, string>>({});
+  const [sysConfigLoading, setSysConfigLoading] = useState(true);
+  const [sysConfigSaving, setSysConfigSaving] = useState(false);
+  const [sysConfigMsg, setSysConfigMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [newConfigKey, setNewConfigKey] = useState('');
+  const [newConfigValue, setNewConfigValue] = useState('');
+
+  // Known config keys with human-readable labels and descriptions
+  const KNOWN_CONFIGS: { key: string; label: string; description: string; type: 'number' | 'string' }[] = [
+    { key: 'pipeline.max_emails_per_job', label: 'Pipeline Max Emails', description: 'Maximum emails per Pipeline Studio job', type: 'number' },
+    { key: 'pipeline.smtp_concurrency', label: 'Pipeline SMTP Concurrency', description: 'Concurrent SMTP connections during verification', type: 'number' },
+    { key: 'segment.export_limit', label: 'Segment Export Limit', description: 'Max leads returned when exporting a segment', type: 'number' },
+  ];
+
+  const fetchSysConfig = async () => {
+    setSysConfigLoading(true);
+    try {
+      const data = await apiCall<Record<string, string>>('/api/config');
+      setSysConfig(data);
+      // Merge known keys with defaults if not present
+      const draft: Record<string, string> = { ...data };
+      for (const kc of KNOWN_CONFIGS) {
+        if (!(kc.key in draft)) {
+          draft[kc.key] = kc.key === 'pipeline.max_emails_per_job' ? '200000'
+            : kc.key === 'pipeline.smtp_concurrency' ? '10'
+            : kc.key === 'segment.export_limit' ? '200000' : '';
+        }
+      }
+      setSysConfigDraft(draft);
+    } catch { /* ignore */ } finally {
+      setSysConfigLoading(false);
+    }
+  };
+
+  const handleSaveSysConfig = async () => {
+    setSysConfigSaving(true);
+    setSysConfigMsg(null);
+    try {
+      const entries = Object.entries(sysConfigDraft)
+        .filter(([k, v]) => v !== sysConfig[k]) // only changed values
+        .map(([key, value]) => ({ key, value }));
+      if (entries.length === 0) {
+        setSysConfigMsg({ type: 'ok', text: 'No changes to save.' });
+        setSysConfigSaving(false);
+        return;
+      }
+      await apiCall('/api/config', { method: 'POST', body: { entries } });
+      setSysConfigMsg({ type: 'ok', text: `Saved ${entries.length} setting(s). Changes take effect immediately.` });
+      await fetchSysConfig();
+    } catch (err: any) {
+      setSysConfigMsg({ type: 'err', text: err.message });
+    } finally {
+      setSysConfigSaving(false);
+    }
+  };
+
+  const handleAddCustomConfig = async () => {
+    if (!newConfigKey.trim() || !newConfigValue.trim()) return;
+    setSysConfigDraft(prev => ({ ...prev, [newConfigKey.trim()]: newConfigValue.trim() }));
+    setNewConfigKey('');
+    setNewConfigValue('');
+  };
+
   useEffect(() => {
     fetchServers();
+    fetchSysConfig();
   }, []);
 
   const fetchServers = async () => {
@@ -405,6 +471,127 @@ export default function ConfigPage() {
           </div>
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* System Settings — key-value config from ClickHouse system_config */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+
+      <div style={{ marginTop: 48 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <SectionHeader title="System Settings" />
+          <Can do="canEditConfig">
+            <Button
+              onClick={handleSaveSysConfig}
+              disabled={sysConfigSaving}
+              icon={sysConfigSaving ? <Settings size={14} className="animate-pulse" /> : <Save size={14} />}
+            >
+              {sysConfigSaving ? 'Saving...' : 'Save Settings'}
+            </Button>
+          </Can>
+        </div>
+
+        {sysConfigMsg && (
+          <div style={{
+            padding: '10px 16px', borderRadius: 8, marginBottom: 16, fontSize: 13, fontWeight: 600,
+            background: sysConfigMsg.type === 'ok' ? 'var(--green-muted)' : 'var(--red-muted)',
+            color: sysConfigMsg.type === 'ok' ? 'var(--green)' : 'var(--red)',
+            border: `1px solid ${sysConfigMsg.type === 'ok' ? 'var(--green)' : 'var(--red)'}`,
+          }}>
+            {sysConfigMsg.type === 'ok' ? <CheckCircle size={14} style={{ verticalAlign: 'middle', marginRight: 8 }} /> : <XCircle size={14} style={{ verticalAlign: 'middle', marginRight: 8 }} />}
+            {sysConfigMsg.text}
+          </div>
+        )}
+
+        {sysConfigLoading ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Loading settings...</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* Known config keys with labels */}
+            {KNOWN_CONFIGS.map(kc => (
+              <div key={kc.key} style={{
+                display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
+                background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)',
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{kc.label}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{kc.description}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: "'JetBrains Mono', monospace", marginTop: 4, opacity: 0.7 }}>{kc.key}</div>
+                </div>
+                <Can do="canEditConfig">
+                  <input
+                    type={kc.type === 'number' ? 'number' : 'text'}
+                    value={sysConfigDraft[kc.key] ?? ''}
+                    onChange={e => setSysConfigDraft(prev => ({ ...prev, [kc.key]: e.target.value }))}
+                    style={{
+                      width: 160, padding: '10px 14px', borderRadius: 8,
+                      border: (sysConfigDraft[kc.key] ?? '') !== (sysConfig[kc.key] ?? '') ? '2px solid var(--accent)' : '1px solid var(--border)',
+                      background: 'var(--bg-input)', color: 'var(--text-primary)',
+                      fontSize: 14, fontFamily: "'JetBrains Mono', monospace", textAlign: 'right',
+                    }}
+                  />
+                </Can>
+              </div>
+            ))}
+
+            {/* Other config keys (not in KNOWN_CONFIGS) */}
+            {Object.entries(sysConfigDraft)
+              .filter(([k]) => !KNOWN_CONFIGS.some(kc => kc.key === k))
+              .map(([key, value]) => (
+                <div key={key} style={{
+                  display: 'flex', alignItems: 'center', gap: 16, padding: '12px 20px',
+                  background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)',
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace" }}>{key}</div>
+                  </div>
+                  <Can do="canEditConfig">
+                    <input
+                      type={value === '••••••••' ? 'password' : 'text'}
+                      value={sysConfigDraft[key] ?? ''}
+                      onChange={e => setSysConfigDraft(prev => ({ ...prev, [key]: e.target.value }))}
+                      style={{
+                        width: 220, padding: '8px 12px', borderRadius: 8,
+                        border: (sysConfigDraft[key] ?? '') !== (sysConfig[key] ?? '') ? '2px solid var(--accent)' : '1px solid var(--border)',
+                        background: 'var(--bg-input)', color: 'var(--text-primary)',
+                        fontSize: 13, fontFamily: "'JetBrains Mono', monospace",
+                      }}
+                    />
+                  </Can>
+                </div>
+              ))}
+
+            {/* Add custom config */}
+            <Can do="canEditConfig">
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px',
+                background: 'var(--bg-app)', borderRadius: 12, border: '1px dashed var(--border)',
+              }}>
+                <input
+                  value={newConfigKey}
+                  onChange={e => setNewConfigKey(e.target.value)}
+                  placeholder="config.key"
+                  style={{
+                    flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)',
+                    background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13,
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                />
+                <input
+                  value={newConfigValue}
+                  onChange={e => setNewConfigValue(e.target.value)}
+                  placeholder="value"
+                  style={{
+                    width: 200, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)',
+                    background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13,
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}
+                />
+                <Button variant="secondary" onClick={handleAddCustomConfig} icon={<Plus size={14} />}>Add</Button>
+              </div>
+            </Can>
+          </div>
+        )}
+      </div>
     </>
   );
 }
