@@ -190,6 +190,13 @@ export default function EmailVerifierPage() {
   // Track which job's results we're currently viewing (for header actions)
   const [loadedJobId, setLoadedJobId] = useState<string | null>(null);
 
+  // Live pipeline stats for animated progress
+  const [liveStats, setLiveStats] = useState<{
+    processed: number; total: number; safe: number; uncertain: number;
+    risky: number; rejected: number; deduped: number; typos: number;
+    startedAt: string;
+  }>({ processed: 0, total: 0, safe: 0, uncertain: 0, risky: 0, rejected: 0, deduped: 0, typos: 0, startedAt: '' });
+
   // Pipeline limit — fetched from server config, not hardcoded
   const [pipelineLimit, setPipelineLimit] = useState<number>(50_000); // initial fallback until API responds
 
@@ -239,6 +246,16 @@ export default function EmailVerifierPage() {
         const processed = Number(job.processed_count) || 0;
         const pct = Math.min(100, Math.round((processed / total) * 100));
         setProgress(pct);
+        setLiveStats({
+          processed, total,
+          safe: Number(job.safe_count) || 0,
+          uncertain: Number(job.uncertain_count) || 0,
+          risky: Number(job.risky_count) || 0,
+          rejected: Number(job.rejected_count) || 0,
+          deduped: Number(job.duplicates_removed) || 0,
+          typos: Number(job.typos_fixed) || 0,
+          startedAt: job.started_at || '',
+        });
 
         if (job.status === 'complete') {
           clearInterval(pollRef.current!);
@@ -689,63 +706,181 @@ export default function EmailVerifierPage() {
             </div>
           </div>
 
-          {/* Progress Ring Overlay — shown while job is processing */}
-          {loading && activeJobId && (
-            <div className="animate-fadeIn" style={{
-              background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--accent)',
-              padding: 40, textAlign: 'center', marginTop: 0,
-              boxShadow: '0 0 40px rgba(99,102,241,0.08)',
-            }}>
-              {/* SVG Progress Ring */}
-              <div style={{ position: 'relative', width: 160, height: 160, margin: '0 auto 24px' }}>
-                <svg width="160" height="160" viewBox="0 0 160 160" style={{ transform: 'rotate(-90deg)' }}>
-                  {/* Background circle */}
-                  <circle cx="80" cy="80" r="68" fill="none" stroke="var(--border)" strokeWidth="8" />
-                  {/* Progress arc */}
-                  <circle cx="80" cy="80" r="68" fill="none"
-                    stroke="url(#progressGrad)" strokeWidth="8"
-                    strokeLinecap="round"
-                    strokeDasharray={2 * Math.PI * 68}
-                    strokeDashoffset={2 * Math.PI * 68 * (1 - progress / 100)}
-                    style={{ transition: 'stroke-dashoffset 1s ease-out' }}
-                  />
-                  <defs>
-                    <linearGradient id="progressGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="var(--accent)" />
-                      <stop offset="100%" stopColor="var(--blue)" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-                {/* Center percentage */}
-                <div style={{
-                  position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(0deg)',
-                  fontSize: 36, fontWeight: 800, color: 'var(--text-primary)',
-                  fontFamily: "'JetBrains Mono', monospace",
-                }}>
-                  {progress}%
+          {/* ═══ Animated Pipeline Progress ═══ */}
+          {loading && activeJobId && (() => {
+            const elapsed = liveStats.startedAt ? Math.floor((Date.now() - new Date(liveStats.startedAt).getTime()) / 1000) : 0;
+            const elapsedMin = Math.floor(elapsed / 60);
+            const elapsedSec = elapsed % 60;
+            const rate = elapsed > 0 ? Math.round(liveStats.processed / (elapsed / 60)) : 0;
+            const eta = rate > 0 ? Math.ceil((liveStats.total - liveStats.processed) / rate) : 0;
+
+            const stages = [
+              { key: 'syntax', label: 'Syntax & Dedup', icon: '✓', threshold: 5, color: 'var(--green)' },
+              { key: 'typo', label: 'Typo Detection', icon: '✏️', threshold: 10, color: 'var(--yellow)' },
+              { key: 'mx', label: 'MX Lookup', icon: '🌐', threshold: 20, color: 'var(--blue)' },
+              { key: 'smtp', label: 'SMTP Verification', icon: '📡', threshold: 40, color: 'var(--purple)' },
+              { key: 'classify', label: 'Classification', icon: '🏷️', threshold: 90, color: 'var(--accent)' },
+            ];
+            const activeStage = stages.reduce((active, stage) => progress >= stage.threshold ? stage : active, stages[0]);
+
+            return (
+              <div className="animate-fadeIn" style={{
+                background: 'var(--bg-card)', borderRadius: 20, border: '1px solid var(--border)',
+                padding: 0, overflow: 'hidden',
+                boxShadow: '0 0 60px rgba(99,102,241,0.06), 0 4px 24px rgba(0,0,0,0.15)',
+              }}>
+                {/* Animated gradient bar at top */}
+                <div className="pipeline-gradient-bar" style={{ height: 3, width: '100%' }} />
+
+                <div style={{ padding: '32px 36px 28px' }}>
+                  {/* Header Row */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+                    <div>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 4 }}>
+                        Email Verification Pipeline
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontFamily: "'JetBrains Mono', monospace" }}>
+                        {activeJobId.slice(0, 12)}…
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace", lineHeight: 1 }}>
+                        {progress}<span style={{ fontSize: 16, color: 'var(--text-tertiary)' }}>%</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                        {elapsedMin}m {elapsedSec.toString().padStart(2, '0')}s{rate > 0 && ` · ~${eta}m left`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Progress Bar */}
+                  <div style={{ height: 8, borderRadius: 4, background: 'var(--bg-elevated)', marginBottom: 24, overflow: 'hidden', position: 'relative' }}>
+                    <div style={{
+                      height: '100%', borderRadius: 4,
+                      background: `linear-gradient(90deg, var(--green), var(--blue), var(--accent))`,
+                      width: `${progress}%`,
+                      transition: 'width 1.5s ease-out',
+                      position: 'relative',
+                    }}>
+                      <div style={{
+                        position: 'absolute', right: 0, top: -3, width: 14, height: 14, borderRadius: '50%',
+                        background: 'var(--accent)', boxShadow: '0 0 12px var(--accent)',
+                        animation: 'dotPulse 1.5s ease-in-out infinite',
+                      }} />
+                    </div>
+                  </div>
+
+                  {/* Pipeline Stage Walkthrough */}
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 28 }}>
+                    {stages.map((stage, i) => {
+                      const isActive = activeStage.key === stage.key;
+                      const isDone = progress >= (stages[i + 1]?.threshold ?? 100);
+                      return (
+                        <div key={stage.key} style={{
+                          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                          position: 'relative',
+                        }}>
+                          {/* Connector line */}
+                          {i > 0 && (
+                            <div style={{
+                              position: 'absolute', top: 16, left: -2, right: '50%', height: 2,
+                              background: isDone || isActive ? stage.color : 'var(--border)',
+                              transition: 'background 0.5s ease',
+                              overflow: 'hidden',
+                            }}>
+                              {isActive && (
+                                <div className="pipeline-data-particle" style={{
+                                  width: 16, height: '100%', background: `linear-gradient(90deg, transparent, ${stage.color}, transparent)`,
+                                }} />
+                              )}
+                            </div>
+                          )}
+                          {/* Stage dot */}
+                          <div className={isActive ? 'pipeline-stage-active' : ''} style={{
+                            width: 32, height: 32, borderRadius: '50%',
+                            background: isDone ? stage.color : isActive ? `${stage.color}30` : 'var(--bg-elevated)',
+                            border: `2px solid ${isDone || isActive ? stage.color : 'var(--border)'}`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: isDone ? 14 : 12, transition: 'all 0.4s ease',
+                            color: isDone ? '#fff' : 'var(--text-tertiary)',
+                          }}>
+                            {isDone ? '✓' : stage.icon}
+                          </div>
+                          {/* Label */}
+                          <div style={{
+                            fontSize: 10, fontWeight: isActive ? 700 : 500,
+                            color: isActive ? stage.color : isDone ? 'var(--text-secondary)' : 'var(--text-tertiary)',
+                            textAlign: 'center', transition: 'all 0.3s ease',
+                          }}>
+                            {stage.label}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Live Stats Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 24 }}>
+                    {[
+                      { label: 'Processed', value: liveStats.processed, total: liveStats.total, color: 'var(--text-primary)' },
+                      { label: 'Safe', value: liveStats.safe, color: 'var(--green)' },
+                      { label: 'Risky', value: liveStats.risky + liveStats.uncertain, color: 'var(--yellow)' },
+                      { label: 'Rejected', value: liveStats.rejected, color: 'var(--red)' },
+                    ].map(stat => (
+                      <div key={stat.label} className="pipeline-counter" style={{
+                        padding: '12px 14px', borderRadius: 12,
+                        background: `${stat.color}08`, border: `1px solid ${stat.color}20`,
+                        textAlign: 'center',
+                      }}>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: stat.color, fontFamily: "'JetBrains Mono', monospace" }}>
+                          {stat.value.toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 }}>
+                          {stat.label}{'total' in stat ? ` / ${(stat.total as number).toLocaleString()}` : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Speed + extras row */}
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: 20, marginBottom: 20, fontSize: 11, color: 'var(--text-tertiary)' }}>
+                    {rate > 0 && <span>⚡ {rate.toLocaleString()} emails/min</span>}
+                    {liveStats.deduped > 0 && <span>🔁 {liveStats.deduped.toLocaleString()} deduped</span>}
+                    {liveStats.typos > 0 && <span>✏️ {liveStats.typos.toLocaleString()} typos fixed</span>}
+                  </div>
+
+                  {/* Safe to leave + Cancel */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                    <div style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                      padding: '10px 20px', borderRadius: 10,
+                      background: 'var(--green-muted)', border: '1px solid var(--green)',
+                      fontSize: 12, fontWeight: 600, color: 'var(--green)',
+                    }}>
+                      <CheckCircle size={14} />
+                      Safe to navigate away — processing continues on server
+                    </div>
+                    <button onClick={async () => {
+                      if (!window.confirm('Cancel this verification job?')) return;
+                      try {
+                        await apiCall<any>(`/api/verify/jobs/${activeJobId}/cancel`, { method: 'POST' });
+                        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+                        sessionStorage.removeItem('pipeline_active_job');
+                        setActiveJobId(null);
+                        setLoading(false);
+                        setJobStatus('');
+                        fetchRecentJobs();
+                        showToast('info', 'Job cancelled');
+                      } catch (err: any) { showToast('error', `Cancel failed: ${err.message}`); }
+                    }} style={{
+                      padding: '10px 16px', borderRadius: 10, border: '1px solid var(--red)',
+                      background: 'var(--red-muted)', color: 'var(--red)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    }}>Cancel Job</button>
+                  </div>
                 </div>
               </div>
-
-              {/* Status text */}
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
-                {jobStatus}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 20 }}>
-                Job ID: <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{activeJobId.slice(0, 12)}...</span>
-              </div>
-
-              {/* Safe to leave banner */}
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8,
-                padding: '10px 20px', borderRadius: 10,
-                background: 'var(--green-muted)', border: '1px solid var(--green)',
-                fontSize: 13, fontWeight: 600, color: 'var(--green)',
-              }}>
-                <CheckCircle size={16} />
-                Safe to navigate away — processing continues on server
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Results Unit */}
           {result && (
