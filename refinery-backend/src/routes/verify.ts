@@ -206,12 +206,13 @@ router.post('/async', requireSuperadmin, async (req, res) => {
     const jobId = genId();
     const user = getRequestUser(req);
 
-    // Store job in ClickHouse
+    // Store job in ClickHouse (including source emails for retry/resume)
     await insertRows('pipeline_jobs', [{
       id: jobId,
       total_emails: emails.length,
       status: 'processing',
       config_json: JSON.stringify({ checks, smtp, severityWeights, thresholds }),
+      source_emails_json: JSON.stringify(emails),
       performed_by: user.id,
       performed_by_name: user.name,
     }]);
@@ -396,6 +397,7 @@ router.get('/jobs/:id', requireSuperadmin, async (req, res) => {
 
 // ─── GET /api/verify/jobs/:id/download ───
 // Download results CSV for a completed pipeline job.
+// Query params: ?classifications=safe,uncertain&maxRiskScore=50
 
 router.get('/jobs/:id/download', requireSuperadmin, async (req, res) => {
   try {
@@ -409,8 +411,20 @@ router.get('/jobs/:id/download', requireSuperadmin, async (req, res) => {
     if (job.status !== 'complete') return res.status(400).json({ error: 'Job not complete yet' });
     if (!job.results_json) return res.status(404).json({ error: 'No results stored for this job' });
 
-    let results: any[];
-    try { results = JSON.parse(job.results_json); } catch { return res.status(500).json({ error: 'Corrupt results data' }); }
+    let allResults: any[];
+    try { allResults = JSON.parse(job.results_json); } catch { return res.status(500).json({ error: 'Corrupt results data' }); }
+
+    // Parse filter query params
+    const classificationsParam = req.query.classifications as string | undefined;
+    const maxRiskParam = req.query.maxRiskScore as string | undefined;
+    const allowedClassifications = classificationsParam ? classificationsParam.split(',') : ['safe', 'uncertain', 'risky', 'reject'];
+    const maxRisk = maxRiskParam ? Number(maxRiskParam) : Infinity;
+
+    // Filter results
+    const results = allResults.filter((r: any) =>
+      allowedClassifications.includes(r.classification) &&
+      (r.riskScore ?? 0) <= maxRisk
+    );
 
     // Build CSV
     const headers = ['Email', 'Classification', 'Risk Score', 'Original Email', 'Syntax', 'Typo Fixed',
@@ -434,8 +448,9 @@ router.get('/jobs/:id/download', requireSuperadmin, async (req, res) => {
 
     const csv = [headers.join(','), ...rows].join('\n');
 
+    const filterSuffix = classificationsParam ? `-${allowedClassifications.join('+')}` : '-all';
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="verification-${req.params.id}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="verification-${req.params.id}${filterSuffix}.csv"`);
     res.send(csv);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -566,6 +581,119 @@ router.post('/jobs/:id/ingest', requireSuperadmin, async (req, res) => {
     res.json(summary);
   } catch (e: any) {
     console.error('[Ingest] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── POST /api/verify/jobs/:id/retry ───
+// Retry a failed or cancelled job using stored source emails and config.
+
+router.post('/jobs/:id/retry', requireSuperadmin, async (req, res) => {
+  try {
+    const [job] = await chQuery<any>(`
+      SELECT id, status, source_emails_json, config_json
+      FROM pipeline_jobs
+      WHERE id = '${req.params.id}'
+      LIMIT 1
+    `);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (!['failed', 'cancelled'].includes(job.status)) {
+      return res.status(400).json({ error: `Cannot retry a ${job.status} job — only failed/cancelled jobs can be retried` });
+    }
+    if (!job.source_emails_json) {
+      return res.status(400).json({ error: 'No source emails stored for this job — cannot retry (job was created before retry support was added)' });
+    }
+
+    let emails: string[];
+    try { emails = JSON.parse(job.source_emails_json); } catch { return res.status(500).json({ error: 'Corrupt source email data' }); }
+
+    let config: any = {};
+    try { config = job.config_json ? JSON.parse(job.config_json) : {}; } catch { /* use defaults */ }
+
+    // Check limits
+    const maxEmails = await getConfigInt(CONFIG_KEYS.PIPELINE_MAX_EMAILS);
+    if (emails.length > maxEmails) {
+      return res.status(400).json({ error: `Source has ${emails.length.toLocaleString()} emails, exceeds limit of ${maxEmails.toLocaleString()}` });
+    }
+
+    // Create new job
+    const newJobId = genId();
+    const user = getRequestUser(req);
+
+    await insertRows('pipeline_jobs', [{
+      id: newJobId,
+      total_emails: emails.length,
+      status: 'processing',
+      config_json: job.config_json || '{}',
+      source_emails_json: job.source_emails_json,
+      performed_by: user.id,
+      performed_by_name: user.name,
+    }]);
+
+    const controller = new AbortController();
+    activeJobs.set(newJobId, controller);
+
+    // Run pipeline in background
+    (async () => {
+      try {
+        console.log(`[Pipeline] Retry job ${newJobId} (from ${job.id}): ${emails.length} emails`);
+
+        const result = await runPipeline(
+          emails,
+          config.checks || {},
+          config.smtp || {},
+          config.severityWeights || {},
+          config.thresholds || {},
+          async (processed, total) => {
+            try {
+              await chCommand(`
+                ALTER TABLE pipeline_jobs UPDATE processed_count = ${processed} WHERE id = '${newJobId}'
+              `);
+            } catch { /* ignore */ }
+          },
+          controller.signal,
+        );
+
+        await chCommand(`
+          ALTER TABLE pipeline_jobs UPDATE
+            processed_count = ${result.totalProcessed},
+            safe_count = ${result.safe},
+            risky_count = ${result.risky},
+            rejected_count = ${result.rejected},
+            uncertain_count = ${result.uncertain},
+            duplicates_removed = ${result.duplicatesRemoved},
+            typos_fixed = ${result.typosFixed},
+            status = 'complete',
+            results_json = '${JSON.stringify(result.results).replace(/'/g, "\\\\'")}',
+            completed_at = now()
+          WHERE id = '${newJobId}'
+        `);
+
+        console.log(`[Pipeline] Retry job ${newJobId}: Complete — ${result.safe} safe, ${result.risky} risky, ${result.rejected} rejected`);
+      } catch (err: any) {
+        if (err instanceof PipelineCancelledError) {
+          console.log(`[Pipeline] Retry job ${newJobId}: Cancelled at ${err.processedSoFar} emails`);
+          await chCommand(`
+            ALTER TABLE pipeline_jobs UPDATE status = 'cancelled',
+              error_message = 'Cancelled by user after processing ${err.processedSoFar} emails'
+            WHERE id = '${newJobId}'
+          `).catch(() => {});
+        } else {
+          console.error(`[Pipeline] Retry job ${newJobId} failed:`, err.message);
+          await chCommand(`
+            ALTER TABLE pipeline_jobs UPDATE status = 'failed',
+              error_message = '${(err.message || 'Unknown error').replace(/'/g, "\\\\'").substring(0, 500)}'
+            WHERE id = '${newJobId}'
+          `).catch(() => {});
+        }
+      } finally {
+        activeJobs.delete(newJobId);
+      }
+    })();
+
+    console.log(`[Pipeline] Retry queued: ${newJobId} from ${job.id} by ${user.name}`);
+    res.json({ jobId: newJobId, totalEmails: emails.length, retryOf: job.id });
+  } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });

@@ -182,6 +182,14 @@ export default function EmailVerifierPage() {
   const [ingestDryRunResult, setIngestDryRunResult] = useState<any>(null);
   const [ingestLoading, setIngestLoading] = useState(false);
 
+  // Download modal
+  const [downloadJobId, setDownloadJobId] = useState<string | null>(null);
+  const [downloadClassifications, setDownloadClassifications] = useState<Record<string, boolean>>({ safe: true, uncertain: true, risky: true, reject: true });
+  const [downloadMaxRisk, setDownloadMaxRisk] = useState<number>(100);
+
+  // Track which job's results we're currently viewing (for header actions)
+  const [loadedJobId, setLoadedJobId] = useState<string | null>(null);
+
   // Pipeline limit — fetched from server config, not hardcoded
   const [pipelineLimit, setPipelineLimit] = useState<number>(50_000); // initial fallback until API responds
 
@@ -293,6 +301,7 @@ export default function EmailVerifierPage() {
           rejected: Number(job.rejected_count),
           results: job.results || [],
         } as PipelineResult);
+        setLoadedJobId(jobId);
       }
     } catch (err: any) {
       showToast('error', `Failed to load job: ${err.message}`);
@@ -744,16 +753,38 @@ export default function EmailVerifierPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <SectionHeader title="Pipeline Results" />
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <Button
-                    onClick={handlePushToDB}
-                    disabled={pushingToDB || !result.results || result.results.length === 0}
-                    icon={pushingToDB ? <ShieldAlert size={14} className="animate-pulse" /> : <Database size={14} />}
-                    variant="secondary"
-                    style={pushingToDB ? {} : { background: 'var(--green)', color: '#fff', border: 'none' }}
-                  >
-                    {pushingToDB ? 'Pushing...' : 'Push to DB'}
-                  </Button>
-                  <Button onClick={handleExportCSV} variant="secondary">Export CSV</Button>
+                  {loadedJobId ? (
+                    <>
+                      <Button
+                        onClick={() => { setIngestJobId(loadedJobId); setIngestDryRunResult(null); }}
+                        disabled={!result.results || result.results.length === 0}
+                        icon={<Database size={14} />}
+                        variant="secondary"
+                        style={{ background: 'var(--green)', color: '#fff', border: 'none' }}
+                      >
+                        Ingest to DB
+                      </Button>
+                      <Button
+                        onClick={() => { setDownloadJobId(loadedJobId); }}
+                        variant="secondary"
+                      >
+                        Download CSV
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        onClick={handlePushToDB}
+                        disabled={pushingToDB || !result.results || result.results.length === 0}
+                        icon={pushingToDB ? <ShieldAlert size={14} className="animate-pulse" /> : <Database size={14} />}
+                        variant="secondary"
+                        style={pushingToDB ? {} : { background: 'var(--green)', color: '#fff', border: 'none' }}
+                      >
+                        {pushingToDB ? 'Pushing...' : 'Push to DB'}
+                      </Button>
+                      <Button onClick={handleExportCSV} variant="secondary">Export CSV</Button>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1099,12 +1130,7 @@ export default function EmailVerifierPage() {
                         padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)',
                         background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                       }}>View Results</button>
-                      <button onClick={() => {
-                        const a = document.createElement('a');
-                        a.href = `/api/verify/jobs/${job.id}/download`;
-                        a.download = `verification-${job.id}.csv`;
-                        a.click();
-                      }} style={{
+                      <button onClick={() => setDownloadJobId(job.id)} style={{
                         padding: '6px 14px', borderRadius: 8, border: '1px solid var(--green)',
                         background: 'var(--green-muted)', color: 'var(--green)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                       }}>Download CSV</button>
@@ -1137,6 +1163,24 @@ export default function EmailVerifierPage() {
                       padding: '6px 14px', borderRadius: 8, border: '1px solid var(--red)',
                       background: 'var(--red-muted)', color: 'var(--red)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                     }}>Cancel</button>
+                  )}
+                  {(isFailed || isCancelled) && (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={async () => {
+                        try {
+                          const resp = await apiCall<any>(`/api/verify/jobs/${job.id}/retry`, { method: 'POST' });
+                          showToast('info', `Retry started — new job ${resp.jobId}`);
+                          setActiveJobId(resp.jobId);
+                          setLoading(true);
+                          sessionStorage.setItem('pipeline_active_job', resp.jobId);
+                          startPolling(resp.jobId);
+                          fetchRecentJobs();
+                        } catch (err: any) { showToast('error', `Retry failed: ${err.message}`); }
+                      }} style={{
+                        padding: '6px 14px', borderRadius: 8, border: '1px solid var(--accent)',
+                        background: 'var(--accent-muted)', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      }}>⟳ Retry</button>
+                    </div>
                   )}
                 </div>
               );
@@ -1296,6 +1340,109 @@ export default function EmailVerifierPage() {
                 background: 'var(--accent)', color: 'var(--accent-contrast, #fff)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                 opacity: (ingestLoading || !ingestDryRunResult) ? 0.4 : 1,
               }}>⚡ Commit Ingestion</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Download CSV Modal ── */}
+      {downloadJobId && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={(e) => { if (e.target === e.currentTarget) { setDownloadJobId(null); } }}>
+          <div style={{
+            width: 480, maxHeight: '90vh', overflow: 'auto',
+            background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)',
+            boxShadow: '0 25px 50px rgba(0,0,0,0.4)', padding: 28,
+          }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
+              Download Verified Results
+            </h3>
+            <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 20 }}>
+              Choose which classifications and risk levels to include in the CSV export.
+            </p>
+
+            {/* Classification Filters */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Include Classifications
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {(['safe', 'uncertain', 'risky', 'reject'] as const).map(cls => {
+                  const colors: Record<string, string> = { safe: 'var(--green)', uncertain: 'var(--yellow)', risky: 'var(--orange, #f59e0b)', reject: 'var(--red)' };
+                  return (
+                    <label key={cls} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                      borderRadius: 10, border: `1px solid ${downloadClassifications[cls] ? colors[cls] : 'var(--border)'}`,
+                      background: downloadClassifications[cls] ? `${colors[cls]}15` : 'var(--bg-app)',
+                      cursor: 'pointer', transition: 'all 0.15s ease',
+                    }}>
+                      <input type="checkbox" checked={downloadClassifications[cls]} onChange={() => setDownloadClassifications(prev => ({ ...prev, [cls]: !prev[cls] }))}
+                        style={{ accentColor: colors[cls], width: 16, height: 16 }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{cls.charAt(0).toUpperCase() + cls.slice(1)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Risk Score Threshold */}
+            <div style={{ marginBottom: 24 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Max Risk Score: <span style={{ color: 'var(--accent)', fontWeight: 800 }}>{downloadMaxRisk}</span>
+              </label>
+              <input type="range" min={0} max={100} value={downloadMaxRisk} onChange={e => setDownloadMaxRisk(Number(e.target.value))}
+                style={{ width: '100%', accentColor: 'var(--accent)' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                <span>0 (strictest)</span><span>50</span><span>100 (all)</span>
+              </div>
+            </div>
+
+            {/* Quick Download Shortcuts */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Quick Export
+              </label>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[
+                  { label: 'All Results', cls: ['safe', 'uncertain', 'risky', 'reject'] },
+                  { label: 'Safe Only', cls: ['safe'] },
+                  { label: 'Safe + Uncertain', cls: ['safe', 'uncertain'] },
+                  { label: 'Risky + Rejected', cls: ['risky', 'reject'] },
+                ].map(preset => (
+                  <button key={preset.label} onClick={() => {
+                    const a = document.createElement('a');
+                    a.href = `/api/verify/jobs/${downloadJobId}/download?classifications=${preset.cls.join(',')}${downloadMaxRisk < 100 ? `&maxRiskScore=${downloadMaxRisk}` : ''}`;
+                    a.download = `verification-${downloadJobId}-${preset.cls.join('+')}.csv`;
+                    a.click();
+                  }} style={{
+                    padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)',
+                    background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  }}>{preset.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setDownloadJobId(null)} style={{
+                padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)',
+                background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              }}>Close</button>
+
+              <button disabled={!Object.values(downloadClassifications).some(Boolean)} onClick={() => {
+                const selected = Object.entries(downloadClassifications).filter(([, v]) => v).map(([k]) => k);
+                const a = document.createElement('a');
+                a.href = `/api/verify/jobs/${downloadJobId}/download?classifications=${selected.join(',')}${downloadMaxRisk < 100 ? `&maxRiskScore=${downloadMaxRisk}` : ''}`;
+                a.download = `verification-${downloadJobId}-${selected.join('+')}.csv`;
+                a.click();
+              }} style={{
+                padding: '10px 20px', borderRadius: 10, border: 'none',
+                background: 'var(--accent)', color: 'var(--accent-contrast, #fff)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                opacity: !Object.values(downloadClassifications).some(Boolean) ? 0.4 : 1,
+              }}>📥 Download Custom CSV</button>
             </div>
           </div>
         </div>

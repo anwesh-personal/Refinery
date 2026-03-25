@@ -307,6 +307,10 @@ export async function initDatabase(): Promise<void> {
   await command(`ALTER TABLE segments ADD COLUMN IF NOT EXISTS reverify_last_run_at Nullable(DateTime)`);
   console.log('[DB] ✓ Re-verification columns ensured on segments');
 
+  // ── Pipeline Source Emails (for retry/resume) ──
+  await command(`ALTER TABLE pipeline_jobs ADD COLUMN IF NOT EXISTS source_emails_json Nullable(String)`);
+  console.log('[DB] ✓ source_emails_json column ensured on pipeline_jobs');
+
   console.log('[DB] ✓ All tables initialized');
 }
 
