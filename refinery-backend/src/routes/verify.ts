@@ -443,7 +443,19 @@ router.get('/jobs/:id/download', requireSuperadmin, async (req, res) => {
 });
 
 // ─── POST /api/verify/jobs/:id/ingest ───
-// Push results from a completed pipeline job into universal_person (same logic as push-to-db).
+// Push results from a completed pipeline job into universal_person.
+// Supports granular controls: classification filters, risk threshold, overwrite mode, dry-run.
+
+interface IngestOptions {
+  /** Which classifications to include (default: all) */
+  classifications?: string[];
+  /** Only include emails with riskScore <= this value (default: no limit) */
+  maxRiskScore?: number;
+  /** 'unverified_only' = skip already-verified, 'overwrite' = update all matches */
+  mode?: 'unverified_only' | 'overwrite';
+  /** If true, just count matches without updating */
+  dryRun?: boolean;
+}
 
 router.post('/jobs/:id/ingest', requireSuperadmin, async (req, res) => {
   try {
@@ -457,20 +469,34 @@ router.post('/jobs/:id/ingest', requireSuperadmin, async (req, res) => {
     if (job.status !== 'complete') return res.status(400).json({ error: 'Job not complete yet' });
     if (!job.results_json) return res.status(404).json({ error: 'No results stored' });
 
-    let results: any[];
-    try { results = JSON.parse(job.results_json); } catch { return res.status(500).json({ error: 'Corrupt results data' }); }
+    let allResults: any[];
+    try { allResults = JSON.parse(job.results_json); } catch { return res.status(500).json({ error: 'Corrupt results data' }); }
 
-    // Reuse same push-to-db logic
+    const opts: IngestOptions = req.body || {};
+    const allowedClassifications = opts.classifications || ['safe', 'uncertain', 'risky', 'reject'];
+    const maxRisk = opts.maxRiskScore ?? Infinity;
+    const mode = opts.mode || 'unverified_only';
+    const dryRun = opts.dryRun === true;
+
+    // Filter results based on user selection
+    const filtered = allResults.filter(r =>
+      allowedClassifications.includes(r.classification) &&
+      (r.riskScore ?? 0) <= maxRisk
+    );
+
     const statusMap: Record<string, string> = { safe: 'valid', uncertain: 'risky', risky: 'risky', reject: 'invalid' };
     const user = getRequestUser(req);
-    console.log(`[Ingest] User ${user.name} ingesting job ${req.params.id} (${results.length} results)`);
+    console.log(`[Ingest] User ${user.name} ingesting job ${req.params.id}: ${filtered.length}/${allResults.length} results (classifications: ${allowedClassifications.join(',')}, maxRisk: ${maxRisk}, mode: ${mode}, dryRun: ${dryRun})`);
 
     const BATCH = 500;
     let totalMatched = 0;
+    let totalFiltered = filtered.length;
+    let totalSkippedAlreadyVerified = 0;
     const counts: Record<string, number> = { valid: 0, risky: 0, invalid: 0 };
 
+    // Group filtered results by target status
     const grouped = new Map<string, string[]>();
-    for (const r of results) {
+    for (const r of filtered) {
       const s = statusMap[r.classification] || 'risky';
       if (!grouped.has(s)) grouped.set(s, []);
       grouped.get(s)!.push((r.email || '').toLowerCase().trim());
@@ -481,6 +507,7 @@ router.post('/jobs/:id/ingest', requireSuperadmin, async (req, res) => {
         const batch = emails.slice(i, i + BATCH);
         const emailList = batch.map(e => `'${e.replace(/'/g, "''")}'`).join(',');
 
+        // Count total matches
         const [mc] = await chQuery<{ cnt: string }>(`
           SELECT count() as cnt FROM universal_person
           WHERE lower(business_email) IN (${emailList})
@@ -490,7 +517,24 @@ router.post('/jobs/:id/ingest', requireSuperadmin, async (req, res) => {
         totalMatched += matched;
         counts[status] = (counts[status] || 0) + matched;
 
-        if (matched > 0) {
+        if (!dryRun && matched > 0) {
+          const whereClause = mode === 'unverified_only'
+            ? `AND (_verification_status IS NULL OR _verification_status = '' OR _verification_status != '${status}')`
+            : `AND (_verification_status IS NULL OR _verification_status != '${status}')`;
+
+          // Count how many would be skipped in unverified_only mode
+          if (mode === 'unverified_only') {
+            const [skipCount] = await chQuery<{ cnt: string }>(`
+              SELECT count() as cnt FROM universal_person
+              WHERE (lower(business_email) IN (${emailList})
+                 OR lower(personal_emails) IN (${emailList}))
+                AND _verification_status IS NOT NULL
+                AND _verification_status != ''
+                AND _verification_status = '${status}'
+            `);
+            totalSkippedAlreadyVerified += Number(skipCount?.cnt || 0);
+          }
+
           await chCommand(`
             ALTER TABLE universal_person UPDATE
               _verification_status = '${status}',
@@ -498,15 +542,28 @@ router.post('/jobs/:id/ingest', requireSuperadmin, async (req, res) => {
               _bounced = ${status === 'invalid' ? 1 : 0}
             WHERE (lower(business_email) IN (${emailList})
                OR lower(personal_emails) IN (${emailList}))
-              AND (_verification_status IS NULL
-                OR _verification_status != '${status}')
+              ${whereClause}
           `);
         }
       }
     }
 
-    console.log(`[Ingest] Done: ${totalMatched}/${results.length} matched. V:${counts.valid || 0} R:${counts.risky || 0} I:${counts.invalid || 0}`);
-    res.json({ totalProcessed: results.length, matched: totalMatched, updated: counts });
+    const summary = {
+      totalInJob: allResults.length,
+      totalAfterFilters: totalFiltered,
+      totalMatchedInDB: totalMatched,
+      skippedAlreadyVerified: totalSkippedAlreadyVerified,
+      updated: counts,
+      dryRun,
+      filters: {
+        classifications: allowedClassifications,
+        maxRiskScore: maxRisk === Infinity ? null : maxRisk,
+        mode,
+      },
+    };
+
+    console.log(`[Ingest] ${dryRun ? 'DRY RUN' : 'Done'}: ${totalMatched}/${totalFiltered} matched. V:${counts.valid || 0} R:${counts.risky || 0} I:${counts.invalid || 0}`);
+    res.json(summary);
   } catch (e: any) {
     console.error('[Ingest] Error:', e.message);
     res.status(500).json({ error: e.message });
