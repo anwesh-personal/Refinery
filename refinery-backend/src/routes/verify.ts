@@ -10,6 +10,7 @@ import {
   DEFAULT_SEVERITY_THRESHOLDS,
   type PipelineResult,
 } from '../services/standaloneVerifier.js';
+import { getConfigInt, CONFIG_KEYS } from '../services/config.js';
 
 // ═══════════════════════════════════════════════════════════════
 // Standalone Verify Routes — Direct email list verification
@@ -70,7 +71,7 @@ const ThresholdsSchema = z.object({
 }).partial();
 
 const VerifyRequestSchema = z.object({
-  emails: z.array(z.string()).min(1, 'At least 1 email required').max(50_000, 'Max 50,000 emails per request'),
+  emails: z.array(z.string()).min(1, 'At least 1 email required'),
   checks: CheckConfigSchema.optional(),
   smtp: SmtpConfigSchema.optional(),
   severityWeights: SeverityWeightsSchema.optional(),
@@ -88,6 +89,14 @@ router.post('/', requireSuperadmin, async (req, res) => {
     }
 
     const { emails, checks, smtp, severityWeights, thresholds } = parsed.data;
+
+    // Enforce configurable limit from system_config (not hardcoded)
+    const maxEmails = await getConfigInt(CONFIG_KEYS.PIPELINE_MAX_EMAILS);
+    if (emails.length > maxEmails) {
+      return res.status(400).json({
+        error: `Max ${maxEmails.toLocaleString()} emails per request. You provided ${emails.length.toLocaleString()}. Configure this limit in Server Config → pipeline.max_emails_per_job.`,
+      });
+    }
 
     console.log(`[Verify] Starting pipeline: ${emails.length} emails, checks: ${JSON.stringify(checks || 'all')}`);
 
@@ -111,12 +120,18 @@ router.post('/', requireSuperadmin, async (req, res) => {
 // ─── GET /api/verify/defaults ───
 // Returns all default configuration values for the UI.
 
-router.get('/defaults', (_req, res) => {
+router.get('/defaults', async (_req, res) => {
+  const maxEmails = await getConfigInt(CONFIG_KEYS.PIPELINE_MAX_EMAILS);
+  const segmentExportLimit = await getConfigInt(CONFIG_KEYS.SEGMENT_EXPORT_LIMIT);
   res.json({
     checks: DEFAULT_CHECK_CONFIG,
     smtp: DEFAULT_SMTP_CONFIG,
     severityWeights: DEFAULT_SEVERITY_WEIGHTS,
     thresholds: DEFAULT_SEVERITY_THRESHOLDS,
+    limits: {
+      maxEmailsPerJob: maxEmails,
+      segmentExportLimit,
+    },
   });
 });
 
@@ -175,6 +190,15 @@ router.post('/async', requireSuperadmin, async (req, res) => {
     }
 
     const { emails, checks, smtp, severityWeights, thresholds } = parsed.data;
+
+    // Enforce configurable limit from system_config
+    const maxEmails = await getConfigInt(CONFIG_KEYS.PIPELINE_MAX_EMAILS);
+    if (emails.length > maxEmails) {
+      return res.status(400).json({
+        error: `Max ${maxEmails.toLocaleString()} emails per job. You provided ${emails.length.toLocaleString()}. Configure this in Server Config → pipeline.max_emails_per_job.`,
+      });
+    }
+
     const jobId = genId();
     const user = getRequestUser(req);
 

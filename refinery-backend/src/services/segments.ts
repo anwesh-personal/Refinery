@@ -1,5 +1,6 @@
 import { query, command, insertRows } from '../db/clickhouse.js';
 import { genId } from '../utils/helpers.js';
+import { getConfigInt, CONFIG_KEYS } from './config.js';
 
 export interface SegmentInput {
   name: string;
@@ -309,11 +310,12 @@ export async function exportSegmentLeads(id: string): Promise<Record<string, unk
   const seg = await getSegment(id);
   if (!seg) throw new Error(`Segment ${id} not found`);
   const filterQuery = seg.filter_query;
+  const exportLimit = await getConfigInt(CONFIG_KEYS.SEGMENT_EXPORT_LIMIT);
 
   return query(`
     SELECT * FROM universal_person
     WHERE ${filterQuery}
-    LIMIT 50000
+    LIMIT ${exportLimit}
   `);
 }
 

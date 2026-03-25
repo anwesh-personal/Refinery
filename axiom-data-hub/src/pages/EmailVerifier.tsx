@@ -174,6 +174,20 @@ export default function EmailVerifierPage() {
   const [pushingToDB, setPushingToDB] = useState(false);
   const [pushResult, setPushResult] = useState<{ matched: number; totalProcessed: number; updated: Record<string, number> } | null>(null);
 
+  // Pipeline limit — fetched from server config, not hardcoded
+  const [pipelineLimit, setPipelineLimit] = useState<number>(50_000); // initial fallback until API responds
+
+  // Fetch configurable limits from server on mount
+  React.useEffect(() => {
+    apiCall<{ limits?: { maxEmailsPerJob?: number } }>('/api/verify/defaults')
+      .then((data) => {
+        if (data.limits?.maxEmailsPerJob && data.limits.maxEmailsPerJob > 0) {
+          setPipelineLimit(data.limits.maxEmailsPerJob);
+        }
+      })
+      .catch(() => { /* keep fallback */ });
+  }, []);
+
   const processedResults = React.useMemo(() => {
     if (!result?.results) return [];
 
@@ -267,9 +281,9 @@ export default function EmailVerifierPage() {
       setLoading(false);
       return showToast('warning', 'No valid emails found to verify.');
     }
-    if (list.length > 50000) {
+    if (list.length > pipelineLimit) {
       setLoading(false);
-      return showToast('warning', `Maximum 50,000 emails per request. You provided ${list.length.toLocaleString()}.`);
+      return showToast('warning', `Maximum ${pipelineLimit.toLocaleString()} emails per request. You provided ${list.length.toLocaleString()}. This limit is configurable in Server Config.`);
     }
 
     setLoading(true);
@@ -513,7 +527,7 @@ export default function EmailVerifierPage() {
             {inputType === 'text' ? (
               <div className="animate-fadeIn" style={{ position: 'relative' }}>
                 <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
-                  Paste one or more email addresses (newline or comma separated). Max 50,000.
+                  Paste one or more email addresses (newline or comma separated). Max {pipelineLimit.toLocaleString()}.
                 </p>
                 <textarea
                   value={emailsRaw}
@@ -536,7 +550,7 @@ export default function EmailVerifierPage() {
             ) : (
               <div className="animate-fadeIn" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 0 }}>
-                  Upload a CSV file and select the column containing email addresses. Max 50,000 rows.
+                  Upload a CSV file and select the column containing email addresses. Max {pipelineLimit.toLocaleString()} rows.
                 </p>
                 <input
                   type="file"

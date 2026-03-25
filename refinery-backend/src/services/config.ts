@@ -1,5 +1,12 @@
 import { query, insertRows } from '../db/clickhouse.js';
 
+/** Default values for numeric config — used when key is not yet set in system_config */
+const CONFIG_DEFAULTS: Record<string, number> = {
+  'pipeline.max_emails_per_job': 50_000,
+  'pipeline.smtp_concurrency': 10,
+  'segment.export_limit': 50_000,
+};
+
 /** Get a config value */
 export async function getConfig(key: string): Promise<string | null> {
   const rows = await query<{ config_value: string }>(
@@ -39,6 +46,20 @@ export async function saveConfigBatch(entries: { key: string; value: string; isS
   }
 }
 
+/**
+ * Get a numeric config value with a typed fallback default.
+ * Reads from system_config in ClickHouse. If not found or unparseable,
+ * falls back to CONFIG_DEFAULTS, then to the provided fallback.
+ */
+export async function getConfigInt(key: string, fallback?: number): Promise<number> {
+  const raw = await getConfig(key);
+  if (raw !== null) {
+    const parsed = parseInt(raw, 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return CONFIG_DEFAULTS[key] ?? fallback ?? 0;
+}
+
 /** Config key constants */
 export const CONFIG_KEYS = {
   SERVER_IP: 'server.ip',
@@ -59,4 +80,9 @@ export const CONFIG_KEYS = {
   SMTP_PASSWORD: 'smtp.password',
   MAILWIZZ_API_URL: 'mailwizz_api_url',
   MAILWIZZ_API_KEY: 'mailwizz_api_key',
+  // Pipeline Studio limits
+  PIPELINE_MAX_EMAILS: 'pipeline.max_emails_per_job',
+  PIPELINE_SMTP_CONCURRENCY: 'pipeline.smtp_concurrency',
+  // Segment export limits
+  SEGMENT_EXPORT_LIMIT: 'segment.export_limit',
 } as const;
