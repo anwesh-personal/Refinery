@@ -177,16 +177,118 @@ export default function EmailVerifierPage() {
   // Pipeline limit — fetched from server config, not hardcoded
   const [pipelineLimit, setPipelineLimit] = useState<number>(50_000); // initial fallback until API responds
 
-  // Fetch configurable limits from server on mount
+  // Recent completed/failed jobs for the jobs list
+  const [recentJobs, setRecentJobs] = useState<any[]>([]);
+
+  // ── On mount: fetch config limits + recover any active job + load recent jobs ──
   React.useEffect(() => {
+    // 1. Fetch configurable limits
     apiCall<{ limits?: { maxEmailsPerJob?: number } }>('/api/verify/defaults')
       .then((data) => {
         if (data.limits?.maxEmailsPerJob && data.limits.maxEmailsPerJob > 0) {
           setPipelineLimit(data.limits.maxEmailsPerJob);
         }
       })
-      .catch(() => { /* keep fallback */ });
+      .catch(() => {});
+
+    // 2. Recover active job from sessionStorage (survives page navigation)
+    const savedJobId = sessionStorage.getItem('pipeline_active_job');
+    if (savedJobId) {
+      setActiveJobId(savedJobId);
+      setLoading(true);
+      setJobStatus('Reconnecting to job...');
+      startPolling(savedJobId);
+    }
+
+    // 3. Fetch recent jobs list
+    fetchRecentJobs();
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
+
+  const fetchRecentJobs = () => {
+    apiCall<any[]>('/api/verify/jobs')
+      .then(setRecentJobs)
+      .catch(() => {});
+  };
+
+  const startPolling = (jobId: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const job = await apiCall<any>(`/api/verify/jobs/${jobId}`);
+        const total = Number(job.total_emails) || 1;
+        const processed = Number(job.processed_count) || 0;
+        const pct = Math.min(100, Math.round((processed / total) * 100));
+        setProgress(pct);
+
+        if (job.status === 'complete') {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+          setProgress(100);
+          setJobStatus('Complete!');
+          sessionStorage.removeItem('pipeline_active_job');
+
+          setResult({
+            id: jobId,
+            startedAt: job.started_at,
+            completedAt: job.completed_at,
+            totalInput: Number(job.total_emails),
+            totalProcessed: Number(job.processed_count),
+            duplicatesRemoved: Number(job.duplicates_removed),
+            typosFixed: Number(job.typos_fixed),
+            safe: Number(job.safe_count),
+            uncertain: Number(job.uncertain_count),
+            risky: Number(job.risky_count),
+            rejected: Number(job.rejected_count),
+            results: job.results || [],
+          } as PipelineResult);
+          setLoading(false);
+          setActiveJobId(null);
+          fetchRecentJobs();
+        } else if (job.status === 'failed') {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+          sessionStorage.removeItem('pipeline_active_job');
+          showToast('error', `Pipeline failed: ${job.error_message || 'Unknown error'}`);
+          setLoading(false);
+          setActiveJobId(null);
+          fetchRecentJobs();
+        } else {
+          const statusText = pct < 30 ? 'Analyzing syntax & domains...' : pct < 60 ? 'Running MX & SMTP checks...' : pct < 90 ? 'Verifying remaining emails...' : 'Finalizing results...';
+          setJobStatus(statusText);
+        }
+      } catch {
+        // Polling error — don't kill job, just skip this tick
+      }
+    }, 2000);
+  };
+
+  const loadCompletedJob = async (jobId: string) => {
+    try {
+      const job = await apiCall<any>(`/api/verify/jobs/${jobId}`);
+      if (job.status === 'complete' && job.results) {
+        setResult({
+          id: jobId,
+          startedAt: job.started_at,
+          completedAt: job.completed_at,
+          totalInput: Number(job.total_emails),
+          totalProcessed: Number(job.processed_count),
+          duplicatesRemoved: Number(job.duplicates_removed),
+          typosFixed: Number(job.typos_fixed),
+          safe: Number(job.safe_count),
+          uncertain: Number(job.uncertain_count),
+          risky: Number(job.risky_count),
+          rejected: Number(job.rejected_count),
+          results: job.results || [],
+        } as PipelineResult);
+      }
+    } catch (err: any) {
+      showToast('error', `Failed to load job: ${err.message}`);
+    }
+  };
 
   const processedResults = React.useMemo(() => {
     if (!result?.results) return [];
@@ -307,57 +409,11 @@ export default function EmailVerifierPage() {
       setActiveJobId(jobId);
       setJobStatus('Processing...');
 
-      // Start polling for progress
-      if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = setInterval(async () => {
-        try {
-          const job = await apiCall<any>(`/api/verify/jobs/${jobId}`);
-          const total = Number(job.total_emails) || 1;
-          const processed = Number(job.processed_count) || 0;
-          const pct = Math.min(100, Math.round((processed / total) * 100));
-          setProgress(pct);
+      // Persist job ID so we can recover after navigation
+      sessionStorage.setItem('pipeline_active_job', jobId);
 
-          if (job.status === 'complete') {
-            clearInterval(pollRef.current!);
-            pollRef.current = null;
-            setProgress(100);
-            setJobStatus('Complete!');
-
-            // Fetch full results
-            const fullJob = await apiCall<any>(`/api/verify/jobs/${jobId}`);
-            setResult({
-              id: jobId,
-              startedAt: fullJob.started_at,
-              completedAt: fullJob.completed_at,
-              totalInput: Number(fullJob.total_emails),
-              totalProcessed: Number(fullJob.processed_count),
-              duplicatesRemoved: Number(fullJob.duplicates_removed),
-              typosFixed: Number(fullJob.typos_fixed),
-              safe: Number(fullJob.safe_count),
-              uncertain: Number(fullJob.uncertain_count),
-              risky: Number(fullJob.risky_count),
-              rejected: Number(fullJob.rejected_count),
-              results: fullJob.results || [],
-              checksEnabled: checks,
-              severityWeights: weights,
-              thresholds,
-            } as PipelineResult);
-            setLoading(false);
-            setActiveJobId(null);
-          } else if (job.status === 'failed') {
-            clearInterval(pollRef.current!);
-            pollRef.current = null;
-            showToast('error', `Pipeline failed: ${job.error_message || 'Unknown error'}`);
-            setLoading(false);
-            setActiveJobId(null);
-          } else {
-            const statusText = pct < 30 ? 'Analyzing syntax & domains...' : pct < 60 ? 'Running MX & SMTP checks...' : pct < 90 ? 'Verifying remaining emails...' : 'Finalizing results...';
-            setJobStatus(statusText);
-          }
-        } catch {
-          // Polling error — don't kill job, just skip this tick
-        }
-      }, 2000);
+      // Start polling for progress (reusable function handles complete/failed)
+      startPolling(jobId);
 
     } catch (err: any) {
       showToast('error', `Failed to submit job: ${err.message}`);
@@ -983,9 +1039,68 @@ export default function EmailVerifierPage() {
             </div>
           </div>
 
-        </div>
-
       </div>
+
+        </div>
+      {/* ── Recent Jobs ── */}
+      {recentJobs.length > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12 }}>Recent Pipeline Jobs</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {recentJobs.map((job: any) => {
+              const total = Number(job.total_emails) || 0;
+              const processed = Number(job.processed_count) || 0;
+              const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
+              const isActive = activeJobId === job.id;
+              const isProcessing = job.status === 'processing';
+              const isComplete = job.status === 'complete';
+              const isFailed = job.status === 'failed';
+              return (
+                <div key={job.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px',
+                  background: isActive ? 'var(--accent-muted)' : 'var(--bg-card)',
+                  borderRadius: 10, border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
+                }}>
+                  <div style={{
+                    width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                    background: isComplete ? 'var(--green)' : isFailed ? 'var(--red)' : isProcessing ? 'var(--yellow)' : 'var(--text-tertiary)',
+                  }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {total.toLocaleString()} emails
+                      <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: 8, fontSize: 11 }}>{job.id}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                      {new Date(job.started_at).toLocaleString()}
+                      {isProcessing && ` — ${pct}% (${processed.toLocaleString()}/${total.toLocaleString()})`}
+                      {isComplete && job.completed_at && ` — completed ${new Date(job.completed_at).toLocaleTimeString()}`}
+                      {isFailed && ` — failed`}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, textTransform: 'uppercase', padding: '3px 8px', borderRadius: 6,
+                    background: isComplete ? 'var(--green-muted)' : isFailed ? 'var(--red-muted)' : 'var(--yellow-muted)',
+                    color: isComplete ? 'var(--green)' : isFailed ? 'var(--red)' : 'var(--yellow)',
+                  }}>{job.status}</span>
+                  {isComplete && (
+                    <button onClick={() => loadCompletedJob(job.id)} style={{
+                      padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)',
+                      background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    }}>View Results</button>
+                  )}
+                  {isProcessing && !isActive && (
+                    <button onClick={() => { setActiveJobId(job.id); setLoading(true); sessionStorage.setItem('pipeline_active_job', job.id); startPolling(job.id); }} style={{
+                      padding: '6px 14px', borderRadius: 8, border: '1px solid var(--accent)',
+                      background: 'var(--accent-muted)', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    }}>Reconnect</button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
     </>
   );
 }
