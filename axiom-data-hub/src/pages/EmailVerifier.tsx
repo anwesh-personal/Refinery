@@ -1083,10 +1083,31 @@ export default function EmailVerifierPage() {
                     color: isComplete ? 'var(--green)' : isFailed ? 'var(--red)' : 'var(--yellow)',
                   }}>{job.status}</span>
                   {isComplete && (
-                    <button onClick={() => loadCompletedJob(job.id)} style={{
-                      padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)',
-                      background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                    }}>View Results</button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => loadCompletedJob(job.id)} style={{
+                        padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)',
+                        background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      }}>View Results</button>
+                      <button onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = `/api/verify/jobs/${job.id}/download`;
+                        a.download = `verification-${job.id}.csv`;
+                        a.click();
+                      }} style={{
+                        padding: '6px 14px', borderRadius: 8, border: '1px solid var(--green)',
+                        background: 'var(--green-muted)', color: 'var(--green)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      }}>Download CSV</button>
+                      <button onClick={async () => {
+                        if (!window.confirm(`Ingest ${total.toLocaleString()} results into the Verification Engine?`)) return;
+                        try {
+                          const resp = await apiCall<any>(`/api/verify/jobs/${job.id}/ingest`, { method: 'POST' });
+                          alert(`Ingested: ${resp.matched} matched. Valid: ${resp.updated?.valid || 0}, Risky: ${resp.updated?.risky || 0}, Invalid: ${resp.updated?.invalid || 0}`);
+                        } catch (err: any) { alert(`Ingest failed: ${err.message}`); }
+                      }} style={{
+                        padding: '6px 14px', borderRadius: 8, border: '1px solid var(--blue)',
+                        background: 'var(--blue-muted)', color: 'var(--blue)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      }}>Ingest to DB</button>
+                    </div>
                   )}
                   {isProcessing && !isActive && (
                     <button onClick={() => { setActiveJobId(job.id); setLoading(true); sessionStorage.setItem('pipeline_active_job', job.id); startPolling(job.id); }} style={{

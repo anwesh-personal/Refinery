@@ -321,6 +321,125 @@ router.get('/jobs/:id', requireSuperadmin, async (req, res) => {
   }
 });
 
+// ─── GET /api/verify/jobs/:id/download ───
+// Download results CSV for a completed pipeline job.
+
+router.get('/jobs/:id/download', requireSuperadmin, async (req, res) => {
+  try {
+    const [job] = await chQuery<any>(`
+      SELECT id, results_json, total_emails, status
+      FROM pipeline_jobs
+      WHERE id = '${req.params.id}'
+      LIMIT 1
+    `);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (job.status !== 'complete') return res.status(400).json({ error: 'Job not complete yet' });
+    if (!job.results_json) return res.status(404).json({ error: 'No results stored for this job' });
+
+    let results: any[];
+    try { results = JSON.parse(job.results_json); } catch { return res.status(500).json({ error: 'Corrupt results data' }); }
+
+    // Build CSV
+    const headers = ['Email', 'Classification', 'Risk Score', 'Original Email', 'Syntax', 'Typo Fixed',
+      'Disposable', 'Role Based', 'Free Provider', 'MX Valid', 'Catch All', 'SMTP Status', 'SMTP Response'];
+
+    const rows = results.map((r: any) => [
+      `"${(r.email || '').replace(/"/g, '""')}"`,
+      r.classification || '',
+      r.riskScore ?? '',
+      `"${(r.originalEmail || r.email || '').replace(/"/g, '""')}"`,
+      r.checks?.syntax ? (r.checks.syntax.passed ? 'pass' : 'fail') : 'skipped',
+      r.checks?.typoFixed ? (r.checks.typoFixed.corrected ? 'yes' : 'no') : 'skipped',
+      r.checks?.disposable === null || r.checks?.disposable === undefined ? 'skipped' : (r.checks.disposable ? 'yes' : 'no'),
+      r.checks?.roleBased?.detected ? r.checks.roleBased.prefix : 'no',
+      r.checks?.freeProvider?.detected ? r.checks.freeProvider.category : 'no',
+      r.checks?.mxValid?.valid != null ? (r.checks.mxValid.valid ? 'yes' : 'no') : 'skipped',
+      r.checks?.catchAll != null ? (r.checks.catchAll ? 'yes' : 'no') : 'skipped',
+      r.checks?.smtpResult ? r.checks.smtpResult.status : 'skipped',
+      r.checks?.smtpResult ? `"${(r.checks.smtpResult.response || '').replace(/"/g, '""')}"` : 'skipped',
+    ].join(','));
+
+    const csv = [headers.join(','), ...rows].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="verification-${req.params.id}.csv"`);
+    res.send(csv);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── POST /api/verify/jobs/:id/ingest ───
+// Push results from a completed pipeline job into universal_person (same logic as push-to-db).
+
+router.post('/jobs/:id/ingest', requireSuperadmin, async (req, res) => {
+  try {
+    const [job] = await chQuery<any>(`
+      SELECT id, results_json, status
+      FROM pipeline_jobs
+      WHERE id = '${req.params.id}'
+      LIMIT 1
+    `);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (job.status !== 'complete') return res.status(400).json({ error: 'Job not complete yet' });
+    if (!job.results_json) return res.status(404).json({ error: 'No results stored' });
+
+    let results: any[];
+    try { results = JSON.parse(job.results_json); } catch { return res.status(500).json({ error: 'Corrupt results data' }); }
+
+    // Reuse same push-to-db logic
+    const statusMap: Record<string, string> = { safe: 'valid', uncertain: 'risky', risky: 'risky', reject: 'invalid' };
+    const user = getRequestUser(req);
+    console.log(`[Ingest] User ${user.name} ingesting job ${req.params.id} (${results.length} results)`);
+
+    const BATCH = 500;
+    let totalMatched = 0;
+    const counts: Record<string, number> = { valid: 0, risky: 0, invalid: 0 };
+
+    const grouped = new Map<string, string[]>();
+    for (const r of results) {
+      const s = statusMap[r.classification] || 'risky';
+      if (!grouped.has(s)) grouped.set(s, []);
+      grouped.get(s)!.push((r.email || '').toLowerCase().trim());
+    }
+
+    for (const [status, emails] of grouped) {
+      for (let i = 0; i < emails.length; i += BATCH) {
+        const batch = emails.slice(i, i + BATCH);
+        const emailList = batch.map(e => `'${e.replace(/'/g, "''")}'`).join(',');
+
+        const [mc] = await chQuery<{ cnt: string }>(`
+          SELECT count() as cnt FROM universal_person
+          WHERE lower(business_email) IN (${emailList})
+             OR lower(personal_emails) IN (${emailList})
+        `);
+        const matched = Number(mc?.cnt || 0);
+        totalMatched += matched;
+        counts[status] = (counts[status] || 0) + matched;
+
+        if (matched > 0) {
+          await chCommand(`
+            ALTER TABLE universal_person UPDATE
+              _verification_status = '${status}',
+              _verified_at = now(),
+              _bounced = ${status === 'invalid' ? 1 : 0}
+            WHERE (lower(business_email) IN (${emailList})
+               OR lower(personal_emails) IN (${emailList}))
+              AND (_verification_status IS NULL
+                OR _verification_status != '${status}')
+          `);
+        }
+      }
+    }
+
+    console.log(`[Ingest] Done: ${totalMatched}/${results.length} matched. V:${counts.valid || 0} R:${counts.risky || 0} I:${counts.invalid || 0}`);
+    res.json({ totalProcessed: results.length, matched: totalMatched, updated: counts });
+  } catch (e: any) {
+    console.error('[Ingest] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── POST /api/verify/push-to-db ───
 // Push Pipeline Studio results into ClickHouse.
 // Maps pipeline classifications to _verification_status.
