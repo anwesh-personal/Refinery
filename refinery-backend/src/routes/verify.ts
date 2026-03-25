@@ -4,6 +4,7 @@ import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
 import { getRequestUser } from '../types/auth.js';
 import {
   runPipeline,
+  PipelineCancelledError,
   DEFAULT_CHECK_CONFIG,
   DEFAULT_SMTP_CONFIG,
   DEFAULT_SEVERITY_WEIGHTS,
@@ -11,6 +12,9 @@ import {
   type PipelineResult,
 } from '../services/standaloneVerifier.js';
 import { getConfigInt, CONFIG_KEYS } from '../services/config.js';
+
+// ── Active Job Controllers — allows cancellation of running jobs ──
+const activeJobs = new Map<string, AbortController>();
 
 // ═══════════════════════════════════════════════════════════════
 // Standalone Verify Routes — Direct email list verification
@@ -212,6 +216,10 @@ router.post('/async', requireSuperadmin, async (req, res) => {
       performed_by_name: user.name,
     }]);
 
+    // Create AbortController for this job
+    const controller = new AbortController();
+    activeJobs.set(jobId, controller);
+
     // Run pipeline in background (not awaited)
     (async () => {
       try {
@@ -223,7 +231,6 @@ router.post('/async', requireSuperadmin, async (req, res) => {
           smtp || {},
           severityWeights || {},
           thresholds || {},
-          // Progress callback — update ClickHouse periodically
           async (processed, total) => {
             try {
               await chCommand(`
@@ -233,6 +240,7 @@ router.post('/async', requireSuperadmin, async (req, res) => {
               `);
             } catch { /* ignore progress update failures */ }
           },
+          controller.signal,
         );
 
         // Store results
@@ -253,13 +261,25 @@ router.post('/async', requireSuperadmin, async (req, res) => {
 
         console.log(`[Pipeline] Job ${jobId}: Complete — ${result.safe} safe, ${result.risky} risky, ${result.rejected} rejected`);
       } catch (err: any) {
-        console.error(`[Pipeline] Job ${jobId} failed:`, err.message);
-        await chCommand(`
-          ALTER TABLE pipeline_jobs UPDATE
-            status = 'failed',
-            error_message = '${(err.message || 'Unknown error').replace(/'/g, "\\'").substring(0, 500)}'
-          WHERE id = '${jobId}'
-        `).catch(() => { });
+        if (err instanceof PipelineCancelledError) {
+          console.log(`[Pipeline] Job ${jobId}: Cancelled at ${err.processedSoFar} emails`);
+          await chCommand(`
+            ALTER TABLE pipeline_jobs UPDATE
+              status = 'cancelled',
+              error_message = 'Cancelled by user after processing ${err.processedSoFar} emails'
+            WHERE id = '${jobId}'
+          `).catch(() => {});
+        } else {
+          console.error(`[Pipeline] Job ${jobId} failed:`, err.message);
+          await chCommand(`
+            ALTER TABLE pipeline_jobs UPDATE
+              status = 'failed',
+              error_message = '${(err.message || 'Unknown error').replace(/'/g, "\\'").substring(0, 500)}'
+            WHERE id = '${jobId}'
+          `).catch(() => { });
+        }
+      } finally {
+        activeJobs.delete(jobId);
       }
     })();
 
@@ -269,6 +289,59 @@ router.post('/async', requireSuperadmin, async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+// ─── POST /api/verify/jobs/:id/cancel ───
+// Cancel a running pipeline job.
+
+router.post('/jobs/:id/cancel', requireSuperadmin, async (req, res) => {
+  const jobId = req.params.id as string;
+  const controller = activeJobs.get(jobId);
+  if (!controller) {
+    // Job is not running in this process — might be orphaned
+    const [job] = await chQuery<any>(`
+      SELECT status FROM pipeline_jobs WHERE id = '${jobId}' LIMIT 1
+    `);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (job.status === 'processing') {
+      // Orphaned job — mark as cancelled directly
+      await chCommand(`
+        ALTER TABLE pipeline_jobs UPDATE
+          status = 'cancelled',
+          error_message = 'Cancelled (job was orphaned — no active process found)'
+        WHERE id = '${jobId}'
+      `);
+      return res.json({ cancelled: true, note: 'Job was orphaned and has been marked cancelled' });
+    }
+    return res.status(400).json({ error: `Job is ${job.status}, not running` });
+  }
+
+  const user = getRequestUser(req);
+  console.log(`[Pipeline] Job ${jobId}: Cancel requested by ${user.name}`);
+  controller.abort();
+  res.json({ cancelled: true });
+});
+
+// ─── Orphan Recovery ───
+// On server startup, mark any "processing" jobs as failed.
+// They were killed when the server restarted.
+
+export async function recoverOrphanedJobs(): Promise<void> {
+  try {
+    const orphans = await chQuery<{ id: string }>(`
+      SELECT id FROM pipeline_jobs WHERE status = 'processing'
+    `);
+    if (orphans.length > 0) {
+      console.log(`[Pipeline] Found ${orphans.length} orphaned jobs — marking as failed`);
+      await chCommand(`
+        ALTER TABLE pipeline_jobs UPDATE
+          status = 'failed',
+          error_message = 'Server restarted while job was processing — resubmit to retry'
+        WHERE status = 'processing'
+      `);
+    }
+  } catch (err: any) {
+    console.error('[Pipeline] Orphan recovery error:', err.message);
+  }
+}
 
 // ─── GET /api/verify/jobs ───
 // List recent pipeline jobs.

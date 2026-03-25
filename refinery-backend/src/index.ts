@@ -6,6 +6,7 @@ import { env } from './config/env.js';
 import { initDatabase } from './db/init.js';
 import { recoverOrphanedBatches } from './services/verification.js';
 import { recoverStaleIngestionJobs, startArchiveCleanupScheduler } from './services/ingestion.js';
+import { recoverOrphanedJobs } from './routes/verify.js';
 
 // Routes
 import ingestionRoutes from './routes/ingestion.js';
@@ -70,7 +71,7 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(morgan('short'));
 
 // ── API Routes ──
@@ -147,6 +148,9 @@ async function start() {
     if (staleJobs > 0) {
       console.log(`[Server] ✓ Recovered ${staleJobs} stale ingestion job(s)`);
     }
+
+    // Recover orphaned pipeline jobs from prior crash/restart
+    await recoverOrphanedJobs();
 
     // Initialize auto-ingestion scheduler
     await setupScheduler();

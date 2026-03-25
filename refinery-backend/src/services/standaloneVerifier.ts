@@ -188,6 +188,14 @@ export interface PipelineResult {
  * Each check can be independently enabled/disabled.
  * Returns granular per-email results with risk scoring.
  */
+/** Thrown when the pipeline is cancelled via AbortSignal */
+export class PipelineCancelledError extends Error {
+  constructor(public readonly processedSoFar: number) {
+    super(`Pipeline cancelled after processing ${processedSoFar} emails`);
+    this.name = 'PipelineCancelledError';
+  }
+}
+
 export async function runPipeline(
   emails: string[],
   checks: Partial<CheckConfig> = {},
@@ -195,6 +203,7 @@ export async function runPipeline(
   weights: Partial<SeverityWeights> = {},
   thresholds: Partial<SeverityThresholds> = {},
   onProgress?: (processed: number, total: number) => void,
+  signal?: AbortSignal,
 ): Promise<PipelineResult> {
   const id = genId();
   const startedAt = new Date().toISOString();
@@ -320,9 +329,14 @@ export async function runPipeline(
 
     const workers = Array.from({ length: workerCount }, async () => {
       while (domainIdx < domainEntries.length) {
+        // Check for cancellation before each domain batch
+        if (signal?.aborted) {
+          const processed = domainEntries.slice(0, domainIdx).reduce((s, [, idxs]) => s + idxs.length, 0);
+          throw new PipelineCancelledError(processed);
+        }
         const idx = domainIdx++;
         const [domain, indices] = domainEntries[idx];
-        await processDomainChecks(domain, indices, results, cfg, smtp, w);
+        await processDomainChecks(domain, indices, results, cfg, smtp, w, signal);
         // Report progress per domain batch
         if (onProgress) {
           const processed = Math.min(domainEntries.slice(0, idx + 1).reduce((s, [, idxs]) => s + idxs.length, 0), workingEmails.length);
@@ -381,6 +395,7 @@ async function processDomainChecks(
   cfg: CheckConfig,
   smtp: SmtpConfig,
   weights: SeverityWeights,
+  signal?: AbortSignal,
 ): Promise<void> {
   // ── Parallel: MX Lookup + SPF/DMARC + Domain Age ──
   let mxRecords: { exchange: string; priority: number }[] = [];
@@ -496,6 +511,8 @@ async function processDomainChecks(
   // ── Individual SMTP Verification (with greylisting retry) ──
   if (cfg.smtpVerify && mxRecords.length > 0) {
     for (const idx of indices) {
+      // Check for cancellation before each SMTP probe
+      if (signal?.aborted) return;
       await acquireSlot(domain);
       try {
         let lastResult: SmtpProbeResult = { status: 'unknown', code: 0, response: 'No MX reachable', starttls: false };

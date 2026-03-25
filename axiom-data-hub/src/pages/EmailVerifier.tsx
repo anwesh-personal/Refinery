@@ -248,11 +248,12 @@ export default function EmailVerifierPage() {
           setLoading(false);
           setActiveJobId(null);
           fetchRecentJobs();
-        } else if (job.status === 'failed') {
+        } else if (job.status === 'failed' || job.status === 'cancelled') {
           clearInterval(pollRef.current!);
           pollRef.current = null;
           sessionStorage.removeItem('pipeline_active_job');
-          showToast('error', `Pipeline failed: ${job.error_message || 'Unknown error'}`);
+          const msg = job.status === 'cancelled' ? 'Pipeline cancelled' : `Pipeline failed: ${job.error_message || 'Unknown error'}`;
+          showToast(job.status === 'cancelled' ? 'info' : 'error', msg);
           setLoading(false);
           setActiveJobId(null);
           fetchRecentJobs();
@@ -1055,6 +1056,7 @@ export default function EmailVerifierPage() {
               const isProcessing = job.status === 'processing';
               const isComplete = job.status === 'complete';
               const isFailed = job.status === 'failed';
+              const isCancelled = job.status === 'cancelled';
               return (
                 <div key={job.id} style={{
                   display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px',
@@ -1063,7 +1065,7 @@ export default function EmailVerifierPage() {
                 }}>
                   <div style={{
                     width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                    background: isComplete ? 'var(--green)' : isFailed ? 'var(--red)' : isProcessing ? 'var(--yellow)' : 'var(--text-tertiary)',
+                    background: isComplete ? 'var(--green)' : (isFailed || isCancelled) ? 'var(--red)' : isProcessing ? 'var(--yellow)' : 'var(--text-tertiary)',
                   }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -1075,12 +1077,13 @@ export default function EmailVerifierPage() {
                       {isProcessing && ` — ${pct}% (${processed.toLocaleString()}/${total.toLocaleString()})`}
                       {isComplete && job.completed_at && ` — completed ${new Date(job.completed_at).toLocaleTimeString()}`}
                       {isFailed && ` — failed`}
+                      {isCancelled && ` — cancelled`}
                     </div>
                   </div>
                   <span style={{
                     fontSize: 10, fontWeight: 700, textTransform: 'uppercase', padding: '3px 8px', borderRadius: 6,
-                    background: isComplete ? 'var(--green-muted)' : isFailed ? 'var(--red-muted)' : 'var(--yellow-muted)',
-                    color: isComplete ? 'var(--green)' : isFailed ? 'var(--red)' : 'var(--yellow)',
+                    background: isComplete ? 'var(--green-muted)' : (isFailed || isCancelled) ? 'var(--red-muted)' : 'var(--yellow-muted)',
+                    color: isComplete ? 'var(--green)' : (isFailed || isCancelled) ? 'var(--red)' : 'var(--yellow)',
                   }}>{job.status}</span>
                   {isComplete && (
                     <div style={{ display: 'flex', gap: 6 }}>
@@ -1114,6 +1117,24 @@ export default function EmailVerifierPage() {
                       padding: '6px 14px', borderRadius: 8, border: '1px solid var(--accent)',
                       background: 'var(--accent-muted)', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                     }}>Reconnect</button>
+                  )}
+                  {(isProcessing || isActive) && (
+                    <button onClick={async () => {
+                      if (!window.confirm('Cancel this verification job?')) return;
+                      try {
+                        await apiCall<any>(`/api/verify/jobs/${job.id}/cancel`, { method: 'POST' });
+                        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+                        sessionStorage.removeItem('pipeline_active_job');
+                        setActiveJobId(null);
+                        setLoading(false);
+                        setJobStatus('');
+                        fetchRecentJobs();
+                        showToast('info', 'Job cancelled');
+                      } catch (err: any) { showToast('error', `Cancel failed: ${err.message}`); }
+                    }} style={{
+                      padding: '6px 14px', borderRadius: 8, border: '1px solid var(--red)',
+                      background: 'var(--red-muted)', color: 'var(--red)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    }}>Cancel</button>
                   )}
                 </div>
               );
