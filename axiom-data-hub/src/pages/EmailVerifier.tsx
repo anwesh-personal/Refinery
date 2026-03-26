@@ -740,7 +740,7 @@ export default function EmailVerifierPage() {
                         Email Verification Pipeline
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontFamily: "'JetBrains Mono', monospace" }}>
-                        {activeJobId.slice(0, 12)}…
+                        {activeJobId.slice(0, 12)}… {jobStatus && <span style={{ color: 'var(--text-secondary)' }}>· {jobStatus}</span>}
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
