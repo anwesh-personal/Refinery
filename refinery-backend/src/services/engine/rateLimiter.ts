@@ -57,11 +57,19 @@ export function setLimits(config: RateLimitConfig): void {
  * Acquire a rate-limited slot for a domain. Blocks until a slot is available.
  * Call releaseSlot() in a finally block after the connection completes.
  */
-export async function acquireSlot(domain: string): Promise<void> {
+export async function acquireSlot(domain: string, signal?: AbortSignal): Promise<void> {
   const normalised = domain.toLowerCase();
+  const MAX_WAIT_MS = 60_000; // Hard limit: never spin-wait more than 60s total
+  const waitStart = Date.now();
+
+  const checkAbort = () => {
+    if (signal?.aborted) throw new Error('Pipeline cancelled');
+    if (Date.now() - waitStart > MAX_WAIT_MS) throw new Error(`acquireSlot timeout for ${domain}`);
+  };
 
   // Wait for global capacity
   while (globalActive >= GLOBAL_MAX_CONCURRENT) {
+    checkAbort();
     await sleep(100);
   }
 
@@ -71,14 +79,16 @@ export async function acquireSlot(domain: string): Promise<void> {
     slots.set(normalised, slot);
   }
 
-  // Wait for domain backoff to expire
+  // Wait for domain backoff to expire (with hard cap)
   while (Date.now() < slot.backoffUntil) {
+    checkAbort();
     const remaining = slot.backoffUntil - Date.now();
-    await sleep(Math.min(remaining, 1_000));
+    await sleep(Math.min(remaining, 500));
   }
 
   // Wait for per-domain concurrency
   while (slot.activeConnections >= MAX_CONCURRENT_PER_DOMAIN) {
+    checkAbort();
     await sleep(200);
   }
 
@@ -121,7 +131,7 @@ export function applyBackoff(domain: string): void {
   }
 
   slot.failureCount++;
-  const backoffSeconds = Math.min(5 * Math.pow(2, slot.failureCount - 1), 300); // Max 5 minutes
+  const backoffSeconds = Math.min(5 * Math.pow(2, slot.failureCount - 1), 30); // Max 30 seconds (was 300s)
   slot.backoffUntil = Date.now() + backoffSeconds * 1_000;
 }
 

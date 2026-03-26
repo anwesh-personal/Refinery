@@ -336,7 +336,26 @@ export async function runPipeline(
         }
         const idx = domainIdx++;
         const [domain, indices] = domainEntries[idx];
-        await processDomainChecks(domain, indices, results, cfg, smtp, w, signal);
+
+        // Per-domain hard timeout: 120s max per domain to prevent infinite blocking
+        const DOMAIN_TIMEOUT_MS = 120_000;
+        try {
+          await Promise.race([
+            processDomainChecks(domain, indices, results, cfg, smtp, w, signal),
+            new Promise<void>((_, reject) =>
+              setTimeout(() => reject(new Error(`Domain timeout: ${domain}`)), DOMAIN_TIMEOUT_MS)
+            ),
+          ]);
+        } catch (err: any) {
+          if (err instanceof PipelineCancelledError) throw err;
+          // Domain timed out or errored — mark all emails for this domain as unknown
+          for (const i of indices) {
+            if (!results[i].checks.smtpResult) {
+              results[i].checks.smtpResult = { status: 'unknown', code: 0, response: `Skipped: ${err.message}`, starttls: false };
+            }
+          }
+        }
+
         // Report progress per domain batch
         if (onProgress) {
           const processed = Math.min(domainEntries.slice(0, idx + 1).reduce((s, [, idxs]) => s + idxs.length, 0), workingEmails.length);
@@ -478,7 +497,7 @@ async function processDomainChecks(
     const randomLocal = `xrfnry_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const probeAddr = `${randomLocal}@${domain}`;
 
-    await acquireSlot(domain);
+    await acquireSlot(domain, signal);
     try {
       const result = await probeEmail(mxRecords[0].exchange, probeAddr, {
         heloDomain: smtp.heloDomain,
@@ -496,7 +515,7 @@ async function processDomainChecks(
       }
 
       if (isCatchAll) {
-        releaseSlot(domain);
+        // Catch-all domain — skip individual SMTP checks (they'd all return valid)
         return;
       }
     } catch {
@@ -513,7 +532,7 @@ async function processDomainChecks(
     for (const idx of indices) {
       // Check for cancellation before each SMTP probe
       if (signal?.aborted) return;
-      await acquireSlot(domain);
+      await acquireSlot(domain, signal);
       try {
         let lastResult: SmtpProbeResult = { status: 'unknown', code: 0, response: 'No MX reachable', starttls: false };
 
