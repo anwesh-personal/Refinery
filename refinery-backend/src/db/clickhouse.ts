@@ -18,9 +18,12 @@ export async function query<T = Record<string, unknown>>(sql: string): Promise<T
   return (await result.json()) as T[];
 }
 
-/** Run a command (CREATE, INSERT, ALTER, etc.) */
-export async function command(sql: string): Promise<void> {
-  await clickhouse.command({ query: sql });
+/** Run a command (CREATE, INSERT, ALTER, etc.) with optional per-query settings */
+export async function command(sql: string, settings?: Record<string, string | number | boolean | undefined>): Promise<void> {
+  await clickhouse.command({
+    query: sql,
+    ...(settings ? { clickhouse_settings: settings } : {}),
+  });
 }
 
 /** Insert rows in bulk */

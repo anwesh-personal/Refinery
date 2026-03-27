@@ -244,7 +244,8 @@ router.post('/async', requireSuperadmin, async (req, res) => {
           controller.signal,
         );
 
-        // Store results
+        // Store results — pass max_query_size from Server Config (UI-configurable)
+        const maxQuerySize = await getConfigInt(CONFIG_KEYS.CH_MAX_QUERY_SIZE);
         await chCommand(`
           ALTER TABLE pipeline_jobs UPDATE
             processed_count = ${result.totalProcessed},
@@ -258,7 +259,7 @@ router.post('/async', requireSuperadmin, async (req, res) => {
             results_json = '${JSON.stringify(result.results).replace(/'/g, "\\'")}',
             completed_at = now()
           WHERE id = '${jobId}'
-        `);
+        `, { max_query_size: maxQuerySize });
 
         console.log(`[Pipeline] Job ${jobId}: Complete — ${result.safe} safe, ${result.risky} risky, ${result.rejected} rejected`);
       } catch (err: any) {
@@ -654,6 +655,7 @@ router.post('/jobs/:id/retry', requireSuperadmin, async (req, res) => {
           controller.signal,
         );
 
+        const retryMaxQuerySize = await getConfigInt(CONFIG_KEYS.CH_MAX_QUERY_SIZE);
         await chCommand(`
           ALTER TABLE pipeline_jobs UPDATE
             processed_count = ${result.totalProcessed},
@@ -667,7 +669,7 @@ router.post('/jobs/:id/retry', requireSuperadmin, async (req, res) => {
             results_json = '${JSON.stringify(result.results).replace(/'/g, "\\\\'")}',
             completed_at = now()
           WHERE id = '${newJobId}'
-        `);
+        `, { max_query_size: retryMaxQuerySize });
 
         console.log(`[Pipeline] Retry job ${newJobId}: Complete — ${result.safe} safe, ${result.risky} risky, ${result.rejected} rejected`);
       } catch (err: any) {

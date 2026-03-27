@@ -5,6 +5,7 @@ const CONFIG_DEFAULTS: Record<string, number> = {
   'pipeline.max_emails_per_job': 200_000,
   'pipeline.smtp_concurrency': 10,
   'segment.export_limit': 200_000,
+  'clickhouse.max_query_size': 536_870_912, // 512MB
 };
 
 /** Get a config value */
@@ -85,4 +86,6 @@ export const CONFIG_KEYS = {
   PIPELINE_SMTP_CONCURRENCY: 'pipeline.smtp_concurrency',
   // Segment export limits
   SEGMENT_EXPORT_LIMIT: 'segment.export_limit',
+  // ClickHouse tuning
+  CH_MAX_QUERY_SIZE: 'clickhouse.max_query_size',
 } as const;

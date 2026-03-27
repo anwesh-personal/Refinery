@@ -71,6 +71,7 @@ export default function ConfigPage() {
     { key: 'pipeline.max_emails_per_job', label: 'Pipeline Max Emails', description: 'Maximum emails per Pipeline Studio job', type: 'number' },
     { key: 'pipeline.smtp_concurrency', label: 'Pipeline SMTP Concurrency', description: 'Concurrent SMTP connections during verification', type: 'number' },
     { key: 'segment.export_limit', label: 'Segment Export Limit', description: 'Max leads returned when exporting a segment', type: 'number' },
+    { key: 'clickhouse.max_query_size', label: 'ClickHouse Max Query Size', description: 'Max bytes for a single ClickHouse query string (default 512MB = 536870912). Increase if pipeline jobs fail on large result sets.', type: 'number' },
   ];
 
   const fetchSysConfig = async () => {
@@ -84,7 +85,8 @@ export default function ConfigPage() {
         if (!(kc.key in draft)) {
           draft[kc.key] = kc.key === 'pipeline.max_emails_per_job' ? '200000'
             : kc.key === 'pipeline.smtp_concurrency' ? '10'
-            : kc.key === 'segment.export_limit' ? '200000' : '';
+            : kc.key === 'segment.export_limit' ? '200000'
+            : kc.key === 'clickhouse.max_query_size' ? '536870912' : '';
         }
       }
       setSysConfigDraft(draft);
