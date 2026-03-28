@@ -1547,11 +1547,16 @@ export default function EmailVerifierPage() {
                   { label: 'Safe + Uncertain', cls: ['safe', 'uncertain'] },
                   { label: 'Risky + Rejected', cls: ['risky', 'reject'] },
                 ].map(preset => (
-                  <button key={preset.label} onClick={() => {
-                    const a = document.createElement('a');
-                    a.href = `/api/verify/jobs/${downloadJobId}/download?classifications=${preset.cls.join(',')}${downloadMaxRisk < 100 ? `&maxRiskScore=${downloadMaxRisk}` : ''}`;
-                    a.download = `verification-${downloadJobId}-${preset.cls.join('+')}.csv`;
-                    a.click();
+                  <button key={preset.label} onClick={async () => {
+                    try {
+                      const blob = await apiCall<Blob>(`/api/verify/jobs/${downloadJobId}/download?classifications=${preset.cls.join(',')}${downloadMaxRisk < 100 ? `&maxRiskScore=${downloadMaxRisk}` : ''}`, { responseType: 'blob' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `verification-${downloadJobId}-${preset.cls.join('+')}.csv`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    } catch (e: any) { alert(`Download failed: ${e.message}`); }
                   }} style={{
                     padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)',
                     background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
@@ -1567,12 +1572,17 @@ export default function EmailVerifierPage() {
                 background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
               }}>Close</button>
 
-              <button disabled={!Object.values(downloadClassifications).some(Boolean)} onClick={() => {
+              <button disabled={!Object.values(downloadClassifications).some(Boolean)} onClick={async () => {
                 const selected = Object.entries(downloadClassifications).filter(([, v]) => v).map(([k]) => k);
-                const a = document.createElement('a');
-                a.href = `/api/verify/jobs/${downloadJobId}/download?classifications=${selected.join(',')}${downloadMaxRisk < 100 ? `&maxRiskScore=${downloadMaxRisk}` : ''}`;
-                a.download = `verification-${downloadJobId}-${selected.join('+')}.csv`;
-                a.click();
+                try {
+                  const blob = await apiCall<Blob>(`/api/verify/jobs/${downloadJobId}/download?classifications=${selected.join(',')}${downloadMaxRisk < 100 ? `&maxRiskScore=${downloadMaxRisk}` : ''}`, { responseType: 'blob' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `verification-${downloadJobId}-${selected.join('+')}.csv`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch (e: any) { alert(`Download failed: ${e.message}`); }
               }} style={{
                 padding: '10px 20px', borderRadius: 10, border: 'none',
                 background: 'var(--accent)', color: 'var(--accent-contrast, #fff)', fontSize: 13, fontWeight: 700, cursor: 'pointer',

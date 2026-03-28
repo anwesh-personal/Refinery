@@ -319,9 +319,7 @@ export default function IngestionPage() {
   const exportJobData = async (jobId: string) => {
     setJobDataExporting(true);
     try {
-      const resp = await fetch(`/api/ingestion/${jobId}/export`, { credentials: 'include' });
-      if (!resp.ok) throw new Error('Export failed');
-      const blob = await resp.blob();
+      const blob = await apiCall<Blob>(`/api/ingestion/${jobId}/export`, { responseType: 'blob' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -1681,7 +1679,7 @@ export default function IngestionPage() {
                   <thead>
                     <tr style={{ background: 'var(--bg-hover)', position: 'sticky', top: 0, zIndex: 1 }}>
                       <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap' }}>#</th>
-                      {jobData.columns.slice(0, 20).map(col => (
+                      {jobData.columns.map(col => (
                         <th
                           key={col}
                           onClick={() => {
@@ -1717,7 +1715,7 @@ export default function IngestionPage() {
                         <td style={{ padding: '7px 12px', color: 'var(--text-tertiary)', fontFamily: 'monospace', fontSize: 10 }}>
                           {((jobData.page - 1) * jobData.pageSize) + ri + 1}
                         </td>
-                        {jobData.columns.slice(0, 20).map(col => (
+                        {jobData.columns.map(col => (
                           <td key={col} style={{
                             padding: '7px 12px', color: 'var(--text-primary)',
                             maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -1750,7 +1748,7 @@ export default function IngestionPage() {
               }}>
                 <div style={{ color: 'var(--text-tertiary)' }}>
                   Showing {((jobData.page - 1) * jobData.pageSize) + 1}–{Math.min(jobData.page * jobData.pageSize, jobData.total)} of {formatNumber(jobData.total)} rows
-                  {jobData.columns.length > 20 && <span style={{ marginLeft: 8, opacity: 0.6 }}>· Displaying first 20 of {jobData.columns.length} columns</span>}
+
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <button
