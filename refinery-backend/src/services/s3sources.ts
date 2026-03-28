@@ -1,6 +1,7 @@
 import { S3Client, HeadBucketCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { query, command, insertRows } from '../db/clickhouse.js';
 import { genId } from '../utils/helpers.js';
+import { esc } from '../utils/sanitize.js';
 
 /* ── Constants ── */
 const DEFAULT_REGION = 'us-east-1';
@@ -28,13 +29,6 @@ export interface S3SourceInput {
   accessKey: string;
   secretKey: string;
   prefix?: string;
-}
-
-/* ── Helpers ── */
-
-/** Sanitise a string for safe inclusion in ClickHouse SQL (single-quote escaping) */
-function esc(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
 /** Build an S3 client from a source record or raw credentials */
@@ -181,15 +175,28 @@ export async function listSourceFiles(id: string, prefix?: string) {
   const client = buildClient(source);
   const effectivePrefix = prefix || source.prefix || '';
 
-  const result = await client.send(new ListObjectsV2Command({
-    Bucket: source.bucket,
-    Prefix: effectivePrefix,
-    MaxKeys: 100,
-  }));
+  // Paginate through ALL files
+  const allFiles: Array<{ key: string; size: number; modified: string }> = [];
+  let continuationToken: string | undefined;
 
-  return (result.Contents || []).map(f => ({
-    key: f.Key || '',
-    size: f.Size || 0,
-    modified: f.LastModified?.toISOString() || '',
-  }));
+  do {
+    const result = await client.send(new ListObjectsV2Command({
+      Bucket: source.bucket,
+      Prefix: effectivePrefix,
+      MaxKeys: 1000,
+      ...(continuationToken ? { ContinuationToken: continuationToken } : {}),
+    }));
+
+    for (const f of result.Contents || []) {
+      allFiles.push({
+        key: f.Key || '',
+        size: f.Size || 0,
+        modified: f.LastModified?.toISOString() || '',
+      });
+    }
+
+    continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return allFiles;
 }

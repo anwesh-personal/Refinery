@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import * as ingestionService from '../services/ingestion.js';
+import { query as q, command as cmd } from '../db/clickhouse.js';
 import { getRequestUser } from '../types/auth.js';
 import { requireAuth } from '../middleware/auth.js';
+import { esc } from '../utils/sanitize.js';
 
 const router = Router();
 
@@ -19,9 +21,10 @@ router.get('/stats', async (_req, res) => {
 });
 
 // GET /api/ingestion/jobs
-router.get('/jobs', async (_req, res) => {
+router.get('/jobs', async (req, res) => {
   try {
-    const jobs = await ingestionService.getJobs();
+    const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 5000);
+    const jobs = await ingestionService.getJobs(limit);
     res.json(jobs);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -146,7 +149,6 @@ router.post('/start-bulk-daterange', async (req, res) => {
 router.post('/clear-jobs', async (req, res) => {
   try {
     const { status } = req.body;
-    const db = 'refinery';
     let condition: string;
 
     if (status === 'failed') {
@@ -161,10 +163,7 @@ router.post('/clear-jobs', async (req, res) => {
       return res.status(400).json({ error: 'status must be "failed", "complete", "cancelled", or "all"' });
     }
 
-    const { query: q } = await import('../db/clickhouse.js');
     const [{ cnt }] = await q<{ cnt: string }>(`SELECT count() as cnt FROM ingestion_jobs WHERE ${condition}`);
-
-    const { command: cmd } = await import('../db/clickhouse.js');
     await cmd(`ALTER TABLE ingestion_jobs DELETE WHERE ${condition}`);
 
     const user = getRequestUser(req);
@@ -179,11 +178,10 @@ router.post('/clear-jobs', async (req, res) => {
 // POST /api/ingestion/cancel-running — mark all in-flight jobs as cancelled
 router.post('/cancel-running', async (req, res) => {
   try {
-    const { command: cmd, query: q } = await import('../db/clickhouse.js');
     const [{ cnt }] = await q<{ cnt: string }>(`SELECT count() as cnt FROM ingestion_jobs WHERE status IN ('pending', 'downloading', 'uploading', 'ingesting')`);
     const user = getRequestUser(req);
-    await cmd(`ALTER TABLE ingestion_jobs UPDATE status = 'cancelled', error_message = 'Cancelled by ${user.name}' WHERE status IN ('pending', 'downloading', 'uploading', 'ingesting')`);
-    console.log(`[Ingestion] Cancel running: ${cnt} cancelled by ${user.name} (${user.id})`);
+    await cmd(`ALTER TABLE ingestion_jobs UPDATE status = 'cancelled', error_message = 'Cancelled by ${esc(user.name)}' WHERE status IN ('pending', 'downloading', 'uploading', 'ingesting')`);
+    console.log(`[Ingestion] Cancel running: ${cnt} cancelled by ${esc(user.name)} (${user.id})`);
     res.json({ cancelled: Number(cnt) });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

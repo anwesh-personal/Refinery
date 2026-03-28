@@ -2,10 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import { env } from './config/env.js';
+import { env, validateEnv } from './config/env.js';
 import { initDatabase } from './db/init.js';
 import { recoverOrphanedBatches } from './services/verification.js';
-import { recoverStaleIngestionJobs, startArchiveCleanupScheduler } from './services/ingestion.js';
+import { recoverStaleIngestionJobs, startArchiveCleanupScheduler, startGracefulShutdown } from './services/ingestion.js';
 import { recoverOrphanedJobs } from './routes/verify.js';
 
 // Routes
@@ -126,6 +126,9 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 // ── Boot ──
 async function start() {
+  // Validate env vars before anything else
+  validateEnv();
+
   console.log('╔═══════════════════════════════════════╗');
   console.log('║     REFINERY NEXUS — BACKEND API      ║');
   console.log('╚═══════════════════════════════════════╝');
@@ -189,4 +192,17 @@ async function start() {
 start().catch((e) => {
   console.error('[Server] FATAL:', e);
   process.exit(1);
+});
+
+// ── Graceful Shutdown ──
+process.on('SIGTERM', async () => {
+  console.log('[Server] SIGTERM received — initiating graceful shutdown...');
+  await startGracefulShutdown();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('[Server] SIGINT received — initiating graceful shutdown...');
+  await startGracefulShutdown();
+  process.exit(0);
 });

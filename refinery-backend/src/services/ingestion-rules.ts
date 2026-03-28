@@ -1,11 +1,16 @@
 import { query, command, insertRows } from '../db/clickhouse.js';
 import { genId } from '../utils/helpers.js';
+import { esc } from '../utils/sanitize.js';
 import cron from 'node-cron';
 import * as ingestion from './ingestion.js';
+import * as s3Sources from './s3sources.js';
 
-/** Sanitise a string for ClickHouse SQL */
-function esc(v: string): string {
-  return v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+/** List ALL files under a prefix recursively (no delimiter = sees nested dirs) */
+async function listAllSourceFilesRecursive(
+  sourceId: string,
+  prefix?: string
+): Promise<Array<{ key: string; size: number; modified: string }>> {
+  return s3Sources.listSourceFiles(sourceId, prefix);
 }
 
 /* ── Interfaces ── */
@@ -139,8 +144,8 @@ export async function executeRule(id: string): Promise<{ filesFound: number; fil
 
     console.log(`[AutoIngest] Rule '${rule.label}' (${id}): Scanning...`);
 
-    // List files from the source with the rule's prefix
-    const { files } = await ingestion.listSourceFiles(rule.prefix_pattern || undefined, rule.source_id);
+    // List files from the source with the rule's prefix (recursive — no delimiter)
+    const files = await listAllSourceFilesRecursive(rule.source_id, rule.prefix_pattern || undefined);
 
     // Filter by file type
     const allowedTypes = new Set(rule.file_types.map(t => t.toLowerCase()));
@@ -204,11 +209,15 @@ export async function executeRule(id: string): Promise<{ filesFound: number; fil
       try {
         await ingestion.startIngestionJob(file.key, rule.source_id);
         filesIngested++;
+        // startIngestionJob inserts the DB record synchronously,
+        // so future DB dedup queries will see it immediately.
+        // Also add to our local set so the same rule doesn't re-queue it.
+        alreadyIngested.add(file.key);
       } catch (e: any) {
         console.error(`[AutoIngest] Failed to start ingestion for ${file.key}: ${e.message}`);
       } finally {
-        // Release after 10s to let the job register in DB before another rule checks
-        setTimeout(() => inFlightFiles.delete(file.key), 10000);
+        // Safe to release immediately — the job is registered in DB
+        inFlightFiles.delete(file.key);
       }
     }
 

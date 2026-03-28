@@ -51,3 +51,37 @@ export const env = {
     rateLimitPerHour: Number(process.env.SMTP_RATE_LIMIT_PER_HOUR || 500),
   },
 } as const;
+
+/**
+ * Validate critical environment variables at startup.
+ * Hard failures = process exits. Soft warnings = feature disabled.
+ */
+export function validateEnv(): void {
+  const fatal: string[] = [];
+  const warn: string[] = [];
+
+  // ── Hard requirements (server cannot function without these) ──
+  if (!env.supabase.url) fatal.push('VITE_SUPABASE_URL');
+  if (!env.supabase.secretKey) fatal.push('SUPABASE_SECRET_KEY');
+  if (!env.clickhouse.host) fatal.push('CLICKHOUSE_HOST');
+
+  // ── Soft warnings (features degraded but server can boot) ──
+  if (!env.objectStorage.accessKey || !env.objectStorage.secretKey) {
+    warn.push('OBJ_STORAGE_ACCESS_KEY / OBJ_STORAGE_SECRET_KEY — MinIO archival will fail');
+  }
+  if (!env.supabase.publishableKey) {
+    warn.push('VITE_SUPABASE_PUBLISHABLE_KEY — auth may not work');
+  }
+
+  for (const w of warn) {
+    console.warn(`[ENV] ⚠ Missing optional: ${w}`);
+  }
+
+  if (fatal.length > 0) {
+    console.error(`[ENV] ✗ FATAL — Missing required environment variables:\n  ${fatal.join('\n  ')}`);
+    console.error('[ENV] Server cannot start. Set these in .env and restart.');
+    process.exit(1);
+  }
+
+  console.log('[ENV] ✓ All critical environment variables validated.');
+}

@@ -93,6 +93,8 @@ const SCHEMAS = [
     rows_ingested     UInt64 DEFAULT 0,
     status            String DEFAULT 'pending',
     error_message     Nullable(String),
+    performed_by      Nullable(String),
+    performed_by_name Nullable(String),
     archived_at       Nullable(DateTime),
     delete_after      Nullable(DateTime),
     started_at        DateTime DEFAULT now(),
@@ -265,6 +267,27 @@ const SCHEMAS = [
     completed_at      Nullable(DateTime)
   ) ENGINE = MergeTree()
     ORDER BY (started_at, id)`,
+
+  // ── Ingestion Rules (automated cron-based ingestion) ──
+  `CREATE TABLE IF NOT EXISTS ingestion_rules (
+    id                        String,
+    source_id                 String,
+    label                     String,
+    prefix_pattern            String DEFAULT '',
+    file_types                Array(String) DEFAULT ['csv', 'gz', 'parquet'],
+    min_date                  Nullable(String),
+    max_file_size_mb          Nullable(Float64),
+    min_file_size_mb          Nullable(Float64),
+    schedule                  String DEFAULT '0 */6 * * *',
+    enabled                   UInt8 DEFAULT 1,
+    skip_duplicates           UInt8 DEFAULT 1,
+    last_run_at               Nullable(DateTime),
+    last_run_status           Nullable(String),
+    files_found_last_run      Nullable(UInt64),
+    files_ingested_last_run   Nullable(UInt64),
+    created_at                DateTime DEFAULT now()
+  ) ENGINE = MergeTree()
+    ORDER BY (created_at, id)`,
 ];
 
 export async function initDatabase(): Promise<void> {

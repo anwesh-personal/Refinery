@@ -16,11 +16,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as s3Sources from './s3sources.js';
-
-/** Sanitise a string for inclusion in ClickHouse SQL */
-function esc(v: string): string {
-  return v.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
+import { esc, sanitizeValue, toClickHouseDateTime } from '../utils/sanitize.js';
 
 // ═══════════════════════════════════════════════════════════════
 // Concurrency-Controlled Ingestion Queue
@@ -85,7 +81,51 @@ export async function recoverStaleIngestionJobs(): Promise<number> {
     console.log(`[Ingestion] ⚠ Recovered ${count} stale job(s) — marked as failed.`);
   }
 
+  // Clean up orphaned temp directories from previous crashes
+  try {
+    const tmpBase = os.tmpdir();
+    const entries = await fs.promises.readdir(tmpBase);
+    const orphaned = entries.filter(e => e.startsWith('refinery-ingest-'));
+    for (const dir of orphaned) {
+      await fs.promises.rm(path.join(tmpBase, dir), { recursive: true, force: true }).catch(() => {});
+    }
+    if (orphaned.length > 0) {
+      console.log(`[Ingestion] ⚠ Cleaned ${orphaned.length} orphaned temp directories.`);
+    }
+  } catch { /* tmpdir read failure is non-fatal */ }
+
   return count;
+}
+
+/**
+ * Graceful shutdown — drain in-flight jobs and reject new queue entries.
+ * Call this on SIGTERM/SIGINT so PM2 doesn't hard-kill mid-write.
+ */
+let shuttingDown = false;
+export function startGracefulShutdown(): Promise<void> {
+  shuttingDown = true;
+  console.log(`[Ingestion] Shutdown requested — waiting for ${activeCount} active job(s) to finish...`);
+
+  // Reject all queued (not yet started) jobs immediately
+  while (waitQueue.length > 0) {
+    const waiter = waitQueue.shift()!;
+    // Resolve so the worker runs, but since shuttingDown is true
+    // it will be caught by the pipeline and marked failed
+    waiter.resolve();
+  }
+
+  // Wait for active jobs to finish (poll every 2s, max 120s)
+  return new Promise<void>((resolve) => {
+    const check = setInterval(() => {
+      if (activeCount <= 0) {
+        clearInterval(check);
+        console.log('[Ingestion] All jobs drained. Safe to exit.');
+        resolve();
+      }
+    }, 2000);
+    // Hard timeout — don't block shutdown forever
+    setTimeout(() => { clearInterval(check); resolve(); }, 120_000);
+  });
 }
 
 /** Detect file format from extension */
@@ -165,23 +205,38 @@ export async function listSourceFiles(prefix?: string, sourceId?: string) {
 
   const effectivePrefix = prefix !== undefined && prefix !== '' ? prefix : (defaultPrefix || '');
 
-  const resp = await client.send(new ListObjectsV2Command({
-    Bucket: bucket,
-    Prefix: effectivePrefix,
-    Delimiter: '/',
-    MaxKeys: 1000,
-  }));
+  // Paginate through ALL results — S3 returns max 1000 per page
+  const allFolders: string[] = [];
+  const allFiles: Array<{ key: string; size: number; modified: string }> = [];
+  let continuationToken: string | undefined;
 
-  const folders = (resp.CommonPrefixes || []).map(cp => cp.Prefix!).filter(Boolean);
-  const files = (resp.Contents || [])
-    .filter(obj => obj.Key && obj.Key !== effectivePrefix)
-    .map(obj => ({
-      key: obj.Key!,
-      size: obj.Size || 0,
-      modified: obj.LastModified?.toISOString() || '',
+  do {
+    const resp = await client.send(new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: effectivePrefix,
+      Delimiter: '/',
+      MaxKeys: 1000,
+      ...(continuationToken ? { ContinuationToken: continuationToken } : {}),
     }));
 
-  return { folders, files, prefix: effectivePrefix };
+    for (const cp of resp.CommonPrefixes || []) {
+      if (cp.Prefix) allFolders.push(cp.Prefix);
+    }
+
+    for (const obj of resp.Contents || []) {
+      if (obj.Key && obj.Key !== effectivePrefix) {
+        allFiles.push({
+          key: obj.Key,
+          size: obj.Size || 0,
+          modified: obj.LastModified?.toISOString() || '',
+        });
+      }
+    }
+
+    continuationToken = resp.IsTruncated ? resp.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return { folders: allFolders, files: allFiles, prefix: effectivePrefix };
 }
 
 /**
@@ -267,7 +322,7 @@ export async function previewFile(
 }
 
 /** Get list of ingestion jobs */
-export async function getJobs(limit = 50) {
+export async function getJobs(limit = 100) {
   return query(`SELECT * FROM ingestion_jobs ORDER BY started_at DESC LIMIT ${limit}`);
 }
 
@@ -288,11 +343,13 @@ export async function getIngestionStats() {
 
 /**
  * Start an ingestion job:
- * 1. Download from source S3 (dynamic or env-based)
- * 2. Upload to Linode Object Storage
- * 3. Parse file (CSV / GZ / Parquet) and insert into ClickHouse
+ * 1. Download from source S3 to local temp
+ * 2. Parse file and insert into ClickHouse
+ * 3. Archive raw file to MinIO (background)
  */
 export async function startIngestionJob(sourceKey: string, sourceId?: string, performedBy?: string, performedByName?: string): Promise<string> {
+  if (shuttingDown) throw new Error('Server is shutting down — cannot start new ingestion jobs.');
+
   const jobId = genId();
   const fileName = sourceKey.split('/').pop() || sourceKey;
   const format = detectFormat(fileName);
@@ -313,6 +370,14 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string, pe
   } else {
     sourceBucket = env.s3Source.bucket;
     sourceClient = getSourceClient();
+  }
+
+  // Duplicate check — warn if this exact source_key already has a non-failed job
+  const [existingJob] = await query<{ id: string; status: string }>(
+    `SELECT id, status FROM ingestion_jobs WHERE source_key = '${esc(sourceKey)}' AND status IN ('complete', 'pending', 'downloading', 'uploading', 'ingesting') ORDER BY started_at DESC LIMIT 1`
+  );
+  if (existingJob) {
+    console.warn(`[Ingestion] ⚠ Duplicate: ${sourceKey} already has job ${existingJob.id} (status: ${existingJob.status}). Proceeding anyway.`);
   }
 
   // Create job record
@@ -353,6 +418,8 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string, pe
  * This avoids the socket hang up caused by 500+ sequential insertRows calls.
  */
 export async function startBulkIngestion(sourceKeys: string[], sourceId?: string, performedBy?: string, performedByName?: string): Promise<string[]> {
+  if (shuttingDown) throw new Error('Server is shutting down — cannot start new ingestion jobs.');
+
   // Resolve S3 source once (not per file)
   let sourceBucket: string;
   let sourceClient: S3Client;
@@ -427,7 +494,8 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
   const BATCH_SIZE = 10000;
   let totalRows = 0;
 
-  // Step 1: Download from S3
+  // ─── Step 1: Download from S3 to temp file ───
+  // Single download — used for both parsing and MinIO archival.
   console.log(`[Ingestion] ${jobId}: Downloading ${sourceKey} from ${sourceBucket}... (format: ${format})`);
   const getResp = await sourceClient.send(new GetObjectCommand({
     Bucket: sourceBucket,
@@ -437,152 +505,152 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
   const bodyStream = getResp.Body as Readable;
   const fileSize = getResp.ContentLength || 0;
 
-  // Step 2: Upload to Object Storage (MinIO) — archive the raw file
-  console.log(`[Ingestion] ${jobId}: Uploading to Object Storage...`);
-  await command(`ALTER TABLE ingestion_jobs UPDATE status = 'uploading', file_size_bytes = ${fileSize} WHERE id = '${esc(jobId)}'`);
+  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'refinery-ingest-'));
+  const tmpFile = path.join(tmpDir, fileName);
 
-  const storageKey = `ingestion/${jobId}/${fileName}`;
-  const upload = new Upload({
-    client: storageClient,
-    params: {
-      Bucket: env.objectStorage.bucket,
-      Key: storageKey,
-      Body: bodyStream,
-    },
-    queueSize: 4,
-    partSize: 10 * 1024 * 1024,
-  });
-  await upload.done();
+  try {
+    await command(`ALTER TABLE ingestion_jobs UPDATE status = 'downloading', file_size_bytes = ${fileSize} WHERE id = '${esc(jobId)}'`);
 
-  // Step 3: Re-download from Object Storage and ingest into ClickHouse
-  console.log(`[Ingestion] ${jobId}: Ingesting into ClickHouse (${format})...`);
-  await command(`ALTER TABLE ingestion_jobs UPDATE status = 'ingesting' WHERE id = '${esc(jobId)}'`);
+    const writeStream = fs.createWriteStream(tmpFile);
+    await new Promise<void>((resolve, reject) => {
+      bodyStream.pipe(writeStream);
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+      bodyStream.on('error', reject);
+    });
 
-  const storageResp = await storageClient.send(new GetObjectCommand({
-    Bucket: env.objectStorage.bucket,
-    Key: storageKey,
-  }));
-  const rawStream = storageResp.Body as Readable;
+    // ─── Step 2: Archive to MinIO (non-blocking, runs in background) ───
+    console.log(`[Ingestion] ${jobId}: Archiving to Object Storage (background)...`);
+    const storageKey = `ingestion/${jobId}/${fileName}`;
+    const archivePromise = (async () => {
+      try {
+        const archiveStream = fs.createReadStream(tmpFile);
+        const upload = new Upload({
+          client: storageClient,
+          params: {
+            Bucket: env.objectStorage.bucket,
+            Key: storageKey,
+            Body: archiveStream,
+          },
+          queueSize: 4,
+          partSize: 10 * 1024 * 1024,
+        });
+        await upload.done();
+        console.log(`[Ingestion] ${jobId}: Archived to ${storageKey}`);
+      } catch (archiveErr: any) {
+        // Archive failure is non-fatal — the data is still in ClickHouse
+        console.error(`[Ingestion] ${jobId}: Archive to MinIO failed (non-fatal): ${archiveErr.message}`);
+      }
+    })();
 
-  // ─── Shared helpers ───
-  async function syncSchema(headers: string[]) {
-    const existingCols = await query<{ name: string }>(`
-      SELECT name FROM system.columns
-      WHERE database = '${esc(env.clickhouse.database)}' AND table = 'universal_person'
-    `);
-    const existingSet = new Set(existingCols.map(c => c.name));
-    const missingCols = headers.filter(h => !existingSet.has(h));
+    // ─── Step 3: Parse from temp file and ingest into ClickHouse ───
+    console.log(`[Ingestion] ${jobId}: Ingesting into ClickHouse (${format})...`);
+    await command(`ALTER TABLE ingestion_jobs UPDATE status = 'ingesting' WHERE id = '${esc(jobId)}'`);
 
-    if (missingCols.length > 0) {
-      console.log(`[Ingestion] ${jobId}: Adding ${missingCols.length} new columns: ${missingCols.join(', ')}`);
-      for (const col of missingCols) {
-        try {
-          await command(`ALTER TABLE universal_person ADD COLUMN IF NOT EXISTS \`${col}\` Nullable(String)`);
-        } catch (e: any) {
-          console.warn(`[Ingestion] ${jobId}: Could not add column '${col}': ${e.message}`);
+    // ─── Shared helpers ───
+    async function syncSchema(headers: string[]) {
+      const existingCols = await query<{ name: string }>(`
+        SELECT name FROM system.columns
+        WHERE database = '${esc(env.clickhouse.database)}' AND table = 'universal_person'
+      `);
+      const existingSet = new Set(existingCols.map(c => c.name));
+      const missingCols = headers.filter(h => !existingSet.has(h));
+
+      if (missingCols.length > 0) {
+        console.log(`[Ingestion] ${jobId}: Adding ${missingCols.length} new columns: ${missingCols.join(', ')}`);
+        for (const col of missingCols) {
+          try {
+            await command(`ALTER TABLE universal_person ADD COLUMN IF NOT EXISTS \`${col}\` Nullable(String)`);
+          } catch (e: any) {
+            console.warn(`[Ingestion] ${jobId}: Could not add column '${col}': ${e.message}`);
+          }
         }
       }
     }
-  }
 
-  async function flushBatch(batch: Record<string, unknown>[]) {
-    if (batch.length === 0) return;
-    await insertRows('universal_person', batch);
-    totalRows += batch.length;
-    // Update progress in the job record so the UI can show live row counts
-    await command(`ALTER TABLE ingestion_jobs UPDATE rows_ingested = ${totalRows} WHERE id = '${esc(jobId)}'`);
-    if (totalRows % 100000 === 0) {
-      console.log(`[Ingestion] ${jobId}: ${totalRows.toLocaleString()} rows inserted...`);
-    }
-  }
+    let lastProgressUpdate = Date.now();
+    const PROGRESS_INTERVAL_MS = 10_000;
 
-  // ─── Format-specific parsing ───
-  if (format === 'csv' || format === 'csv.gz') {
-    // Decompress if gzipped, then pipe through csv-parse
-    const decompressed = format === 'csv.gz' ? rawStream.pipe(createGunzip()) : rawStream;
-    let csvHeaders: string[] = [];
+    async function flushBatch(batch: Record<string, unknown>[]) {
+      if (batch.length === 0) return;
+      await insertRows('universal_person', batch);
+      totalRows += batch.length;
 
-    const csvStream = decompressed.pipe(
-      parse({
-        columns: (header: string[]) => {
-          csvHeaders = header.map((h: string) => h.toLowerCase().trim());
-          return csvHeaders;
-        },
-        skip_empty_lines: true,
-        relax_column_count: true,
-      }),
-    );
-
-    // Read first row to trigger header parsing
-    const iterator = csvStream[Symbol.asyncIterator]();
-    const firstResult = await iterator.next();
-
-    if (!firstResult.done && csvHeaders.length > 0) {
-      await syncSchema(csvHeaders);
-    }
-
-    // Insert all rows
-    let batch: Record<string, unknown>[] = [];
-
-    if (!firstResult.done) {
-      const row = firstResult.value as Record<string, unknown>;
-      row._ingestion_job_id = jobId;
-      row._source_file_name = fileName;
-      batch.push(row);
-    }
-
-    for await (const row of csvStream) {
-      (row as Record<string, unknown>)._ingestion_job_id = jobId;
-      (row as Record<string, unknown>)._source_file_name = fileName;
-      batch.push(row as Record<string, unknown>);
-      if (batch.length >= BATCH_SIZE) {
-        await flushBatch(batch);
-        batch = [];
+      const now = Date.now();
+      if (now - lastProgressUpdate >= PROGRESS_INTERVAL_MS) {
+        await command(`ALTER TABLE ingestion_jobs UPDATE rows_ingested = ${totalRows} WHERE id = '${esc(jobId)}'`);
+        lastProgressUpdate = now;
+      }
+      if (totalRows % 100000 === 0) {
+        console.log(`[Ingestion] ${jobId}: ${totalRows.toLocaleString()} rows inserted...`);
       }
     }
-    await flushBatch(batch);
 
-  } else if (format === 'parquet') {
-    // Parquet: write to temp file, then read with parquetjs cursor
-    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'refinery-pq-'));
-    const tmpFile = path.join(tmpDir, fileName);
+    // ─── Format-specific parsing ───
+    if (format === 'csv' || format === 'csv.gz') {
+      const rawStream = fs.createReadStream(tmpFile);
+      const decompressed = format === 'csv.gz' ? rawStream.pipe(createGunzip()) : rawStream;
+      let csvHeaders: string[] = [];
 
-    try {
-      // Write stream to temp file
-      const writeStream = fs.createWriteStream(tmpFile);
-      await new Promise<void>((resolve, reject) => {
-        rawStream.pipe(writeStream);
-        writeStream.on('finish', resolve);
-        writeStream.on('error', reject);
-      });
+      const csvStream = decompressed.pipe(
+        parse({
+          columns: (header: string[]) => {
+            csvHeaders = header.map((h: string) => h.toLowerCase().trim());
+            return csvHeaders;
+          },
+          skip_empty_lines: true,
+          relax_column_count: true,
+        }),
+      );
 
-      // Open parquet file
+      const iterator = csvStream[Symbol.asyncIterator]();
+      const firstResult = await iterator.next();
+
+      if (!firstResult.done && csvHeaders.length > 0) {
+        await syncSchema(csvHeaders);
+      }
+
+      let batch: Record<string, unknown>[] = [];
+
+      function sanitizeCsvRow(row: Record<string, unknown>): Record<string, unknown> {
+        const clean: Record<string, unknown> = {
+          _ingestion_job_id: jobId,
+          _source_file_name: fileName,
+        };
+        for (const [key, val] of Object.entries(row)) {
+          clean[key] = sanitizeValue(val);
+        }
+        return clean;
+      }
+
+      if (!firstResult.done) {
+        batch.push(sanitizeCsvRow(firstResult.value as Record<string, unknown>));
+      }
+
+      for await (const row of csvStream) {
+        batch.push(sanitizeCsvRow(row as Record<string, unknown>));
+        if (batch.length >= BATCH_SIZE) {
+          await flushBatch(batch);
+          batch = [];
+        }
+      }
+      await flushBatch(batch);
+
+    } else if (format === 'parquet') {
       const reader = await ParquetReader.openFile(tmpFile);
       const schema = reader.getSchema();
       const fieldNames = Object.keys(schema.fields).map(f => f.toLowerCase().trim());
 
-      // Sync schema with ClickHouse
       await syncSchema(fieldNames);
 
-      // Read rows via cursor
       const cursor = reader.getCursor();
       let batch: Record<string, unknown>[] = [];
       let record: Record<string, unknown> | null;
 
       while ((record = await cursor.next() as Record<string, unknown> | null)) {
-        // Normalize keys to lowercase
         const normalized: Record<string, unknown> = { _ingestion_job_id: jobId, _source_file_name: fileName };
         for (const [key, val] of Object.entries(record)) {
-          const k = key.toLowerCase().trim();
-          if (val == null) {
-            normalized[k] = null;
-          } else if (Buffer.isBuffer(val) || (val instanceof Uint8Array)) {
-            // Binary buffer (corrupted timestamp etc.) — no usable string data
-            normalized[k] = null;
-          } else {
-            const str = String(val).replace(/\0/g, '');
-            normalized[k] = str || null;
-          }
+          normalized[key.toLowerCase().trim()] = sanitizeValue(val);
         }
         batch.push(normalized);
 
@@ -593,19 +661,23 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
       }
       await flushBatch(batch);
       await reader.close();
-    } finally {
-      // Clean up temp files
-      await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
     }
-  }
 
-  // Mark complete
-  await command(`
-    ALTER TABLE ingestion_jobs UPDATE 
-      status = 'complete', rows_ingested = ${totalRows}, completed_at = now()
-    WHERE id = '${esc(jobId)}'
-  `);
-  console.log(`[Ingestion] ${jobId}: Complete — ${totalRows.toLocaleString()} rows ingested (${format}).`);
+    // Wait for archive to finish before cleanup
+    await archivePromise;
+
+    // Mark complete with final row count
+    await command(`
+      ALTER TABLE ingestion_jobs UPDATE 
+        status = 'complete', rows_ingested = ${totalRows}, completed_at = now()
+      WHERE id = '${esc(jobId)}'
+    `);
+    console.log(`[Ingestion] ${jobId}: Complete — ${totalRows.toLocaleString()} rows ingested (${format}).`);
+
+  } finally {
+    // Clean up temp files
+    await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -639,7 +711,7 @@ export async function rollbackJob(jobId: string, performedBy?: string, performed
   }
 
   // Mark job as rolled back
-  const byClause = performedByName ? ` by ${performedByName}` : '';
+  const byClause = performedByName ? ` by ${esc(performedByName)}` : '';
   await command(`
     ALTER TABLE ingestion_jobs UPDATE
       status = 'rolled_back',
@@ -665,8 +737,7 @@ export async function archiveJob(jobId: string, days: number = 7, performedBy?: 
   if (job.status === 'rolled_back') throw new Error(`Job ${jobId} has already been rolled back`);
   if (job.status === 'archived') throw new Error(`Job ${jobId} is already archived`);
 
-  const deleteAfter = new Date(Date.now() + days * 86400000)
-    .toISOString().replace('T', ' ').slice(0, 19);
+  const deleteAfter = toClickHouseDateTime(new Date(Date.now() + days * 86400000));
 
   await command(`
     ALTER TABLE ingestion_jobs UPDATE
