@@ -19,6 +19,9 @@ export async function sendResetLink(email: string) {
   const { error } = await supabaseAdmin.auth.admin.generateLink({
     type: 'recovery',
     email,
+    options: {
+      redirectTo: env.frontendOrigin,
+    },
   });
   if (error) throw new Error(`Supabase Admin Error: ${error.message}`);
   return true;
@@ -36,6 +39,9 @@ export async function generateImpersonationLink(userId: string): Promise<string>
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: 'magiclink',
     email: user.user.email,
+    options: {
+      redirectTo: env.frontendOrigin,
+    },
   });
 
   if (error) throw new Error(`Supabase Admin Error: ${error.message}`);

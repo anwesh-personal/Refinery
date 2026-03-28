@@ -4,6 +4,9 @@ export const env = {
   port: Number(process.env.PORT || 4000),
   nodeEnv: process.env.NODE_ENV || 'development',
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  // FRONTEND_URL can be comma-separated for CORS (e.g. "https://iiiemail.email,http://localhost:5173").
+  // For auth redirects (magic links, password resets) we need a single origin — always the first entry.
+  frontendOrigin: (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim(),
 
   supabase: {
     url: process.env.VITE_SUPABASE_URL || '',

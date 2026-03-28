@@ -16,6 +16,12 @@ import { getConfigInt, CONFIG_KEYS } from '../services/config.js';
 // ── Active Job Controllers — allows cancellation of running jobs ──
 const activeJobs = new Map<string, AbortController>();
 
+/** Escape a string for safe interpolation into a ClickHouse single-quoted string literal.
+ *  Order matters: backslashes first, then quotes, then null bytes. */
+function chEscapeString(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\0/g, '');
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Standalone Verify Routes — Direct email list verification
 //
@@ -256,7 +262,7 @@ router.post('/async', requireSuperadmin, async (req, res) => {
             duplicates_removed = ${result.duplicatesRemoved},
             typos_fixed = ${result.typosFixed},
             status = 'complete',
-            results_json = '${JSON.stringify(result.results).replace(/'/g, "\\'")}',
+            results_json = '${chEscapeString(JSON.stringify(result.results))}',
             completed_at = now()
           WHERE id = '${jobId}'
         `, { max_query_size: maxQuerySize });
@@ -666,7 +672,7 @@ router.post('/jobs/:id/retry', requireSuperadmin, async (req, res) => {
             duplicates_removed = ${result.duplicatesRemoved},
             typos_fixed = ${result.typosFixed},
             status = 'complete',
-            results_json = '${JSON.stringify(result.results).replace(/'/g, "\\\\'")}',
+            results_json = '${chEscapeString(JSON.stringify(result.results))}',
             completed_at = now()
           WHERE id = '${newJobId}'
         `, { max_query_size: retryMaxQuerySize });
