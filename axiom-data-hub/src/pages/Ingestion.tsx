@@ -1,4 +1,4 @@
-import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Edit2, Trash2, Folder, CheckSquare, Square, Layers, ArrowUpDown, Filter, ChevronUp, ChevronDown, Zap, Settings, RotateCw, Calendar, X } from 'lucide-react';
+import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Edit2, Trash2, Folder, CheckSquare, Square, Layers, ArrowUpDown, Filter, ChevronUp, ChevronDown, Zap, Settings, RotateCw, Calendar, X, Download, Search, ChevronLeft, ChevronRight, Table2 } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
 import { ServerSelector } from '../components/ServerSelector';
 import React, { useState, useEffect, useCallback } from 'react';
@@ -178,6 +178,16 @@ export default function IngestionPage() {
   const [previewData, setPreviewData] = useState<{ columns: string[]; rows: string[][]; fileName: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState<string | null>(null);
 
+  // Job data viewer state
+  const [viewingJobId, setViewingJobId] = useState<string | null>(null);
+  const [jobData, setJobData] = useState<{ job: { id: string; file_name: string; rows_ingested: string }; columns: string[]; rows: Record<string, any>[]; total: number; page: number; pageSize: number } | null>(null);
+  const [jobDataLoading, setJobDataLoading] = useState(false);
+  const [jobDataSearch, setJobDataSearch] = useState('');
+  const [jobDataPage, setJobDataPage] = useState(1);
+  const [jobDataSortBy, setJobDataSortBy] = useState('');
+  const [jobDataSortDir, setJobDataSortDir] = useState<'asc' | 'desc'>('asc');
+  const [jobDataExporting, setJobDataExporting] = useState(false);
+
   // Date-range ingestion state
   const [dateRangeStart, setDateRangeStart] = useState('');
   const [dateRangeEnd, setDateRangeEnd] = useState('');
@@ -255,6 +265,73 @@ export default function IngestionPage() {
       setError(`Rule execution failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setRunningRuleId(null);
+    }
+  };
+
+  // ─── Job Data Viewer ───
+  const fetchJobData = useCallback(async (jobId: string, page: number, search: string, sortBy: string, sortDir: 'asc' | 'desc') => {
+    setJobDataLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(page), pageSize: '50', search, sortBy, sortDir });
+      const data = await apiCall<any>(`/api/ingestion/${jobId}/data?${params}`);
+      setJobData(data);
+    } catch (e: any) {
+      setError(`Failed to load job data: ${e.message}`);
+    } finally {
+      setJobDataLoading(false);
+    }
+  }, []);
+
+  const openJobDataViewer = (jobId: string) => {
+    setViewingJobId(jobId);
+    setJobDataSearch('');
+    setJobDataPage(1);
+    setJobDataSortBy('');
+    setJobDataSortDir('asc');
+    fetchJobData(jobId, 1, '', '', 'asc');
+  };
+
+  const closeJobDataViewer = () => {
+    setViewingJobId(null);
+    setJobData(null);
+    setJobDataSearch('');
+    setJobDataPage(1);
+  };
+
+  // Re-fetch when search/page/sort changes
+  useEffect(() => {
+    if (viewingJobId) {
+      fetchJobData(viewingJobId, jobDataPage, jobDataSearch, jobDataSortBy, jobDataSortDir);
+    }
+  }, [viewingJobId, jobDataPage, jobDataSortBy, jobDataSortDir, fetchJobData]);
+
+  // Debounced search
+  useEffect(() => {
+    if (!viewingJobId) return;
+    const t = setTimeout(() => {
+      setJobDataPage(1);
+      fetchJobData(viewingJobId, 1, jobDataSearch, jobDataSortBy, jobDataSortDir);
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobDataSearch]);
+
+  const exportJobData = async (jobId: string) => {
+    setJobDataExporting(true);
+    try {
+      const resp = await fetch(`/api/ingestion/${jobId}/export`, { credentials: 'include' });
+      if (!resp.ok) throw new Error('Export failed');
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `job-${jobId.slice(0, 8)}-export.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setError(`Export failed: ${e.message}`);
+    } finally {
+      setJobDataExporting(false);
     }
   };
 
@@ -1183,6 +1260,14 @@ export default function IngestionPage() {
                         <div style={{ display: 'flex', gap: 4 }}>
                           {(job.status === 'complete' || job.status === 'archived') && (
                             <button
+                              onClick={() => openJobDataViewer(job.id)}
+                              style={{ padding: '3px 8px', fontSize: 10, fontWeight: 700, borderRadius: 5, cursor: 'pointer', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 3 }}
+                              onMouseOver={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = '#fff'; }}
+                              onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--accent)'; }}
+                            ><Eye size={10} /> View</button>
+                          )}
+                          {(job.status === 'complete' || job.status === 'archived') && (
+                            <button
                               onClick={async () => {
                                 if (!confirm(`Delete ALL ${formatNumber(job.rows_ingested)} leads from "${job.file_name}"? This cannot be undone.`)) return;
                                 try {
@@ -1498,6 +1583,204 @@ export default function IngestionPage() {
             <div style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', flexShrink: 0 }}>
               <Button variant="secondary" onClick={() => setPreviewData(null)}>Close</Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── JOB DATA VIEWER MODAL ── */}
+      {viewingJobId && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) closeJobDataViewer(); }}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+          }}
+        >
+          <div className="animate-scaleIn" style={{
+            background: 'var(--bg-app)', border: '1px solid var(--border)',
+            borderRadius: 20, width: '96vw', maxWidth: 1400, height: '90vh',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            boxShadow: '0 32px 64px rgba(0,0,0,0.5)',
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '20px 28px', borderBottom: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
+              background: 'var(--bg-card)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 12, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Table2 size={20} color="#fff" />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {jobData?.job.file_name || 'Loading...'}
+                  </h3>
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                    {jobData ? `${formatNumber(jobData.total)} rows · ${jobData.columns.length} columns` : ''}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {/* Search */}
+                <div style={{ position: 'relative' }}>
+                  <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
+                  <input
+                    type="text"
+                    placeholder="Search..."
+                    value={jobDataSearch}
+                    onChange={e => setJobDataSearch(e.target.value)}
+                    style={{
+                      background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 8,
+                      color: 'var(--text-primary)', fontSize: 13, padding: '8px 12px 8px 32px', width: 220,
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+                {/* Export */}
+                <button
+                  onClick={() => viewingJobId && exportJobData(viewingJobId)}
+                  disabled={jobDataExporting}
+                  style={{
+                    padding: '8px 14px', fontSize: 12, fontWeight: 600, borderRadius: 8, cursor: 'pointer',
+                    border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)',
+                    display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.15s',
+                    opacity: jobDataExporting ? 0.6 : 1,
+                  }}
+                  onMouseOver={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                  onMouseOut={e => { e.currentTarget.style.background = 'var(--bg-card)'; }}
+                >
+                  {jobDataExporting ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
+                  Export CSV
+                </button>
+                {/* Close */}
+                <button onClick={closeJobDataViewer} style={{
+                  background: 'none', border: '1px solid var(--border)', borderRadius: 8,
+                  cursor: 'pointer', padding: 8, color: 'var(--text-tertiary)', transition: 'all 0.15s',
+                }}><X size={16} /></button>
+              </div>
+            </div>
+
+            {/* Table */}
+            <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+              {jobDataLoading && !jobData && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-tertiary)' }}>
+                  <Loader2 size={24} className="spin" style={{ marginRight: 10 }} /> Loading data...
+                </div>
+              )}
+              {jobData && jobData.rows.length === 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-tertiary)', flexDirection: 'column', gap: 8 }}>
+                  <Search size={28} style={{ opacity: 0.4 }} />
+                  <div style={{ fontWeight: 600 }}>No matching rows</div>
+                  {jobDataSearch && <div style={{ fontSize: 12 }}>Try adjusting your search</div>}
+                </div>
+              )}
+              {jobData && jobData.rows.length > 0 && (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg-hover)', position: 'sticky', top: 0, zIndex: 1 }}>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 700, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap' }}>#</th>
+                      {jobData.columns.slice(0, 20).map(col => (
+                        <th
+                          key={col}
+                          onClick={() => {
+                            if (jobDataSortBy === col) {
+                              setJobDataSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                            } else {
+                              setJobDataSortBy(col);
+                              setJobDataSortDir('asc');
+                            }
+                          }}
+                          style={{
+                            padding: '10px 12px', textAlign: 'left', fontWeight: 700, fontSize: 10,
+                            textTransform: 'uppercase', letterSpacing: '0.06em',
+                            color: jobDataSortBy === col ? 'var(--accent)' : 'var(--text-tertiary)',
+                            borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap',
+                            cursor: 'pointer', userSelect: 'none',
+                          }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                            {col}
+                            {jobDataSortBy === col && (jobDataSortDir === 'asc' ? <ChevronUp size={10} /> : <ChevronDown size={10} />)}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jobData.rows.map((row, ri) => (
+                      <tr key={ri} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.1s' }}
+                        onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                        onMouseOut={e => (e.currentTarget.style.background = '')}
+                      >
+                        <td style={{ padding: '7px 12px', color: 'var(--text-tertiary)', fontFamily: 'monospace', fontSize: 10 }}>
+                          {((jobData.page - 1) * jobData.pageSize) + ri + 1}
+                        </td>
+                        {jobData.columns.slice(0, 20).map(col => (
+                          <td key={col} style={{
+                            padding: '7px 12px', color: 'var(--text-primary)',
+                            maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }} title={String(row[col] ?? '')}>
+                            {row[col] != null && row[col] !== '' ? String(row[col]) : <span style={{ color: 'var(--text-tertiary)', opacity: 0.4 }}>—</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {/* Loading overlay for subsequent pages */}
+              {jobDataLoading && jobData && (
+                <div style={{
+                  position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                  background: 'rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Loader2 size={20} className="spin" color="var(--accent)" />
+                </div>
+              )}
+            </div>
+
+            {/* Pagination Footer */}
+            {jobData && jobData.total > 0 && (
+              <div style={{
+                padding: '14px 28px', borderTop: '1px solid var(--border)', display: 'flex',
+                alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
+                background: 'var(--bg-card)', fontSize: 12,
+              }}>
+                <div style={{ color: 'var(--text-tertiary)' }}>
+                  Showing {((jobData.page - 1) * jobData.pageSize) + 1}–{Math.min(jobData.page * jobData.pageSize, jobData.total)} of {formatNumber(jobData.total)} rows
+                  {jobData.columns.length > 20 && <span style={{ marginLeft: 8, opacity: 0.6 }}>· Displaying first 20 of {jobData.columns.length} columns</span>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    onClick={() => setJobDataPage(p => Math.max(1, p - 1))}
+                    disabled={jobData.page <= 1}
+                    style={{
+                      padding: '6px 12px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
+                      border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)',
+                      opacity: jobData.page <= 1 ? 0.3 : 1, display: 'flex', alignItems: 'center', gap: 4,
+                    }}
+                  >
+                    <ChevronLeft size={14} /> Prev
+                  </button>
+                  <span style={{ padding: '0 8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Page {jobData.page} of {Math.ceil(jobData.total / jobData.pageSize)}
+                  </span>
+                  <button
+                    onClick={() => setJobDataPage(p => p + 1)}
+                    disabled={jobData.page * jobData.pageSize >= jobData.total}
+                    style={{
+                      padding: '6px 12px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
+                      border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-primary)',
+                      opacity: jobData.page * jobData.pageSize >= jobData.total ? 0.3 : 1, display: 'flex', alignItems: 'center', gap: 4,
+                    }}
+                  >
+                    Next <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

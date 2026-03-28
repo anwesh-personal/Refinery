@@ -211,4 +211,121 @@ router.post('/:id/archive', async (req, res) => {
   }
 });
 
+// GET /api/ingestion/:id/data — browse rows ingested by this job
+router.get('/:id/data', async (req, res) => {
+  try {
+    const jobId = req.params.id;
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 50, 10), 500);
+    const search = (req.query.search as string || '').trim();
+    const sortBy = req.query.sortBy as string || '';
+    const sortDir = (req.query.sortDir === 'desc' ? 'DESC' : 'ASC');
+    const offset = (page - 1) * pageSize;
+
+    // Verify job exists
+    const [job] = await q<{ id: string; file_name: string; rows_ingested: string }>(`
+      SELECT id, file_name, rows_ingested FROM ingestion_jobs WHERE id = '${esc(jobId)}' LIMIT 1
+    `);
+    if (!job) return res.status(404).json({ error: `Job ${jobId} not found` });
+
+    // Discover columns in this job's data (excluding internal tracking cols)
+    const colRows = await q<{ name: string }>(`
+      SELECT name FROM system.columns
+      WHERE database = currentDatabase() AND table = 'universal_person'
+      ORDER BY position
+    `);
+    const internalCols = new Set(['_ingestion_job_id', '_ingested_at', '_segment_ids', '_verification_status', '_verified_at', '_v550_category', '_bounced', '_source_file_name']);
+    const allCols = colRows.map(c => c.name).filter(c => !internalCols.has(c));
+
+    // Build conditions
+    const conditions: string[] = [`_ingestion_job_id = '${esc(jobId)}'`];
+    if (search) {
+      const escaped = search.replace(/'/g, "\\'");
+      // Search across first 6 columns for performance
+      const searchCols = allCols.slice(0, 6);
+      const searchClauses = searchCols.map(c => `lower(coalesce(toString(\`${c}\`), '')) LIKE lower('%${escaped}%')`).join(' OR ');
+      conditions.push(`(${searchClauses})`);
+    }
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+
+    // Sort
+    const safeSortBy = (sortBy && allCols.includes(sortBy)) ? `\`${sortBy}\`` : '`_ingested_at`';
+
+    // Count
+    const [countResult] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person ${whereClause}`);
+    const total = Number(countResult?.cnt || 0);
+
+    // Fetch rows — select all non-internal columns
+    const selectCols = allCols.map(c => `\`${c}\``).join(', ');
+    const rows = await q(`
+      SELECT ${selectCols} FROM universal_person ${whereClause}
+      ORDER BY ${safeSortBy} ${sortDir}
+      LIMIT ${pageSize} OFFSET ${offset}
+    `);
+
+    res.json({
+      job: { id: job.id, file_name: job.file_name, rows_ingested: job.rows_ingested },
+      columns: allCols,
+      rows,
+      total,
+      page,
+      pageSize,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/ingestion/:id/export — download all rows from this job as CSV
+router.get('/:id/export', async (req, res) => {
+  try {
+    const jobId = req.params.id;
+
+    const [job] = await q<{ file_name: string }>(`
+      SELECT file_name FROM ingestion_jobs WHERE id = '${esc(jobId)}' LIMIT 1
+    `);
+    if (!job) return res.status(404).json({ error: `Job ${jobId} not found` });
+
+    // Get columns
+    const colRows = await q<{ name: string }>(`
+      SELECT name FROM system.columns
+      WHERE database = currentDatabase() AND table = 'universal_person'
+      ORDER BY position
+    `);
+    const internalCols = new Set(['_ingestion_job_id', '_ingested_at', '_segment_ids', '_verification_status', '_verified_at', '_v550_category', '_bounced', '_source_file_name']);
+    const allCols = colRows.map(c => c.name).filter(c => !internalCols.has(c));
+    const selectCols = allCols.map(c => `\`${c}\``).join(', ');
+
+    const rows = await q(`
+      SELECT ${selectCols} FROM universal_person
+      WHERE _ingestion_job_id = '${esc(jobId)}'
+      LIMIT 1000000
+    `);
+
+    if (!rows.length) return res.status(200).send('');
+
+    const cols = Object.keys(rows[0]);
+    const header = cols.join(',');
+    const lines = rows.map((row: any) =>
+      cols.map(c => {
+        const v = row[c];
+        if (v === null || v === undefined) return '';
+        const s = String(v).replace(/"/g, '""');
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+      }).join(',')
+    );
+    const csv = [header, ...lines].join('\n');
+
+    const user = getRequestUser(req);
+    const safeName = job.file_name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    console.log(`[Ingestion] Job data exported: ${jobId} (${job.file_name}) — ${rows.length} rows by ${user.name}`);
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="job-${safeName}-${Date.now()}.csv"`);
+    res.send(csv);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
