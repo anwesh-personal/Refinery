@@ -189,6 +189,7 @@ router.post('/cancel-running', async (req, res) => {
 });
 
 // POST /api/ingestion/:id/rollback — instantly delete all leads from this job
+
 router.post('/:id/rollback', async (req, res) => {
   try {
     const user = getRequestUser(req);
@@ -322,6 +323,312 @@ router.get('/:id/export', async (req, res) => {
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="job-${safeName}-${Date.now()}.csv"`);
+    res.send(csv);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─────────────────── DATA MERGE / CONSOLIDATION ───────────────────
+
+// GET /api/ingestion/merge/keys — discover candidate merge key columns
+router.get('/merge/keys', async (_req, res) => {
+  try {
+    // Get all non-internal columns
+    const colRows = await q<{ name: string; type: string }>(`
+      SELECT name, type FROM system.columns
+      WHERE database = currentDatabase() AND table = 'universal_person'
+      ORDER BY position
+    `);
+    const internalCols = new Set([
+      '_ingestion_job_id', '_ingested_at', '_segment_ids',
+      '_verification_status', '_verified_at', '_v550_category',
+      '_bounced', '_source_file_name',
+    ]);
+    const dataCols = colRows.filter(c => !internalCols.has(c.name));
+
+    // For each column, check: how many distinct non-empty values, and across how many ingestion jobs
+    const candidates: { name: string; type: string; distinctValues: number; jobsPresent: number; totalJobs: number; fillRate: number }[] = [];
+
+    const [totalJobsRow] = await q<{ cnt: string }>(`SELECT countDistinct(_ingestion_job_id) as cnt FROM universal_person`);
+    const totalJobs = Number(totalJobsRow?.cnt || 0);
+
+    // Check top candidate columns (String/FixedString types with 'id' in name first, then others)
+    const idCols = dataCols.filter(c => c.name.toLowerCase().includes('id'));
+    const otherCols = dataCols.filter(c => !c.name.toLowerCase().includes('id') && (c.type.startsWith('String') || c.type.startsWith('Nullable(String')));
+    const colsToCheck = [...idCols, ...otherCols.slice(0, 20)]; // Limit to avoid heavy queries
+
+    for (const col of colsToCheck) {
+      const [stats] = await q<{ distinct_vals: string; jobs_present: string; fill_rate: string }>(`
+        SELECT
+          countDistinct(if(\`${col.name}\` != '', \`${col.name}\`, NULL)) as distinct_vals,
+          countDistinct(if(\`${col.name}\` != '', _ingestion_job_id, NULL)) as jobs_present,
+          round(countIf(\`${col.name}\` != '') / count() * 100, 1) as fill_rate
+        FROM universal_person
+      `);
+      const dv = Number(stats?.distinct_vals || 0);
+      const jp = Number(stats?.jobs_present || 0);
+      const fr = Number(stats?.fill_rate || 0);
+
+      if (dv > 0 && jp >= 1) {
+        candidates.push({
+          name: col.name,
+          type: col.type,
+          distinctValues: dv,
+          jobsPresent: jp,
+          totalJobs,
+          fillRate: fr,
+        });
+      }
+    }
+
+    // Sort: columns present in most jobs first, then by distinct values
+    candidates.sort((a, b) => {
+      if (b.jobsPresent !== a.jobsPresent) return b.jobsPresent - a.jobsPresent;
+      return b.distinctValues - a.distinctValues;
+    });
+
+    res.json({ candidates, totalJobs, totalColumns: dataCols.length });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/ingestion/merge/preview — preview merged data
+router.get('/merge/preview', async (req, res) => {
+  try {
+    const mergeKey = req.query.key as string;
+    if (!mergeKey) return res.status(400).json({ error: 'key parameter required' });
+
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 50, 10), 500);
+    const search = (req.query.search as string || '').trim();
+    const sortBy = req.query.sortBy as string || '';
+    const sortDir = (req.query.sortDir === 'desc' ? 'DESC' : 'ASC');
+    const offset = (page - 1) * pageSize;
+
+    // Get all columns
+    const colRows = await q<{ name: string }>(`
+      SELECT name FROM system.columns
+      WHERE database = currentDatabase() AND table = 'universal_person'
+      ORDER BY position
+    `);
+    const internalCols = new Set([
+      '_ingestion_job_id', '_ingested_at', '_segment_ids',
+      '_verification_status', '_verified_at', '_v550_category',
+      '_bounced', '_source_file_name',
+    ]);
+    const allCols = colRows.map(c => c.name).filter(c => !internalCols.has(c));
+
+    if (!allCols.includes(mergeKey)) {
+      return res.status(400).json({ error: `Column '${mergeKey}' not found` });
+    }
+
+    // Build the merged SELECT: key column + anyIf for every other column
+    const selectParts = allCols.map(col => {
+      if (col === mergeKey) return `\`${col}\``;
+      return `anyIf(\`${col}\`, \`${col}\` != '') as \`${col}\``;
+    });
+
+    const baseQuery = `
+      SELECT ${selectParts.join(', ')}
+      FROM universal_person
+      WHERE \`${mergeKey}\` != ''
+      GROUP BY \`${mergeKey}\`
+    `;
+
+    // Search filter — wrap in subquery
+    let wrappedQuery = baseQuery;
+    if (search) {
+      const escaped = search.replace(/'/g, "\\'");
+      const searchCols = allCols.slice(0, 6);
+      const searchClauses = searchCols.map(c => `lower(toString(\`${c}\`)) LIKE lower('%${escaped}%')`).join(' OR ');
+      wrappedQuery = `SELECT * FROM (${baseQuery}) WHERE ${searchClauses}`;
+    }
+
+    // Count
+    const [countResult] = await q<{ cnt: string }>(`SELECT count() as cnt FROM (${wrappedQuery})`);
+    const total = Number(countResult?.cnt || 0);
+
+    // Before-merge count
+    const [beforeCount] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE \`${mergeKey}\` != ''`);
+    const totalBefore = Number(beforeCount?.cnt || 0);
+
+    // Rows without key (will be excluded from merge)
+    const [orphanCount] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE \`${mergeKey}\` = '' OR \`${mergeKey}\` IS NULL`);
+    const orphanRows = Number(orphanCount?.cnt || 0);
+
+    // Sort
+    const safeSortBy = (sortBy && allCols.includes(sortBy)) ? `\`${sortBy}\`` : `\`${mergeKey}\``;
+
+    // Fetch page
+    const rows = await q(`
+      SELECT * FROM (${wrappedQuery})
+      ORDER BY ${safeSortBy} ${sortDir}
+      LIMIT ${pageSize} OFFSET ${offset}
+    `);
+
+    res.json({
+      columns: allCols,
+      mergeKey,
+      rows,
+      total,
+      totalBefore,
+      orphanRows,
+      reduction: totalBefore > 0 ? Math.round((1 - total / totalBefore) * 100) : 0,
+      page,
+      pageSize,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/ingestion/merge/execute — materialize the merged data
+router.post('/merge/execute', async (req, res) => {
+  try {
+    const mergeKey = req.body.key as string;
+    if (!mergeKey) return res.status(400).json({ error: 'key parameter required' });
+
+    const user = getRequestUser(req);
+
+    // Validate column exists
+    const colRows = await q<{ name: string }>(`
+      SELECT name FROM system.columns
+      WHERE database = currentDatabase() AND table = 'universal_person'
+      ORDER BY position
+    `);
+    const internalCols = new Set([
+      '_ingestion_job_id', '_ingested_at', '_segment_ids',
+      '_verification_status', '_verified_at', '_v550_category',
+      '_bounced', '_source_file_name',
+    ]);
+    const allCols = colRows.map(c => c.name).filter(c => !internalCols.has(c));
+    const internalColNames = colRows.map(c => c.name).filter(c => internalCols.has(c));
+
+    if (!allCols.includes(mergeKey)) {
+      return res.status(400).json({ error: `Column '${mergeKey}' not found` });
+    }
+
+    // Count before
+    const [beforeRow] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person`);
+    const totalBefore = Number(beforeRow?.cnt || 0);
+
+    console.log(`[Merge] Starting materialization on key='${mergeKey}' by ${user.name} — ${totalBefore} rows before`);
+
+    // Build merge SELECT
+    const selectParts = [
+      ...allCols.map(col => {
+        if (col === mergeKey) return `\`${col}\``;
+        return `anyIf(\`${col}\`, \`${col}\` != '') as \`${col}\``;
+      }),
+      // Keep internal cols: use the latest values
+      ...internalColNames.map(col => `any(\`${col}\`) as \`${col}\``),
+    ];
+
+    // Step 1: Create temp table with same structure
+    const tmpTable = `_merge_tmp_${Date.now()}`;
+    await cmd(`CREATE TABLE ${tmpTable} AS universal_person`);
+
+    try {
+      // Step 2: Insert merged rows (rows WITH the key)
+      const allColsQuoted = [...allCols, ...internalColNames].map(c => `\`${c}\``).join(', ');
+      await cmd(`
+        INSERT INTO ${tmpTable} (${allColsQuoted})
+        SELECT ${selectParts.join(', ')}
+        FROM universal_person
+        WHERE \`${mergeKey}\` != ''
+        GROUP BY \`${mergeKey}\`
+      `);
+
+      // Step 3: Insert orphan rows (rows WITHOUT the key — preserve as-is)
+      await cmd(`
+        INSERT INTO ${tmpTable}
+        SELECT * FROM universal_person
+        WHERE \`${mergeKey}\` = '' OR \`${mergeKey}\` IS NULL
+      `);
+
+      // Step 4: Atomic swap
+      await cmd(`EXCHANGE TABLES universal_person AND ${tmpTable}`);
+
+      // Step 5: Drop old table (now named tmpTable)
+      await cmd(`DROP TABLE IF EXISTS ${tmpTable}`);
+
+      // Count after
+      const [afterRow] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person`);
+      const totalAfter = Number(afterRow?.cnt || 0);
+
+      console.log(`[Merge] Complete — ${totalBefore} → ${totalAfter} rows (${totalBefore - totalAfter} consolidated)`);
+
+      res.json({
+        success: true,
+        mergeKey,
+        totalBefore,
+        totalAfter,
+        rowsConsolidated: totalBefore - totalAfter,
+        performedBy: user.name,
+      });
+    } catch (innerErr: any) {
+      // Cleanup temp table on failure
+      await cmd(`DROP TABLE IF EXISTS ${tmpTable}`).catch(() => {});
+      throw innerErr;
+    }
+  } catch (e: any) {
+    console.error(`[Merge] Failed:`, e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/ingestion/merge/export — export merged data as CSV (without materializing)
+router.get('/merge/export', async (req, res) => {
+  try {
+    const mergeKey = req.query.key as string;
+    if (!mergeKey) return res.status(400).json({ error: 'key parameter required' });
+
+    const colRows = await q<{ name: string }>(`
+      SELECT name FROM system.columns
+      WHERE database = currentDatabase() AND table = 'universal_person'
+      ORDER BY position
+    `);
+    const internalCols = new Set([
+      '_ingestion_job_id', '_ingested_at', '_segment_ids',
+      '_verification_status', '_verified_at', '_v550_category',
+      '_bounced', '_source_file_name',
+    ]);
+    const allCols = colRows.map(c => c.name).filter(c => !internalCols.has(c));
+
+    const selectParts = allCols.map(col => {
+      if (col === mergeKey) return `\`${col}\``;
+      return `anyIf(\`${col}\`, \`${col}\` != '') as \`${col}\``;
+    });
+
+    const rows = await q(`
+      SELECT ${selectParts.join(', ')}
+      FROM universal_person
+      WHERE \`${mergeKey}\` != ''
+      GROUP BY \`${mergeKey}\`
+      LIMIT 1000000
+    `);
+
+    if (!rows.length) return res.status(200).send('');
+
+    const cols = Object.keys(rows[0]);
+    const header = cols.join(',');
+    const lines = rows.map((row: any) =>
+      cols.map(c => {
+        const v = row[c];
+        if (v === null || v === undefined) return '';
+        const s = String(v).replace(/"/g, '""');
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+      }).join(',')
+    );
+    const csv = [header, ...lines].join('\n');
+
+    const user = getRequestUser(req);
+    console.log(`[Merge] Export on key='${mergeKey}' — ${rows.length} merged rows by ${user.name}`);
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="merged-${mergeKey}-${Date.now()}.csv"`);
     res.send(csv);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
