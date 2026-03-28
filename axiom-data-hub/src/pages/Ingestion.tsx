@@ -1264,7 +1264,7 @@ export default function IngestionPage() {
                               style={{ padding: '3px 8px', fontSize: 10, fontWeight: 700, borderRadius: 5, cursor: 'pointer', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 3 }}
                               onMouseOver={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = '#fff'; }}
                               onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--accent)'; }}
-                            ><Eye size={10} /> View</button>
+                            ><Eye size={10} /> View Data</button>
                           )}
                           {(job.status === 'complete' || job.status === 'archived') && (
                             <button
