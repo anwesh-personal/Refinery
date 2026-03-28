@@ -573,7 +573,16 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
         // Normalize keys to lowercase
         const normalized: Record<string, unknown> = { _ingestion_job_id: jobId, _source_file_name: fileName };
         for (const [key, val] of Object.entries(record)) {
-          normalized[key.toLowerCase().trim()] = val != null ? String(val) : null;
+          const k = key.toLowerCase().trim();
+          if (val == null) {
+            normalized[k] = null;
+          } else if (Buffer.isBuffer(val) || (val instanceof Uint8Array)) {
+            // Binary buffer (corrupted timestamp etc.) — no usable string data
+            normalized[k] = null;
+          } else {
+            const str = String(val).replace(/\0/g, '');
+            normalized[k] = str || null;
+          }
         }
         batch.push(normalized);
 
