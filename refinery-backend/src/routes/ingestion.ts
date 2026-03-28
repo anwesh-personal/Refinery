@@ -175,7 +175,7 @@ router.post('/clear-jobs', async (req, res) => {
   }
 });
 
-// POST /api/ingestion/cancel-running — mark all in-flight jobs as cancelled
+// POST /api/ingestion/cancel-running â€” mark all in-flight jobs as cancelled
 router.post('/cancel-running', async (req, res) => {
   try {
     const [{ cnt }] = await q<{ cnt: string }>(`SELECT count() as cnt FROM ingestion_jobs WHERE status IN ('pending', 'downloading', 'uploading', 'ingesting')`);
@@ -188,7 +188,7 @@ router.post('/cancel-running', async (req, res) => {
   }
 });
 
-// POST /api/ingestion/:id/rollback — instantly delete all leads from this job
+// POST /api/ingestion/:id/rollback â€” instantly delete all leads from this job
 
 router.post('/:id/rollback', async (req, res) => {
   try {
@@ -212,7 +212,7 @@ router.post('/:id/archive', async (req, res) => {
   }
 });
 
-// GET /api/ingestion/:id/data — browse rows ingested by this job
+// GET /api/ingestion/:id/data â€” browse rows ingested by this job
 router.get('/:id/data', async (req, res) => {
   try {
     const jobId = req.params.id;
@@ -256,7 +256,7 @@ router.get('/:id/data', async (req, res) => {
     const [countResult] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person ${whereClause}`);
     const total = Number(countResult?.cnt || 0);
 
-    // Fetch rows — select all non-internal columns
+    // Fetch rows â€” select all non-internal columns
     const selectCols = allCols.map(c => `\`${c}\``).join(', ');
     const rows = await q(`
       SELECT ${selectCols} FROM universal_person ${whereClause}
@@ -277,7 +277,7 @@ router.get('/:id/data', async (req, res) => {
   }
 });
 
-// GET /api/ingestion/:id/export — download all rows from this job as CSV
+// GET /api/ingestion/:id/export â€” download all rows from this job as CSV
 router.get('/:id/export', async (req, res) => {
   try {
     const jobId = req.params.id;
@@ -319,7 +319,7 @@ router.get('/:id/export', async (req, res) => {
 
     const user = getRequestUser(req);
     const safeName = job.file_name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    console.log(`[Ingestion] Job data exported: ${jobId} (${job.file_name}) — ${rows.length} rows by ${user.name}`);
+    console.log(`[Ingestion] Job data exported: ${jobId} (${job.file_name}) â€” ${rows.length} rows by ${user.name}`);
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="job-${safeName}-${Date.now()}.csv"`);
@@ -329,13 +329,37 @@ router.get('/:id/export', async (req, res) => {
   }
 });
 
-// ─────────────────── DATA MERGE / CONSOLIDATION ───────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”// Helper: determine if a ClickHouse type is string-like
+function isStringType(chType: string): boolean {
+  const t = chType.replace(/^Nullable\(/, '').replace(/\)$/, '').replace(/^LowCardinality\(/, '').replace(/\)$/, '');
+  return t.startsWith('String') || t.startsWith('FixedString') || t === 'UUID';
+}
 
-// GET /api/ingestion/merge/keys — discover candidate merge key columns
+// Helper: build a type-aware "non-empty" condition for a column
+function nonEmptyCondition(colName: string, chType: string): string {
+  const escaped = `\`${colName}\``;
+  if (isStringType(chType)) {
+    return `${escaped} != ''`;
+  }
+  if (chType.startsWith('Nullable(')) {
+    return `${escaped} IS NOT NULL`;
+  }
+  // Non-nullable numeric types: treat 0 as empty
+  return `${escaped} != 0`;
+}
+
+// Helper: build a type-aware anyIf expression for merging
+function anyIfExpr(colName: string, chType: string): string {
+  const escaped = `\`${colName}\``;
+  const cond = nonEmptyCondition(colName, chType);
+  return `anyIf(${escaped}, ${cond}) as ${escaped}`;
+}
+
+// GET /api/ingestion/merge/keys â€” discover candidate merge key columns
 router.get('/merge/keys', async (_req, res) => {
   try {
     // Get all non-internal columns
-    const colRows = await q<{ name: string; type: string }>(`
+    const colRows = await q<{ name: string; type: string }>(` 
       SELECT name, type FROM system.columns
       WHERE database = currentDatabase() AND table = 'universal_person'
       ORDER BY position
@@ -355,15 +379,16 @@ router.get('/merge/keys', async (_req, res) => {
 
     // Check top candidate columns (String/FixedString types with 'id' in name first, then others)
     const idCols = dataCols.filter(c => c.name.toLowerCase().includes('id'));
-    const otherCols = dataCols.filter(c => !c.name.toLowerCase().includes('id') && (c.type.startsWith('String') || c.type.startsWith('Nullable(String')));
+    const otherCols = dataCols.filter(c => !c.name.toLowerCase().includes('id') && isStringType(c.type));
     const colsToCheck = [...idCols, ...otherCols.slice(0, 20)]; // Limit to avoid heavy queries
 
     for (const col of colsToCheck) {
+      const cond = nonEmptyCondition(col.name, col.type);
       const [stats] = await q<{ distinct_vals: string; jobs_present: string; fill_rate: string }>(`
         SELECT
-          countDistinct(if(\`${col.name}\` != '', \`${col.name}\`, NULL)) as distinct_vals,
-          countDistinct(if(\`${col.name}\` != '', _ingestion_job_id, NULL)) as jobs_present,
-          round(countIf(\`${col.name}\` != '') / count() * 100, 1) as fill_rate
+          countDistinct(if(${cond}, toString(\`${col.name}\`), NULL)) as distinct_vals,
+          countDistinct(if(${cond}, _ingestion_job_id, NULL)) as jobs_present,
+          round(countIf(${cond}) / count() * 100, 1) as fill_rate
         FROM universal_person
       `);
       const dv = Number(stats?.distinct_vals || 0);
@@ -394,7 +419,7 @@ router.get('/merge/keys', async (_req, res) => {
   }
 });
 
-// GET /api/ingestion/merge/preview — preview merged data
+// GET /api/ingestion/merge/preview â€” preview merged data
 router.get('/merge/preview', async (req, res) => {
   try {
     const mergeKey = req.query.key as string;
@@ -407,9 +432,9 @@ router.get('/merge/preview', async (req, res) => {
     const sortDir = (req.query.sortDir === 'desc' ? 'DESC' : 'ASC');
     const offset = (page - 1) * pageSize;
 
-    // Get all columns
-    const colRows = await q<{ name: string }>(`
-      SELECT name FROM system.columns
+    // Get all columns WITH types (needed for type-aware merge)
+    const colRows = await q<{ name: string; type: string }>(`
+      SELECT name, type FROM system.columns
       WHERE database = currentDatabase() AND table = 'universal_person'
       ORDER BY position
     `);
@@ -418,26 +443,30 @@ router.get('/merge/preview', async (req, res) => {
       '_verification_status', '_verified_at', '_v550_category',
       '_bounced', '_source_file_name',
     ]);
-    const allCols = colRows.map(c => c.name).filter(c => !internalCols.has(c));
+    const dataCols = colRows.filter(c => !internalCols.has(c.name));
+    const allCols = dataCols.map(c => c.name);
+    const colTypeMap = new Map(dataCols.map(c => [c.name, c.type]));
 
     if (!allCols.includes(mergeKey)) {
       return res.status(400).json({ error: `Column '${mergeKey}' not found` });
     }
 
-    // Build the merged SELECT: key column + anyIf for every other column
-    const selectParts = allCols.map(col => {
-      if (col === mergeKey) return `\`${col}\``;
-      return `anyIf(\`${col}\`, \`${col}\` != '') as \`${col}\``;
+    // Build the merged SELECT with type-aware anyIf
+    const mergeKeyType = colTypeMap.get(mergeKey) || 'String';
+    const mergeKeyCond = nonEmptyCondition(mergeKey, mergeKeyType);
+    const selectParts = dataCols.map(col => {
+      if (col.name === mergeKey) return `\`${col.name}\``;
+      return anyIfExpr(col.name, col.type);
     });
 
     const baseQuery = `
       SELECT ${selectParts.join(', ')}
       FROM universal_person
-      WHERE \`${mergeKey}\` != ''
+      WHERE ${mergeKeyCond}
       GROUP BY \`${mergeKey}\`
     `;
 
-    // Search filter — wrap in subquery
+    // Search filter â€” wrap in subquery
     let wrappedQuery = baseQuery;
     if (search) {
       const escaped = search.replace(/'/g, "\\'");
@@ -451,11 +480,11 @@ router.get('/merge/preview', async (req, res) => {
     const total = Number(countResult?.cnt || 0);
 
     // Before-merge count
-    const [beforeCount] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE \`${mergeKey}\` != ''`);
+    const [beforeCount] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE ${mergeKeyCond}`);
     const totalBefore = Number(beforeCount?.cnt || 0);
 
     // Rows without key (will be excluded from merge)
-    const [orphanCount] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE \`${mergeKey}\` = '' OR \`${mergeKey}\` IS NULL`);
+    const [orphanCount] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE NOT (${mergeKeyCond})`);
     const orphanRows = Number(orphanCount?.cnt || 0);
 
     // Sort
@@ -492,9 +521,9 @@ router.post('/merge/execute', async (req, res) => {
 
     const user = getRequestUser(req);
 
-    // Validate column exists
-    const colRows = await q<{ name: string }>(`
-      SELECT name FROM system.columns
+    // Validate column exists — fetch types too
+    const colRows = await q<{ name: string; type: string }>(`
+      SELECT name, type FROM system.columns
       WHERE database = currentDatabase() AND table = 'universal_person'
       ORDER BY position
     `);
@@ -503,12 +532,17 @@ router.post('/merge/execute', async (req, res) => {
       '_verification_status', '_verified_at', '_v550_category',
       '_bounced', '_source_file_name',
     ]);
-    const allCols = colRows.map(c => c.name).filter(c => !internalCols.has(c));
-    const internalColNames = colRows.map(c => c.name).filter(c => internalCols.has(c));
+    const dataCols = colRows.filter(c => !internalCols.has(c.name));
+    const allCols = dataCols.map(c => c.name);
+    const intCols = colRows.filter(c => internalCols.has(c.name));
+    const internalColNames = intCols.map(c => c.name);
 
     if (!allCols.includes(mergeKey)) {
       return res.status(400).json({ error: `Column '${mergeKey}' not found` });
     }
+
+    const mergeKeyType = dataCols.find(c => c.name === mergeKey)?.type || 'String';
+    const mergeKeyCond = nonEmptyCondition(mergeKey, mergeKeyType);
 
     // Count before
     const [beforeRow] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person`);
@@ -516,11 +550,11 @@ router.post('/merge/execute', async (req, res) => {
 
     console.log(`[Merge] Starting materialization on key='${mergeKey}' by ${user.name} — ${totalBefore} rows before`);
 
-    // Build merge SELECT
+    // Build merge SELECT with type-aware anyIf
     const selectParts = [
-      ...allCols.map(col => {
-        if (col === mergeKey) return `\`${col}\``;
-        return `anyIf(\`${col}\`, \`${col}\` != '') as \`${col}\``;
+      ...dataCols.map(col => {
+        if (col.name === mergeKey) return `\`${col.name}\``;
+        return anyIfExpr(col.name, col.type);
       }),
       // Keep internal cols: use the latest values
       ...internalColNames.map(col => `any(\`${col}\`) as \`${col}\``),
@@ -537,7 +571,7 @@ router.post('/merge/execute', async (req, res) => {
         INSERT INTO ${tmpTable} (${allColsQuoted})
         SELECT ${selectParts.join(', ')}
         FROM universal_person
-        WHERE \`${mergeKey}\` != ''
+        WHERE ${mergeKeyCond}
         GROUP BY \`${mergeKey}\`
       `);
 
@@ -545,7 +579,7 @@ router.post('/merge/execute', async (req, res) => {
       await cmd(`
         INSERT INTO ${tmpTable}
         SELECT * FROM universal_person
-        WHERE \`${mergeKey}\` = '' OR \`${mergeKey}\` IS NULL
+        WHERE NOT (${mergeKeyCond})
       `);
 
       // Step 4: Atomic swap
@@ -585,8 +619,8 @@ router.get('/merge/export', async (req, res) => {
     const mergeKey = req.query.key as string;
     if (!mergeKey) return res.status(400).json({ error: 'key parameter required' });
 
-    const colRows = await q<{ name: string }>(`
-      SELECT name FROM system.columns
+    const colRows = await q<{ name: string; type: string }>(`
+      SELECT name, type FROM system.columns
       WHERE database = currentDatabase() AND table = 'universal_person'
       ORDER BY position
     `);
@@ -595,17 +629,19 @@ router.get('/merge/export', async (req, res) => {
       '_verification_status', '_verified_at', '_v550_category',
       '_bounced', '_source_file_name',
     ]);
-    const allCols = colRows.map(c => c.name).filter(c => !internalCols.has(c));
+    const dataCols = colRows.filter(c => !internalCols.has(c.name));
+    const mergeKeyType = dataCols.find(c => c.name === mergeKey)?.type || 'String';
+    const mergeKeyCond = nonEmptyCondition(mergeKey, mergeKeyType);
 
-    const selectParts = allCols.map(col => {
-      if (col === mergeKey) return `\`${col}\``;
-      return `anyIf(\`${col}\`, \`${col}\` != '') as \`${col}\``;
+    const selectParts = dataCols.map(col => {
+      if (col.name === mergeKey) return `\`${col.name}\``;
+      return anyIfExpr(col.name, col.type);
     });
 
     const rows = await q(`
       SELECT ${selectParts.join(', ')}
       FROM universal_person
-      WHERE \`${mergeKey}\` != ''
+      WHERE ${mergeKeyCond}
       GROUP BY \`${mergeKey}\`
       LIMIT 1000000
     `);
