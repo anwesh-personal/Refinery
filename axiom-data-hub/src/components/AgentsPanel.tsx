@@ -11,7 +11,9 @@ interface Agent {
   accent_color: string; greeting: string; capabilities: string[]; enabled: boolean;
   system_prompt?: string; temperature?: number; max_tokens?: number;
   custom_instructions?: string; avatar_url?: string;
+  provider_id?: string | null; model_id?: string;
 }
+interface ProviderOption { id: string; label: string; provider_type: string; selected_model: string; cached_models: string[] }
 interface Conversation { id: string; title: string; pinned: boolean; created_at: string; updated_at: string }
 interface Msg { id: string; role: string; content: string; tokens_used: number; latency_ms: number; provider_used?: string; model_used?: string; created_at: string }
 interface KBEntry { id: string; agent_id: string; title: string; content: string; category: string; enabled: boolean; priority: number }
@@ -79,6 +81,9 @@ export default function AgentsPanel() {
   const [editInstructions, setEditInstructions] = useState('');
   const [editTemp, setEditTemp] = useState(0.5);
   const [editMaxTokens, setEditMaxTokens] = useState(4096);
+  const [editProviderId, setEditProviderId] = useState<string>('');
+  const [editModelId, setEditModelId] = useState<string>('');
+  const [providers, setProviders] = useState<ProviderOption[]>([]);
   const [newKBTitle, setNewKBTitle] = useState('');
   const [newKBContent, setNewKBContent] = useState('');
   const [newKBCategory, setNewKBCategory] = useState('general');
@@ -111,7 +116,14 @@ export default function AgentsPanel() {
         setEditInstructions(full.custom_instructions || '');
         setEditTemp(parseFloat(String(full.temperature)) || 0.5);
         setEditMaxTokens(full.max_tokens || 4096);
+        setEditProviderId(full.provider_id || '');
+        setEditModelId(full.model_id || '');
       }
+    } catch {}
+    // Fetch providers for override selector
+    try {
+      const pData = await apiCall<{ providers: ProviderOption[] }>('/api/ai/providers');
+      setProviders((pData.providers || []).filter(p => p.selected_model));
     } catch {}
     // Fetch KB
     try {
@@ -128,7 +140,13 @@ export default function AgentsPanel() {
     try {
       await apiCall(`/api/ai/agents/admin/${agentDetails.id}`, {
         method: 'PUT',
-        body: { system_prompt: editPrompt, greeting: editGreeting, custom_instructions: editInstructions, temperature: editTemp, max_tokens: editMaxTokens },
+        body: {
+          system_prompt: editPrompt, greeting: editGreeting,
+          custom_instructions: editInstructions, temperature: editTemp,
+          max_tokens: editMaxTokens,
+          provider_id: editProviderId || null,
+          model_id: editModelId || '',
+        },
       });
       // Refresh
       const data = await apiCall<{ agents: Agent[] }>('/api/ai/agents');
@@ -481,6 +499,53 @@ export default function AgentsPanel() {
                       <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 6, display: 'block' }}>Capabilities (comma-separated tool slugs)</label>
                       <input value={(agentDetails?.capabilities || []).join(', ')} readOnly style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-app)', color: 'var(--text-secondary)', fontSize: 12, boxSizing: 'border-box' }} />
                     </div>
+
+                    {/* Provider/Model Override */}
+                    <div style={{ padding: 16, background: 'var(--bg-app)', borderRadius: 12, border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 8 }}>AI Provider & Model</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.5 }}>
+                        Leave as "System Default" to inherit from AI Settings. Override to give this agent a specific model.
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div>
+                          <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>Provider</label>
+                          <select value={editProviderId} onChange={e => {
+                            setEditProviderId(e.target.value);
+                            const prov = providers.find(p => p.id === e.target.value);
+                            setEditModelId(prov?.selected_model || '');
+                          }} style={{
+                            width: '100%', padding: '8px 12px', borderRadius: 8,
+                            border: '1px solid var(--border)', background: 'var(--bg-input)',
+                            color: 'var(--text-primary)', fontSize: 12, cursor: 'pointer',
+                          }}>
+                            <option value="">🔄 System Default (cascaded)</option>
+                            {providers.map(p => (
+                              <option key={p.id} value={p.id}>{p.label} ({p.provider_type})</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>Model</label>
+                          <select value={editModelId} onChange={e => setEditModelId(e.target.value)} disabled={!editProviderId} style={{
+                            width: '100%', padding: '8px 12px', borderRadius: 8,
+                            border: '1px solid var(--border)', background: editProviderId ? 'var(--bg-input)' : 'var(--bg-app)',
+                            color: editProviderId ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                            fontSize: 12, cursor: editProviderId ? 'pointer' : 'default',
+                          }}>
+                            <option value="">Auto (provider default)</option>
+                            {(providers.find(p => p.id === editProviderId)?.cached_models || []).map((m: string) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      {!editProviderId && (
+                        <div style={{ marginTop: 8, fontSize: 10, color: 'var(--accent)', fontWeight: 600 }}>
+                          ℹ️ Inheriting from system default. All agents share the same provider unless overridden.
+                        </div>
+                      )}
+                    </div>
+
                     <button onClick={saveAgent} disabled={saving} style={{
                       alignSelf: 'flex-end', padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer',
                       background: `linear-gradient(135deg, ${color} 0%, ${color}cc 100%)`, color: '#fff',

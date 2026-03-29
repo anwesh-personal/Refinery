@@ -122,9 +122,23 @@ ${systemContext}
 
     const userPrompt = conversationHistory ? `${conversationHistory}\n\nUSER: ${message}` : `USER: ${message}`;
 
-    // 7. Call AI
-    const serviceSlug = 'campaign_optimizer';
-    const aiResult = await callAI(serviceSlug, systemPrompt, userPrompt, {
+    // 7. Resolve provider+model via 3-tier cascade:
+    //    Tier 1: Agent-specific override (provider_id + model_id on ai_agents row)
+    //    Tier 2: System default — `agent_chat` service config
+    //    Tier 3: First enabled provider with a selected_model (ultimate fallback)
+    const resolved = await resolveAgentProvider(agent);
+
+    if (!resolved) {
+      await supabaseAdmin.from('ai_agent_messages').insert({
+        conversation_id: convId, role: 'assistant',
+        content: '⚠️ No AI provider configured.\n\nGo to **AI Settings** → activate a provider and choose a model. All agents will automatically use it.',
+        latency_ms: Date.now() - start,
+      });
+      return res.json({ reply: '⚠️ No AI provider configured. Go to AI Settings → activate a provider and choose a model.', latencyMs: Date.now() - start });
+    }
+
+    // 8. Call AI with resolved provider+model
+    const aiResult = await callAI(resolved.serviceSlug, systemPrompt, userPrompt, {
       maxTokens: agent.max_tokens || 4096,
       temperature: parseFloat(agent.temperature) || 0.5,
       userId,
@@ -200,7 +214,7 @@ router.get('/admin/all', async (_req: Request, res: Response) => {
 router.put('/admin/:id', async (req: Request, res: Response) => {
   try {
     const updates: Record<string, any> = {};
-    const allowed = ['name', 'role', 'avatar_emoji', 'accent_color', 'system_prompt', 'greeting', 'capabilities', 'enabled', 'temperature', 'max_tokens', 'custom_instructions', 'avatar_url'];
+    const allowed = ['name', 'role', 'avatar_emoji', 'accent_color', 'system_prompt', 'greeting', 'capabilities', 'enabled', 'temperature', 'max_tokens', 'custom_instructions', 'avatar_url', 'provider_id', 'model_id'];
     for (const k of allowed) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
     const { data, error } = await supabaseAdmin.from('ai_agents').update(updates).eq('id', req.params.id).select().single();
     if (error) throw error;
@@ -247,6 +261,69 @@ router.delete('/admin/knowledge/:id', async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
+
+// ═══════════════════════════════════════════════════════════
+// Provider Resolution — 3-tier cascading default
+//
+// Tier 1: Agent has its own provider_id + model_id set → use those
+// Tier 2: `agent_chat` service config has provider_id → use that
+// Tier 3: First enabled provider with a selected_model → use that
+//
+// This means: activate ANY provider + choose a model → all agents work.
+// Override an agent individually → that agent keeps its setting.
+// ═══════════════════════════════════════════════════════════
+
+async function resolveAgentProvider(agent: any): Promise<{ serviceSlug: string } | null> {
+  // Tier 1: Agent-specific override
+  if (agent.provider_id && agent.model_id) {
+    // We need the agent_chat service config to exist so callAI can log properly.
+    // Upsert a temp row pointing to this provider so callAI() resolves it.
+    await supabaseAdmin.from('ai_service_config')
+      .upsert({
+        service_slug: `agent_${agent.slug}`,
+        service_name: `Agent: ${agent.name}`,
+        provider_id: agent.provider_id,
+        model_id: agent.model_id,
+      }, { onConflict: 'service_slug' });
+    return { serviceSlug: `agent_${agent.slug}` };
+  }
+
+  // Tier 2: System default — `agent_chat` service config
+  const { data: svc } = await supabaseAdmin
+    .from('ai_service_config')
+    .select('provider_id, model_id')
+    .eq('service_slug', 'agent_chat')
+    .single();
+
+  if (svc?.provider_id) {
+    return { serviceSlug: 'agent_chat' };
+  }
+
+  // Tier 3: First enabled provider with a selected model → auto-link to agent_chat
+  const { data: providers } = await supabaseAdmin
+    .from('ai_providers')
+    .select('id, selected_model')
+    .eq('enabled', true)
+    .not('selected_model', 'eq', '')
+    .order('priority', { ascending: true })
+    .limit(1);
+
+  if (providers && providers.length > 0) {
+    const p = providers[0];
+    // Auto-cascade: set this as the agent_chat default so all agents auto-inherit
+    await supabaseAdmin.from('ai_service_config')
+      .upsert({
+        service_slug: 'agent_chat',
+        service_name: 'AI Agent Chat (System Default)',
+        provider_id: p.id,
+        model_id: p.selected_model,
+      }, { onConflict: 'service_slug' });
+    console.log(`[AI] Auto-cascaded provider ${p.id} / ${p.selected_model} to agent_chat (Tier 3)`);
+    return { serviceSlug: 'agent_chat' };
+  }
+
+  return null; // No provider available anywhere
+}
 
 // ═══════════════════════════════════════════════════════════
 // Context Gatherer — feeds agents with KB + system data
