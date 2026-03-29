@@ -1107,12 +1107,18 @@ export default function EmailVerifierPage() {
                     ))}
                   </tbody>
                 </table>
-                {totalPages > 1 && (
+                {(totalPages > 1 || hasMoreOnServer) && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 12px', borderTop: '1px solid var(--border)' }}>
                     <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                      Showing {(page - 1) * rowsPerPage + 1} to {Math.min(page * rowsPerPage, processedResults.length)} of {processedResults.length}
+                      Showing {(page - 1) * rowsPerPage + 1} to {Math.min(page * rowsPerPage, processedResults.length)} of {processedResults.length} loaded{result?.totalResults ? ` (${result.totalResults.toLocaleString()} total)` : ''}
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
+                      {hasMoreOnServer && (
+                        <button
+                          onClick={loadMoreResults}
+                          style={{ padding: '6px 12px', fontSize: 12, borderRadius: 8, cursor: 'pointer', border: '1px solid var(--accent)', background: 'var(--accent-muted)', color: 'var(--accent)', fontWeight: 600 }}
+                        >Load 500 More</button>
+                      )}
                       <button
                         onClick={() => setPage(p => Math.max(1, p - 1))}
                         disabled={page === 1}
