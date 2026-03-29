@@ -21,7 +21,7 @@ import { genId } from '../../utils/helpers.js';
 
 const router = Router();
 
-async function getAdapter(req: any, res: any): Promise<ReturnType<typeof getMtaAdapter> extends Promise<infer T> ? Exclude<T, null> : never> {
+async function getAdapter(_req: any, res: any): Promise<ReturnType<typeof getMtaAdapter> extends Promise<infer T> ? T : never> {
   const adapter = await getMtaAdapter();
   if (!adapter) {
     res.status(503).json({
@@ -30,9 +30,9 @@ async function getAdapter(req: any, res: any): Promise<ReturnType<typeof getMtaA
         message: 'No MTA provider configured. Set mta_provider, mta_base_url, mta_api_key in system_config.',
       },
     });
-    return null as any;
+    return null;
   }
-  return adapter as any;
+  return adapter;
 }
 
 // POST /api/v1/mta/test

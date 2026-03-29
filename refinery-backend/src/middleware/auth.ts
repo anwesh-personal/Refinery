@@ -64,9 +64,6 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     const authUser = await resolveUserProfile(user.id);
     (req as AuthenticatedRequest).authUser = authUser;
 
-    // Backward compat — keep userId for any code that still uses it
-    (req as any).userId = user.id;
-
     next();
   } catch (err: any) {
     res.status(500).json({ error: err.message });

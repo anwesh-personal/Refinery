@@ -262,10 +262,56 @@ export async function previewFile(
   }
 
   const format = detectFormat(sourceKey);
-  if (format === 'unknown' || format === 'parquet') {
-    throw new Error(`Preview not supported for ${format} files. Only CSV and gzipped CSV are previewable.`);
+  if (format === 'unknown') {
+    throw new Error(`Preview not supported for this file type. Supported: CSV, CSV.GZ, Parquet.`);
   }
 
+  // ─── Parquet Preview ───
+  // Parquet requires a full download because the footer (schema) is at EOF.
+  // Download to temp, read schema + first N rows, clean up.
+  if (format === 'parquet') {
+    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'refinery-preview-'));
+    const tmpFile = path.join(tmpDir, sourceKey.split('/').pop() || 'preview.parquet');
+    try {
+      const getResp = await client.send(new GetObjectCommand({ Bucket: bucket, Key: sourceKey }));
+      const bodyStream = getResp.Body as Readable;
+
+      // Write to temp file
+      const writeStream = fs.createWriteStream(tmpFile);
+      await new Promise<void>((resolve, reject) => {
+        bodyStream.pipe(writeStream);
+        writeStream.on('finish', resolve);
+        writeStream.on('error', reject);
+        bodyStream.on('error', reject);
+      });
+
+      // Read Parquet schema + rows
+      const reader = await ParquetReader.openFile(tmpFile);
+      const schema = reader.getSchema();
+      const columns = Object.keys(schema.fields);
+      const rows: string[][] = [];
+      const cursor = reader.getCursor();
+      let record: Record<string, unknown> | null;
+
+      while ((record = await cursor.next() as Record<string, unknown> | null)) {
+        const row = columns.map(col => {
+          const val = record![col];
+          if (val === null || val === undefined) return '';
+          if (typeof val === 'object') return JSON.stringify(val);
+          return String(val);
+        });
+        rows.push(row);
+        if (rows.length >= maxRows) break;
+      }
+      await reader.close();
+
+      return { columns, rows, totalPreviewRows: rows.length, format };
+    } finally {
+      await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  // ─── CSV / CSV.GZ Preview ───
   const getResp = await client.send(new GetObjectCommand({
     Bucket: bucket,
     Key: sourceKey,

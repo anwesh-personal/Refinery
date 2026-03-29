@@ -20,7 +20,7 @@ router.use(requireAuth);
 // GET /api/v550/credits — Check credit balance
 router.get('/credits', async (req, res) => {
   try {
-    const apiKey = await v550.resolveApiKey((req as any).userId);
+    const apiKey = await v550.resolveApiKey(getRequestUser(req).id);
     const credits = await v550.getCredits(apiKey);
     res.json({ credits });
   } catch (e: any) {
@@ -41,7 +41,7 @@ router.get('/verify', async (req, res) => {
     }
 
     const email = parsed.data;
-    const apiKey = await v550.resolveApiKey((req as any).userId);
+    const apiKey = await v550.resolveApiKey(getRequestUser(req).id);
     const status = await v550.verifySingle(apiKey, email);
     res.json({ email, status });
   } catch (e: any) {
@@ -54,7 +54,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    const apiKey = await v550.resolveApiKey((req as any).userId);
+    const apiKey = await v550.resolveApiKey(getRequestUser(req).id);
     const result = await v550.uploadBulk(
       apiKey,
       req.file.originalname || 'upload.csv',
@@ -69,7 +69,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 // GET /api/v550/job/:id — Get job details/status
 router.get('/job/:id', async (req, res) => {
   try {
-    const apiKey = await v550.resolveApiKey((req as any).userId);
+    const apiKey = await v550.resolveApiKey(getRequestUser(req).id);
     const result = await v550.getJob(apiKey, req.params.id);
     res.json(result);
   } catch (e: any) {
@@ -80,7 +80,7 @@ router.get('/job/:id', async (req, res) => {
 // GET /api/v550/jobs/completed — List all completed jobs
 router.get('/jobs/completed', async (req, res) => {
   try {
-    const apiKey = await v550.resolveApiKey((req as any).userId);
+    const apiKey = await v550.resolveApiKey(getRequestUser(req).id);
     const result = await v550.getCompletedJobs(apiKey);
     res.json(result);
   } catch (e: any) {
@@ -91,7 +91,7 @@ router.get('/jobs/completed', async (req, res) => {
 // GET /api/v550/jobs/running — List all running jobs
 router.get('/jobs/running', async (req, res) => {
   try {
-    const apiKey = await v550.resolveApiKey((req as any).userId);
+    const apiKey = await v550.resolveApiKey(getRequestUser(req).id);
     const result = await v550.getRunningJobs(apiKey);
     res.json(result);
   } catch (e: any) {
@@ -103,7 +103,7 @@ router.get('/jobs/running', async (req, res) => {
 // Query params: format=xlsx|csv, categories=ok,email_disabled,...
 router.get('/export/:id', async (req, res) => {
   try {
-    const apiKey = await v550.resolveApiKey((req as any).userId);
+    const apiKey = await v550.resolveApiKey(getRequestUser(req).id);
     const format = req.query.format as 'xlsx' | 'csv' | undefined;
     const categories = req.query.categories ? String(req.query.categories).split(',') : undefined;
 

@@ -9,6 +9,13 @@ router.use(requireAuth);
 // AI Usage Stats — powers the AI Dashboard
 // ═══════════════════════════════════════════════════════════
 
+/** Supabase returns `numeric` columns as strings — parse safely */
+function parseCost(val: string | null | undefined): number {
+  if (!val) return 0;
+  const n = parseFloat(val);
+  return isNaN(n) ? 0 : n;
+}
+
 // GET /api/ai/usage/stats — aggregate usage statistics
 router.get('/stats', async (_req, res) => {
   try {
@@ -43,12 +50,14 @@ router.get('/stats', async (_req, res) => {
     let totalFallbacks = 0;
 
     for (const r of rows) {
+      const cost = parseCost(r.estimated_cost_usd);
+
       // Service
       if (!byService[r.service_slug]) byService[r.service_slug] = { calls: 0, tokens: 0, avgLatency: 0, errors: 0, cost: 0 };
       byService[r.service_slug].calls++;
       byService[r.service_slug].tokens += r.tokens_used || 0;
       byService[r.service_slug].avgLatency += r.latency_ms || 0;
-      byService[r.service_slug].cost += parseFloat(r.estimated_cost_usd as any) || 0;
+      byService[r.service_slug].cost += cost;
       if (!r.success) byService[r.service_slug].errors++;
 
       // Provider
@@ -57,21 +66,21 @@ router.get('/stats', async (_req, res) => {
       byProvider[pk].calls++;
       byProvider[pk].tokens += r.tokens_used || 0;
       byProvider[pk].avgLatency += r.latency_ms || 0;
-      byProvider[pk].cost += parseFloat(r.estimated_cost_usd as any) || 0;
+      byProvider[pk].cost += cost;
       if (!r.success) byProvider[pk].errors++;
 
       // Totals
       totalTokens += r.tokens_used || 0;
-      totalCost += parseFloat(r.estimated_cost_usd as any) || 0;
+      totalCost += cost;
       totalLatency += r.latency_ms || 0;
       if (!r.success) totalErrors++;
       if (r.was_fallback) totalFallbacks++;
 
       // Time windows
       const ts = new Date(r.created_at).getTime();
-      if (ts >= h24) { last24h.calls++; last24h.tokens += r.tokens_used || 0; last24h.cost += parseFloat(r.estimated_cost_usd as any) || 0; }
-      if (ts >= d7) { last7d.calls++; last7d.tokens += r.tokens_used || 0; last7d.cost += parseFloat(r.estimated_cost_usd as any) || 0; }
-      if (ts >= d30) { last30d.calls++; last30d.tokens += r.tokens_used || 0; last30d.cost += parseFloat(r.estimated_cost_usd as any) || 0; }
+      if (ts >= h24) { last24h.calls++; last24h.tokens += r.tokens_used || 0; last24h.cost += cost; }
+      if (ts >= d7) { last7d.calls++; last7d.tokens += r.tokens_used || 0; last7d.cost += cost; }
+      if (ts >= d30) { last30d.calls++; last30d.tokens += r.tokens_used || 0; last30d.cost += cost; }
     }
 
     // Average latencies
@@ -87,7 +96,7 @@ router.get('/stats', async (_req, res) => {
       latencyMs: r.latency_ms,
       success: r.success,
       wasFallback: r.was_fallback,
-      cost: parseFloat(r.estimated_cost_usd as any) || 0,
+      cost: parseCost(r.estimated_cost_usd),
       time: r.created_at,
     }));
 

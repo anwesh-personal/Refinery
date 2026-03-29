@@ -1,6 +1,6 @@
 import { query } from '../../../db/clickhouse.js';
 import type { ToolDefinition, ToolContext, ToolResult } from '../types.js';
-import { validateTableName, getTableSchema } from '../../context/schema-registry.js';
+import { validateTableName, validateColumnName, getTableSchema } from '../../context/schema-registry.js';
 
 // ═══════════════════════════════════════════════════════════
 // compare_lists — Cross-list overlap and difference analysis
@@ -47,6 +47,17 @@ const compareLists: ToolDefinition = {
       const escB = source_b.replace(/'/g, "''");
 
       const results: any = { table, sourceA: source_a, sourceB: source_b, matchKeys };
+
+      // Validate match keys against schema (prevents SQL injection via column names)
+      for (const key of matchKeys) {
+        if (key !== 'name') { // 'name' is a virtual key that generates concat(first_name, ' ', last_name)
+          await validateColumnName(table, key);
+        } else {
+          // 'name' requires both first_name and last_name to exist
+          await validateColumnName(table, 'first_name');
+          await validateColumnName(table, 'last_name');
+        }
+      }
 
       // 1. Counts per list
       const counts = await query<{ src: string; cnt: string }>(

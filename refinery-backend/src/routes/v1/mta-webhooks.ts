@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { storeEvent, type EventType, type EngagementEvent } from '../../services/engagement.js';
+import { storeEvent, type EventType, type BounceType, type EngagementEvent } from '../../services/engagement.js';
 
 // ═══════════════════════════════════════════════════════════════
 // Public MTA Webhook Receiver — no API key required
@@ -27,7 +27,7 @@ router.post('/mailwizz', async (req, res) => {
     }
 
     let eventType: EventType = 'open';
-    let bounceType: string | undefined;
+    let bounceType: BounceType | undefined;
     let bounceReason: string | undefined;
 
     // Determine event type from MailWizz's notification_type or event field
@@ -53,7 +53,7 @@ router.post('/mailwizz', async (req, res) => {
       campaign_id: campaignId,
       list_id: body?.list?.list_uid || body?.list_id || null,
       mta_provider: 'mailwizz',
-      bounce_type: bounceType as any,
+      bounce_type: bounceType,
       bounce_reason: bounceReason,
       link_url: body?.url || body?.link || null,
       user_agent: body?.user_agent || req.headers['user-agent'] || null,
@@ -87,7 +87,7 @@ router.post('/sendgrid', async (req, res) => {
 
       const sgEvent = (body?.event || '').toLowerCase();
       let eventType: EventType = 'open';
-      let bounceType: string | undefined;
+      let bounceType: BounceType | undefined;
 
       if (sgEvent === 'bounce' || sgEvent === 'dropped') {
         eventType = 'bounce';
@@ -109,7 +109,7 @@ router.post('/sendgrid', async (req, res) => {
         email,
         campaign_id: body?.sg_message_id || null,
         mta_provider: 'sendgrid',
-        bounce_type: bounceType as any,
+        bounce_type: bounceType,
         bounce_reason: body?.reason || body?.response || null,
         link_url: body?.url || null,
         user_agent: body?.useragent || null,

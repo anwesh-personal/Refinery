@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import * as adminService from '../services/admin.js';
 import { supabaseAdmin } from '../services/supabaseAdmin.js';
 import { requireAuth, requireSuperadmin, invalidateProfileCache } from '../middleware/auth.js';
+import { getRequestUser } from '../types/auth.js';
 
 const router = Router();
 
@@ -44,8 +45,8 @@ router.use(adminRateLimit);
 // Any authenticated user can invalidate their own profile cache
 // after updating their name/avatar via Settings.
 router.post('/invalidate-my-cache', requireAuth, (req, res) => {
-  const userId = (req as any).userId;
-  if (userId) invalidateProfileCache(userId);
+  const user = getRequestUser(req);
+  if (user.id && user.id !== 'system') invalidateProfileCache(user.id);
   res.json({ ok: true });
 });
 
@@ -77,7 +78,7 @@ async function auditLog(actorId: string, action: string, targetId: string | null
 router.post('/reset-password', async (req, res) => {
   try {
     const { userId, newPassword } = req.body;
-    const adminId = (req as any).userId;
+    const adminId = getRequestUser(req).id;
 
     if (!userId || !newPassword) return res.status(400).json({ error: 'Missing userId or newPassword' });
     if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
@@ -94,7 +95,7 @@ router.post('/reset-password', async (req, res) => {
 router.post('/send-reset-link', async (req, res) => {
   try {
     const { email } = req.body;
-    const adminId = (req as any).userId;
+    const adminId = getRequestUser(req).id;
 
     if (!email) return res.status(400).json({ error: 'Missing email' });
 
@@ -110,7 +111,7 @@ router.post('/send-reset-link', async (req, res) => {
 router.post('/impersonate', async (req, res) => {
   try {
     const { userId } = req.body;
-    const adminId = (req as any).userId;
+    const adminId = getRequestUser(req).id;
 
     if (!userId) return res.status(400).json({ error: 'Missing target userId' });
     if (userId === adminId) return res.status(400).json({ error: 'Cannot impersonate yourself' });
@@ -127,7 +128,7 @@ router.post('/impersonate', async (req, res) => {
 router.post('/delete-user', async (req, res) => {
   try {
     const { userId } = req.body;
-    const adminId = (req as any).userId;
+    const adminId = getRequestUser(req).id;
 
     if (!userId) return res.status(400).json({ error: 'Missing target userId' });
     if (userId === adminId) return res.status(400).json({ error: 'Cannot delete yourself' });
@@ -145,7 +146,7 @@ router.post('/delete-user', async (req, res) => {
 router.post('/create-user', async (req, res) => {
   try {
     const { email, password, fullName, role } = req.body;
-    const adminId = (req as any).userId;
+    const adminId = getRequestUser(req).id;
 
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
     if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
@@ -175,7 +176,7 @@ router.get('/config', async (_req, res) => {
 router.post('/config', async (req, res) => {
   try {
     const { windowMs, max } = req.body;
-    const adminId = (req as any).userId;
+    const adminId = getRequestUser(req).id;
 
     if (windowMs) {
       await supabaseAdmin.from('system_config').upsert(

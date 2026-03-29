@@ -6,6 +6,7 @@ import { Send, Loader2, Users, Trash2 } from 'lucide-react';
 /* ── Agent metadata type ── */
 interface AgentMeta { name: string; role: string; color: string; img: string; }
 const IMG_V = '?v=20260329e';
+const UNKNOWN_AGENT: AgentMeta = { name: 'Agent', role: 'AI Specialist', color: '#6366f1', img: '/agents/unknown.jpg' };
 
 /* ── Types ── */
 interface Meeting { id: string; title: string; question: string; agent_slugs: string[]; status: string; executive_summary: string | null; total_tokens: number; total_latency_ms: number; created_at: string; completed_at: string | null; }
@@ -271,7 +272,7 @@ export default function BoardroomPage() {
             </div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 800 }}>AI Boardroom</div>
-              <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>5 agents online</div>
+              <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{AGENT_SLUGS.length} agents online</div>
             </div>
           </div>
         </div>
@@ -376,7 +377,7 @@ export default function BoardroomPage() {
             }
 
             if (msg.type === 'typing') {
-              const a = AGENTS[msg.slug || ''] || AGENTS.data_scientist;
+              const a = AGENTS[msg.slug || ''] || UNKNOWN_AGENT;
               return (
                 <div key={msg.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', animation: 'fadeSlideIn 0.3s ease-out' }}>
                   <img src={a.img + IMG_V} alt={a.name} style={{ width: 40, height: 40, borderRadius: 12, objectFit: 'cover', border: `2px solid ${a.color}`, boxShadow: `0 0 10px ${a.color}30`, flexShrink: 0, transition: 'all 0.2s' }} />
@@ -392,7 +393,7 @@ export default function BoardroomPage() {
             }
 
             // Agent message
-            const a = AGENTS[msg.slug || ''] || AGENTS.data_scientist;
+            const a = AGENTS[msg.slug || ''] || UNKNOWN_AGENT;
             const isSummary = msg.id === 'crucible-summary';
             return (
               <div key={msg.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', animation: 'fadeSlideIn 0.4s ease-out' }}>

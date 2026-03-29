@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
 import * as serverService from '../services/servers.js';
 import { logAudit } from '../services/auditLog.js';
+import { getRequestUser } from '../types/auth.js';
 
 const router = Router();
 
@@ -49,10 +50,10 @@ router.post('/', requireSuperadmin, async (req, res) => {
       endpoint_url: endpoint_url || null,
       is_default: is_default || false,
       is_active: true,
-      created_by: (req as any).userId,
+      created_by: getRequestUser(req).id,
     });
 
-    await logAudit((req as any).userId, 'server_created', server.id, { name, type, host });
+    await logAudit(getRequestUser(req).id, 'server_created', server.id, { name, type, host });
 
     // server is already ServerSafe (no credentials)
     res.status(201).json({ server });
@@ -68,7 +69,7 @@ router.put('/:id', requireSuperadmin, async (req, res) => {
     // Allowlisted fields only — handled by serverService.updateServer
     const server = await serverService.updateServer(serverId, req.body);
 
-    await logAudit((req as any).userId, 'server_updated', serverId, { fields: Object.keys(req.body) });
+    await logAudit(getRequestUser(req).id, 'server_updated', serverId, { fields: Object.keys(req.body) });
 
     // server is already ServerSafe (no credentials)
     res.json({ server });
@@ -82,7 +83,7 @@ router.delete('/:id', requireSuperadmin, async (req, res) => {
     const serverId = String(req.params.id);
     await serverService.deleteServer(serverId);
 
-    await logAudit((req as any).userId, 'server_deleted', serverId, {});
+    await logAudit(getRequestUser(req).id, 'server_deleted', serverId, {});
 
     res.json({ message: 'Server deactivated' });
   } catch (err: any) {
@@ -95,7 +96,7 @@ router.post('/:id/set-default', requireSuperadmin, async (req, res) => {
     const serverId = String(req.params.id);
     await serverService.setDefault(serverId);
 
-    await logAudit((req as any).userId, 'server_set_default', serverId, {});
+    await logAudit(getRequestUser(req).id, 'server_set_default', serverId, {});
 
     res.json({ message: 'Default server updated' });
   } catch (err: any) {

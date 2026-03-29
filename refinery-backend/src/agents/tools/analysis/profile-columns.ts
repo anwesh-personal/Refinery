@@ -1,6 +1,6 @@
 import { query } from '../../../db/clickhouse.js';
 import type { ToolDefinition, ToolContext, ToolResult } from '../types.js';
-import { validateTableName } from '../../context/schema-registry.js';
+import { validateTableName, validateColumnIdentifier, getTableSchema } from '../../context/schema-registry.js';
 
 // ═══════════════════════════════════════════════════════════
 // profile_columns — Deep column-level profiling for data quality
@@ -47,14 +47,17 @@ const profileColumns: ToolDefinition = {
       // Get columns to profile
       let columns: string[] = args.columns || [];
       if (columns.length === 0) {
-        // Auto-detect key columns
-        const colResult = await query<{ name: string }>(
-          `SELECT name FROM system.columns WHERE database = currentDatabase() AND table = '${table}' ORDER BY position`
-        );
-        const allCols = colResult.map(c => c.name);
+        // Auto-detect key columns from schema registry (no raw system.columns query)
+        const schema = await getTableSchema(table);
+        const allCols = schema?.columns.map(c => c.name) || [];
         const priorityCols = ['email', 'first_name', 'last_name', 'company', 'domain', 'title', 'industry', 'city', 'state', 'country', 'quality_tier', 'source_file'];
         columns = allCols.filter(c => priorityCols.includes(c)).slice(0, 5);
         if (columns.length === 0) columns = allCols.slice(0, 5);
+      } else {
+        // Validate user-supplied column names (prevents SQL injection)
+        for (const col of columns) {
+          validateColumnIdentifier(col);
+        }
       }
 
       // Get total row count

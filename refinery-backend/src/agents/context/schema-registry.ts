@@ -71,7 +71,7 @@ async function discoverSupabaseSchema(): Promise<Record<string, { columns: Colum
   // We query the profiles table to check connectivity, then list known app tables
   try {
     const appTables = [
-      'ai_agents', 'ai_agent_conversations', 'ai_agent_messages', 'ai_agent_kb',
+      'ai_agents', 'ai_agent_conversations', 'ai_agent_messages', 'ai_agent_knowledge',
       'ai_providers', 'ai_usage_log', 'ai_boardroom_meetings', 'ai_boardroom_reports',
       'profiles', 'user_roles', 'squads', 'squad_members',
       'list_segments', 'target_lists', 'server_configs', 'verification_jobs',
@@ -117,6 +117,27 @@ export async function validateTableName(table: string): Promise<void> {
   const valid = await refreshValidTableNames();
   if (!valid.has(table)) {
     throw new Error(`Table "${table}" does not exist in ClickHouse`);
+  }
+}
+
+/** Validate that a column name is a safe identifier (regex only — no DB round-trip). */
+export function validateColumnIdentifier(column: string): void {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(column)) {
+    throw new Error(`Invalid column name: "${column}"`);
+  }
+}
+
+/** Validate that a column exists in a specific table. Throws if invalid. */
+export async function validateColumnName(table: string, column: string): Promise<void> {
+  validateColumnIdentifier(column);
+  const schema = await getFullSchema();
+  const tableMeta = schema.clickhouse[table];
+  if (!tableMeta) {
+    throw new Error(`Table "${table}" not found — cannot validate column "${column}"`);
+  }
+  const colExists = tableMeta.columns.some(c => c.name === column);
+  if (!colExists) {
+    throw new Error(`Column "${column}" does not exist in table "${table}"`);
   }
 }
 

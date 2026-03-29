@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth, requireSuperadmin } from '../../middleware/auth.js';
 import * as apiKeyService from '../../services/apiKeys.js';
 import type { ApiKeyScope } from '../../services/apiKeys.js';
+import { getRequestUser } from '../../types/auth.js';
 
 // ═══════════════════════════════════════════════════════════════
 // API Key Management — Supabase-auth protected (admin UI)
@@ -35,7 +36,7 @@ router.post('/', async (req, res) => {
 
     const result = await apiKeyService.createApiKey({
       name,
-      ownerId: (req as any).userId,
+      ownerId: getRequestUser(req).id,
       scopes,
       environment: environment || 'live',
       rateLimitRpm: rateLimitRpm || 60,
@@ -53,7 +54,7 @@ router.post('/', async (req, res) => {
 
 router.get('/', async (req, res) => {
   try {
-    const keys = await apiKeyService.listApiKeys((req as any).userId);
+    const keys = await apiKeyService.listApiKeys(getRequestUser(req).id);
     res.json({ data: keys });
   } catch (e: any) {
     res.status(500).json({ error: { code: 'INTERNAL', message: e.message } });
@@ -71,7 +72,7 @@ router.get('/all', requireSuperadmin, async (_req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    const ok = await apiKeyService.revokeApiKey(req.params.id, (req as any).userId);
+    const ok = await apiKeyService.revokeApiKey(req.params.id, getRequestUser(req).id);
     if (!ok) return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Key not found' } });
     res.json({ data: { revoked: true } });
   } catch (e: any) {

@@ -1019,7 +1019,7 @@ export default function IngestionPage() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      {(getFileFormat(fileName) === 'csv' || getFileFormat(fileName) === 'gz') && (
+                      {getFileFormat(fileName) !== 'other' && (
                         <Button
                           variant="secondary"
                           icon={previewLoading === f.key ? <Loader2 size={14} className="spin" /> : <Eye size={14} />}
@@ -1579,7 +1579,7 @@ export default function IngestionPage() {
               padding: '20px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0,
             }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>CSV Preview</h3>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>File Preview</h3>
                 <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>{previewData.fileName} — {previewData.columns.length} columns, {previewData.rows.length} sample rows</p>
               </div>
               <button

@@ -8,6 +8,19 @@ export interface TargetListInput {
   exportFormat?: 'csv' | 'xlsx';
 }
 
+/** Row shape from the target_lists ClickHouse table */
+export interface TargetListRow {
+  id: string;
+  name: string;
+  segment_id: string;
+  email_count: number;
+  export_format: string;
+  status: string;
+  created_at: string;
+  performed_by?: string;
+  performed_by_name?: string;
+}
+
 /** Create a target list from a verified segment */
 export async function createTargetList(input: TargetListInput): Promise<string> {
   const id = genId();
@@ -70,18 +83,14 @@ export async function exportTargetList(id: string): Promise<{ csv: string; count
   });
 
   // Mark as ready
-  await insertRows('target_lists', [{
-    ...(list as any),
-    id,
-    status: 'ready',
-  }]);
+  await command(`ALTER TABLE target_lists UPDATE status = 'ready' WHERE id = '${id}'`);
 
   return { csv, count: rows.length };
 }
 
 /** List all target lists */
-export async function listTargetLists() {
-  return query('SELECT * FROM target_lists ORDER BY created_at DESC LIMIT 50');
+export async function listTargetLists(): Promise<TargetListRow[]> {
+  return query<TargetListRow>('SELECT * FROM target_lists ORDER BY created_at DESC LIMIT 50');
 }
 
 /** Get target stats */

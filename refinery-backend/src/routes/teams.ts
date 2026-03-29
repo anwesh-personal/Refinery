@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
 import * as teamService from '../services/teams.js';
 import { logAudit } from '../services/auditLog.js';
+import { getRequestUser } from '../types/auth.js';
 
 const router = Router();
 
@@ -35,7 +36,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 router.post('/', requireAuth, requireSuperadmin, async (req, res) => {
   try {
     const { name, description } = req.body;
-    const actorId = (req as any).userId as string;
+    const actorId = getRequestUser(req).id;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'name is required' });
@@ -60,7 +61,7 @@ router.post('/', requireAuth, requireSuperadmin, async (req, res) => {
 router.put('/:id', requireAuth, requireSuperadmin, async (req, res) => {
   try {
     const { name, description } = req.body;
-    const actorId = (req as any).userId as string;
+    const actorId = getRequestUser(req).id;
     const teamId = String(req.params.id);
 
     if (!name || typeof name !== 'string' || !name.trim()) {
@@ -82,7 +83,7 @@ router.put('/:id', requireAuth, requireSuperadmin, async (req, res) => {
 router.delete('/:id', requireAuth, requireSuperadmin, async (req, res) => {
   try {
     const teamId = String(req.params.id);
-    const actorId = (req as any).userId as string;
+    const actorId = getRequestUser(req).id;
 
     await teamService.deleteTeam(teamId);
     await logAudit(actorId, 'team_deleted', teamId, {});
@@ -122,7 +123,7 @@ router.post('/:id/members', requireAuth, requireSuperadmin, async (req, res) => 
   try {
     const teamId = String(req.params.id);
     if (!(await assertTeamExists(teamId, res))) return;
-    const actorId = (req as any).userId as string;
+    const actorId = getRequestUser(req).id;
     const { profile_id, role_id } = req.body;
 
     if (!profile_id || typeof profile_id !== 'string') {
@@ -146,7 +147,7 @@ router.put('/:id/members/:profileId', requireAuth, requireSuperadmin, async (req
     const teamId = String(req.params.id);
     if (!(await assertTeamExists(teamId, res))) return;
     const profileId = String(req.params.profileId);
-    const actorId = (req as any).userId as string;
+    const actorId = getRequestUser(req).id;
     const { role_id } = req.body;
 
     const membership = await teamService.updateMemberRole(teamId, profileId, role_id || null);
@@ -163,7 +164,7 @@ router.delete('/:id/members/:profileId', requireAuth, requireSuperadmin, async (
     const teamId = String(req.params.id);
     if (!(await assertTeamExists(teamId, res))) return;
     const profileId = String(req.params.profileId);
-    const actorId = (req as any).userId as string;
+    const actorId = getRequestUser(req).id;
 
     await teamService.removeMember(teamId, profileId);
     await logAudit(actorId, 'team_member_removed', teamId, { profile_id: profileId });

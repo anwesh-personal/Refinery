@@ -144,11 +144,12 @@ router.post('/domains/:domainId/check-dns', async (req, res) => {
 // POST /api/smtp-servers/:id/push-to-ema
 
 import { getMtaAdapter } from '../services/mta/index.js';
+import { query as chQuery } from '../db/clickhouse.js';
 
 // POST /api/mta-providers/webhooks/setup  — configure MailWizz to POST back to Refinery
 router.post('/webhooks/setup', async (req, res) => {
   try {
-    const adapter = await getMtaAdapter() as any;
+    const adapter = await getMtaAdapter();
     if (!adapter) return res.status(503).json({ error: 'MTA not configured' });
 
     // Use the refinery_url from the request, or fall back to FRONTEND_URL env var
@@ -158,8 +159,11 @@ router.post('/webhooks/setup', async (req, res) => {
 
     const webhookUrl = `${refineryUrl}/api/v1/webhooks/mta/mailwizz`;
 
-    // Get the MTA base URL from the adapter config to build instructions dynamically
-    const mtaBase = (adapter as any).config?.baseUrl?.replace(/\/api\/?.*$/, '') || 'your-mailwizz-url';
+    // Get the MTA base URL from system_config (not adapter internals)
+    const configRows = await chQuery<{ config_value: string }>(
+      `SELECT config_value FROM system_config FINAL WHERE config_key = 'mta_base_url' LIMIT 1`
+    );
+    const mtaBase = configRows[0]?.config_value?.replace(/\/api\/?.*$/, '') || 'your-mailwizz-url';
 
     res.json({
       ok: true,

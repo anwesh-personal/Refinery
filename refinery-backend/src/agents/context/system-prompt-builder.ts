@@ -20,6 +20,7 @@ interface PromptBuildOptions {
  * 2. Live schema context (from Schema Registry)
  * 3. Knowledge base entries
  * 4. Page-level context (if provided)
+ * 5. Behavioral guardrails (dynamically from DB capabilities)
  */
 export async function buildSystemPrompt(options: PromptBuildOptions): Promise<string> {
   const sections: string[] = [];
@@ -53,16 +54,18 @@ export async function buildSystemPrompt(options: PromptBuildOptions): Promise<st
     }
   }
 
-  // 5. Behavioral guardrails
-  sections.push(buildGuardrails(options.agentSlug));
+  // 5. Behavioral guardrails (dynamic — from DB capabilities, not hardcoded slugs)
+  sections.push(await buildGuardrails(options.agentSlug));
 
   return sections.join('\n\n');
 }
 
 /**
- * Agent-specific behavioral guardrails
+ * Agent-specific behavioral guardrails.
+ * Common rules are always applied.
+ * Agent-specific rules are pulled from the agent's `capabilities` array in the DB.
  */
-function buildGuardrails(agentSlug: string): string {
+async function buildGuardrails(agentSlug: string): Promise<string> {
   const common = [
     '## Operating Guidelines',
     '- Always reference actual data from your tools — never fabricate numbers.',
@@ -72,32 +75,23 @@ function buildGuardrails(agentSlug: string): string {
     '- Be concise but thorough. Executives read your reports.',
   ];
 
-  const specific: Record<string, string[]> = {
-    data_scientist: [
-      '- You have full read access to ClickHouse. Use query_database for any data question.',
-      '- Always provide sample data and statistics, not just descriptions.',
-      '- When analyzing lists, cover: row count, column breakdown, domain distribution, quality tiers, duplicates.',
-    ],
-    smtp_specialist: [
-      '- Focus on deliverability, DNS health, IP reputation, and bounce analysis.',
-      '- When checking domains, look at MX, SPF, DKIM, and DMARC records.',
-    ],
-    seo_strategist: [
-      '- Focus on keyword opportunities, domain rankings, and competitive intelligence.',
-      '- Cross-reference SEO data with our lead data when relevant.',
-    ],
-    verification_engineer: [
-      '- Focus on email verification results, quality scoring, and risk assessment.',
-      '- Provide actionable recommendations for improving deliverability.',
-    ],
-    supervisor: [
-      '- You oversee all departments. Synthesize information across domains.',
-      '- Provide executive-level summaries with clear action items.',
-      '- When multiple agents report, identify conflicts and resolve them.',
-    ],
-  };
+  // Fetch agent capabilities from DB to generate dynamic guardrails
+  try {
+    const { data: agent } = await supabaseAdmin
+      .from('ai_agents')
+      .select('capabilities')
+      .eq('slug', agentSlug)
+      .single();
 
-  return [...common, ...(specific[agentSlug] || [])].join('\n');
+    if (agent?.capabilities && Array.isArray(agent.capabilities)) {
+      common.push(`- Your capabilities: ${agent.capabilities.join(', ')}.`);
+      common.push('- Only operate within your defined capabilities. Defer to other agents for domains outside your scope.');
+    }
+  } catch {
+    // Non-fatal — proceed with common rules only
+  }
+
+  return common.join('\n');
 }
 
 /**
@@ -105,7 +99,7 @@ function buildGuardrails(agentSlug: string): string {
  */
 export async function fetchKBEntries(agentId: string): Promise<string[]> {
   const { data } = await supabaseAdmin
-    .from('ai_agent_kb')
+    .from('ai_agent_knowledge')
     .select('title, content')
     .eq('agent_id', agentId)
     .eq('enabled', true)

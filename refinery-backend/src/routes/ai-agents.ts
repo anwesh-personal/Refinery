@@ -10,6 +10,7 @@ import { executeTool } from '../agents/tools/executor.js';
 import { getPromptContext } from "../agents/context/schema-registry.js";
 import { buildIngestionContext } from "../agents/context/context-builder.js";
 import { parseIntent, buildChainPrompt, buildDebatePrompt } from "../agents/orchestration.js";
+import { getRequestUser } from '../types/auth.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -34,7 +35,7 @@ router.get('/', async (_req: Request, res: Response) => {
 // ── List conversations for an agent ──
 router.get('/:slug/conversations', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
+    const userId = getRequestUser(req).id;
     const { data: agent } = await supabaseAdmin.from('ai_agents').select('id').eq('slug', req.params.slug).single();
     if (!agent) return res.status(404).json({ error: 'Agent not found' });
     const { data, error } = await supabaseAdmin
@@ -52,7 +53,7 @@ router.get('/:slug/conversations', async (req: Request, res: Response) => {
 // ── Create conversation ──
 router.post('/:slug/conversations', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
+    const userId = getRequestUser(req).id;
     const { data: agent } = await supabaseAdmin.from('ai_agents').select('id').eq('slug', req.params.slug).single();
     if (!agent) return res.status(404).json({ error: 'Agent not found' });
     const { data, error } = await supabaseAdmin
@@ -82,7 +83,7 @@ router.get('/conversations/:convId/messages', async (req: Request, res: Response
 router.post('/conversations/:convId/messages', async (req: Request, res: Response) => {
   const start = Date.now();
   try {
-    const userId = (req as any).userId;
+    const userId = getRequestUser(req).id;
     const accessToken = String(req.headers.authorization || '').replace('Bearer ', '');
     const { message } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
@@ -522,7 +523,7 @@ router.get("/context/ingestion", async (req: Request, res: Response) => {
 
 router.get("/boardroom/meetings", async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).userId;
+    const userId = getRequestUser(req).id;
     const { data, error } = await supabaseAdmin.from("ai_boardroom_meetings")
       .select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(50);
     if (error) throw error;
@@ -550,7 +551,7 @@ router.delete("/boardroom/meetings/:meetingId", async (req: Request, res: Respon
 router.post("/boardroom/meetings", async (req: Request, res: Response) => {
   const meetingStart = Date.now();
   try {
-    const userId = (req as any).userId;
+    const userId = getRequestUser(req).id;
     const accessToken = String(req.headers.authorization || "").replace("Bearer ", "");
     const { question, agents: agentSlugs, title, mode } = req.body;
     if (!question?.trim()) return res.status(400).json({ error: "Question required" });

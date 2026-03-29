@@ -58,10 +58,10 @@ router.get('/:id/export', async (req, res) => {
 // POST /api/targets/:id/dedup-check — check overlap with recently pushed lists
 router.post('/:id/dedup-check', async (req, res) => {
   try {
-    const list = (await targetService.listTargetLists()).find((l: any) => l.id === req.params.id);
+    const list = (await targetService.listTargetLists()).find(l => l.id === req.params.id);
     if (!list) return res.status(404).json({ error: 'Target list not found' });
     const days = req.body.days || 7;
-    const result = await audienceSync.checkDedupOverlap((list as any).segment_id, req.params.id, days);
+    const result = await audienceSync.checkDedupOverlap(list.segment_id, req.params.id, days);
     res.json(result);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -81,12 +81,12 @@ router.get('/columns', async (_req, res) => {
 // POST /api/targets/:id/preview — preview audience before pushing
 router.post('/:id/preview', async (req, res) => {
   try {
-    const list = (await targetService.listTargetLists()).find((l: any) => l.id === req.params.id);
+    const list = (await targetService.listTargetLists()).find(l => l.id === req.params.id);
     if (!list) return res.status(404).json({ error: 'Target list not found' });
 
     const { columns, limit, offset, excludeRoleBased, excludeFreeProviders } = req.body;
     const result = await audienceSync.previewAudience(
-      (list as any).segment_id,
+      list.segment_id,
       columns || [],
       { limit, offset, excludeRoleBased, excludeFreeProviders },
     );
@@ -99,7 +99,7 @@ router.post('/:id/preview', async (req, res) => {
 // POST /api/targets/:id/push — push audience to MTA
 router.post('/:id/push', async (req, res) => {
   try {
-    const list = (await targetService.listTargetLists()).find((l: any) => l.id === req.params.id);
+    const list = (await targetService.listTargetLists()).find(l => l.id === req.params.id);
     if (!list) return res.status(404).json({ error: 'Target list not found' });
 
     const { columnMappings, excludeRoleBased, excludeFreeProviders } = req.body;
@@ -112,8 +112,8 @@ router.post('/:id/push', async (req, res) => {
 
     const result = await audienceSync.pushToMTA({
       targetListId: req.params.id,
-      listName: (list as any).name,
-      segmentId: (list as any).segment_id,
+      listName: list.name,
+      segmentId: list.segment_id,
       columnMappings,
       excludeRoleBased,
       excludeFreeProviders,

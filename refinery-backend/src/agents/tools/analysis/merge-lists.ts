@@ -1,6 +1,6 @@
 import { query, command } from '../../../db/clickhouse.js';
 import type { ToolDefinition, ToolContext, ToolResult } from '../types.js';
-import { validateTableName, getTableSchema } from '../../context/schema-registry.js';
+import { validateTableName, validateColumnName, getTableSchema } from '../../context/schema-registry.js';
 
 // ═══════════════════════════════════════════════════════════
 // merge_lists — Merge two lists with configurable dedup strategy
@@ -56,6 +56,7 @@ const mergeLists: ToolDefinition = {
       const outputTag = args.output_tag || `merged_${Date.now()}`;
 
       await validateTableName(table);
+      await validateColumnName(table, mergeKey);
 
       // Idempotency: check if output_tag already exists
       const existingCheck = await query<{ cnt: string }>(
@@ -122,7 +123,10 @@ const mergeLists: ToolDefinition = {
       // 3. Execute merge — insert deduplicated records with new source_file tag
       // Strategy determines ORDER BY for ROW_NUMBER (which record "wins")
       const schema = await getTableSchema(table);
-      const allCols = schema?.columns.map(c => c.name) || [];
+      if (!schema) {
+        return { success: false, error: `Table "${table}" schema not found` };
+      }
+      const allCols = schema.columns.map(c => c.name);
 
       let orderBy: string;
       switch (strategy) {
@@ -141,12 +145,7 @@ const mergeLists: ToolDefinition = {
         }
       }
 
-      // Get all columns from the table
-      const colResult = await query<{ name: string }>(
-        `SELECT name FROM system.columns WHERE database = currentDatabase() AND table = '${table}' ORDER BY position`
-      );
-      const cols = colResult.map(c => c.name);
-      const colList = cols.filter(c => c !== 'source_file').join(', ');
+      const colList = allCols.filter(c => c !== 'source_file').join(', ');
 
       // Insert merged records
       await command(`

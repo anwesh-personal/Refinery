@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
 import * as roleService from '../services/customRoles.js';
 import { logAudit } from '../services/auditLog.js';
+import { getRequestUser } from '../types/auth.js';
 
 const router = Router();
 
@@ -33,7 +34,7 @@ router.get('/', requireAuth, async (_req, res) => {
 router.post('/', requireAuth, requireSuperadmin, async (req, res) => {
   try {
     const { name, label, permissions } = req.body;
-    const actorId = (req as any).userId as string;
+    const actorId = getRequestUser(req).id;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ error: 'name is required' });
@@ -64,7 +65,7 @@ router.post('/', requireAuth, requireSuperadmin, async (req, res) => {
 router.put('/:id', requireAuth, requireSuperadmin, async (req, res) => {
   try {
     const { name, label, permissions } = req.body;
-    const actorId = (req as any).userId as string;
+    const actorId = getRequestUser(req).id;
     const roleId = String(req.params.id);
 
     if (!name || typeof name !== 'string' || !name.trim()) {
@@ -94,7 +95,7 @@ router.put('/:id', requireAuth, requireSuperadmin, async (req, res) => {
 router.delete('/:id', requireAuth, requireSuperadmin, async (req, res) => {
   try {
     const roleId = String(req.params.id);
-    const actorId = (req as any).userId as string;
+    const actorId = getRequestUser(req).id;
 
     await roleService.deleteRole(roleId);
     await logAudit(actorId, 'custom_role_deleted', roleId, {});
