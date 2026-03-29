@@ -21,6 +21,7 @@ interface AgentCardProps {
 interface Agent {
   id: string; slug: string; name: string; role: string; avatar_emoji: string;
   accent_color: string; greeting: string; capabilities: string[];
+  avatar_url?: string;
 }
 
 interface Msg { id: string; role: string; content: string; tokens_used: number; latency_ms: number; model_used?: string; created_at: string }
@@ -30,6 +31,10 @@ const AGENT_IMAGES: Record<string, string> = {
   email_marketer: '/agents/muse.png', supervisor: '/agents/overseer.png',
   verification_engineer: '/agents/litmus.png',
 };
+
+function getAgentImage(agent: { slug: string; avatar_url?: string }): string {
+  return agent.avatar_url || AGENT_IMAGES[agent.slug] || '';
+}
 
 const QUICK_PROMPTS: Record<string, string[]> = {
   verification_engineer: ['Analyze these verification results', 'Which domains are catch-all?', 'Recommend which unknowns to retry', 'Risk assessment for this batch'],
@@ -124,7 +129,7 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
   if (loading || !agent) return null;
 
   const color = agent.accent_color;
-  const img = AGENT_IMAGES[agent.slug];
+  const img = getAgentImage(agent);
   const prompts = QUICK_PROMPTS[agent.slug] || [];
 
   return (

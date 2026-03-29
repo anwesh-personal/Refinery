@@ -25,6 +25,11 @@ const AGENT_IMAGES: Record<string, string> = {
   verification_engineer: '/agents/litmus.png',
 };
 
+/** Get the agent's display image — custom avatar_url takes priority, then hardcoded fallback */
+function getAgentImage(agent: { slug: string; avatar_url?: string }): string {
+  return agent.avatar_url || AGENT_IMAGES[agent.slug] || '';
+}
+
 const KB_CATEGORIES = ['general', 'instructions', 'examples', 'data', 'reference'];
 
 const AGENT_META: Record<string, { pages: string[]; description: string; dataAccess: string[]; examples: string[] }> = {
@@ -88,6 +93,7 @@ export default function AgentsPanel() {
   const [editName, setEditName] = useState('');
   const [editRole, setEditRole] = useState('');
   const [editAccentColor, setEditAccentColor] = useState('');
+  const [editAvatarUrl, setEditAvatarUrl] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [newKBTitle, setNewKBTitle] = useState('');
   const [newKBContent, setNewKBContent] = useState('');
@@ -126,6 +132,7 @@ export default function AgentsPanel() {
         setEditName(full.name || '');
         setEditRole(full.role || '');
         setEditAccentColor(full.accent_color || '#8b5cf6');
+        setEditAvatarUrl(full.avatar_url || '');
       }
     } catch {}
     // Fetch providers for override selector
@@ -155,6 +162,7 @@ export default function AgentsPanel() {
           provider_id: editProviderId || null,
           model_id: editModelId || '',
           name: editName, role: editRole, accent_color: editAccentColor,
+          avatar_url: editAvatarUrl || null,
         },
       });
       // Refresh
@@ -275,7 +283,7 @@ export default function AgentsPanel() {
             >
               {/* Header */}
               <div style={{ background: `linear-gradient(135deg, ${a.accent_color} 0%, ${a.accent_color}cc 100%)`, padding: '20px 22px', display: 'flex', alignItems: 'center', gap: 14 }}>
-                <img src={AGENT_IMAGES[a.slug] || ''} alt={a.name} style={{
+                <img src={getAgentImage(a)} alt={a.name} style={{
                   width: 64, height: 64, borderRadius: 16, objectFit: 'cover',
                   border: '3px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
                 }} />
@@ -364,7 +372,7 @@ export default function AgentsPanel() {
               {/* Modal Header */}
               <div style={{ background: `linear-gradient(135deg, ${color} 0%, ${color}cc 100%)`, padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <img src={AGENT_IMAGES[agentDetails.slug] || ''} alt={agentDetails.name} style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover', border: '2px solid rgba(255,255,255,0.3)' }} />
+                  <img src={getAgentImage(agentDetails)} alt={agentDetails.name} style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover', border: '2px solid rgba(255,255,255,0.3)' }} />
                   <div>
                     <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent-contrast, #fff)' }}>{agentDetails.name}</div>
                     <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>{agentDetails.role}</div>
@@ -514,6 +522,28 @@ export default function AgentsPanel() {
                           <div style={{ width: 80, height: 36, borderRadius: 8, background: `linear-gradient(135deg, ${editAccentColor} 0%, ${editAccentColor}cc 100%)` }} />
                         </div>
                       </div>
+
+                      {/* Avatar Image */}
+                      <div style={{ marginTop: 10 }}>
+                        <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>Avatar Image</label>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                          <img
+                            src={editAvatarUrl || AGENT_IMAGES[agentDetails?.slug || ''] || ''}
+                            alt="Preview"
+                            style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover', border: '2px solid var(--border)', flexShrink: 0 }}
+                            onError={(e) => { (e.target as HTMLImageElement).src = AGENT_IMAGES[agentDetails?.slug || ''] || ''; }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <input
+                              value={editAvatarUrl}
+                              onChange={e => setEditAvatarUrl(e.target.value)}
+                              placeholder="Paste image URL or leave blank for default"
+                              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 11, boxSizing: 'border-box' }}
+                            />
+                            <div style={{ fontSize: 8, color: 'var(--text-tertiary)', marginTop: 3 }}>Paste any direct image URL. Clear to revert to default.</div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Generation Params */}
@@ -603,7 +633,7 @@ export default function AgentsPanel() {
       <div style={{ background: 'var(--bg-sidebar)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => { setSelectedAgent(null); setActiveConv(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, padding: 0, color: 'var(--text-secondary)' }}>←</button>
-          <img src={AGENT_IMAGES[selectedAgent.slug]} alt="" style={{ width: 28, height: 28, borderRadius: 8, objectFit: 'cover' }} />
+          <img src={getAgentImage(selectedAgent)} alt="" style={{ width: 28, height: 28, borderRadius: 8, objectFit: 'cover' }} />
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{selectedAgent.name}</div>
             <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{selectedAgent.role}</div>
@@ -641,7 +671,7 @@ export default function AgentsPanel() {
       <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg-app)' }}>
         {!activeConv ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 12, padding: 40 }}>
-            <img src={AGENT_IMAGES[selectedAgent.slug]} alt="" style={{ width: 80, height: 80, borderRadius: 16, objectFit: 'cover', border: '3px solid var(--border)' }} />
+            <img src={getAgentImage(selectedAgent)} alt="" style={{ width: 80, height: 80, borderRadius: 16, objectFit: 'cover', border: '3px solid var(--border)' }} />
             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>{selectedAgent.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-tertiary)', maxWidth: 400, textAlign: 'center', lineHeight: 1.6 }}>{selectedAgent.greeting}</div>
             <button onClick={createConversation} style={{ marginTop: 8, padding: '10px 20px', borderRadius: 10, border: 'none', cursor: 'pointer', background: `linear-gradient(135deg, ${color} 0%, color-mix(in srgb, ${color} 80%, transparent) 100%)`, color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 700, boxShadow: 'var(--shadow-md)' }}>
@@ -654,7 +684,7 @@ export default function AgentsPanel() {
               {loadingMsgs && <div style={{ textAlign: 'center', padding: 20 }}><Loader2 size={18} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-tertiary)' }} /></div>}
               {messages.map(m => (
                 <div key={m.id} style={{ display: 'flex', gap: 10, maxWidth: m.role === 'user' ? '80%' : '95%', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
-                  {m.role !== 'user' && <img src={AGENT_IMAGES[selectedAgent.slug]} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover', flexShrink: 0, marginTop: 2 }} />}
+                  {m.role !== 'user' && <img src={getAgentImage(selectedAgent)} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover', flexShrink: 0, marginTop: 2 }} />}
                   <div style={{
                     padding: m.role === 'user' ? '12px 16px' : '14px 18px', borderRadius: 14,
                     background: m.role === 'user' ? `color-mix(in srgb, ${color} 18%, var(--bg-elevated))` : 'var(--bg-card)',
@@ -690,7 +720,7 @@ export default function AgentsPanel() {
               ))}
               {sending && (
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                  <img src={AGENT_IMAGES[selectedAgent.slug]} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover' }} />
+                  <img src={getAgentImage(selectedAgent)} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover' }} />
                   <div style={{ padding: '12px 16px', borderRadius: 14, background: 'var(--bg-card)', border: '1px solid var(--border)', borderBottomLeftRadius: 4 }}>
                     <div style={{ display: 'flex', gap: 4 }}>
                       {[0, 1, 2].map(i => <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: color, animation: `bounce 1.4s infinite ${i * 0.16}s` }} />)}
