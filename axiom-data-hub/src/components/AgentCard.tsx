@@ -32,8 +32,12 @@ const AGENT_IMAGES: Record<string, string> = {
   verification_engineer: '/agents/argus.png',
 };
 
+const IMG_VERSION = '20260329b';
 function getAgentImage(agent: { slug: string; avatar_url?: string }): string {
-  return agent.avatar_url || AGENT_IMAGES[agent.slug] || '';
+  const base = agent.avatar_url || AGENT_IMAGES[agent.slug] || '';
+  if (!base) return '';
+  if (base.startsWith('http')) return base;
+  return `${base}?v=${IMG_VERSION}`;
 }
 
 const QUICK_PROMPTS: Record<string, string[]> = {

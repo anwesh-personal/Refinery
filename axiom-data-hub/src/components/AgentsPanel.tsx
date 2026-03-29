@@ -26,8 +26,13 @@ const AGENT_IMAGES: Record<string, string> = {
 };
 
 /** Get the agent's display image — custom avatar_url takes priority, then hardcoded fallback */
+const IMG_VERSION = '20260329b'; // bump this on avatar changes to bust browser cache
 function getAgentImage(agent: { slug: string; avatar_url?: string }): string {
-  return agent.avatar_url || AGENT_IMAGES[agent.slug] || '';
+  const base = agent.avatar_url || AGENT_IMAGES[agent.slug] || '';
+  if (!base) return '';
+  // Don't append version to external URLs
+  if (base.startsWith('http')) return base;
+  return `${base}?v=${IMG_VERSION}`;
 }
 
 const KB_CATEGORIES = ['general', 'instructions', 'examples', 'data', 'reference'];
