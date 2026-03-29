@@ -1846,7 +1846,11 @@ export default function IngestionPage() {
 
       {/* AI Agent */}
       <div style={{ marginTop: 36 }}>
-        <AgentCard slug="data_scientist" contextLabel="Data Ingestion — Column Mapping & Quality" />
+        <AgentCard
+          slug="data_scientist"
+          contextLabel={jobData ? `Analyzing: ${jobData.job.file_name} (${jobData.job.rows_ingested} rows)` : 'Data Ingestion — Column Mapping & Quality'}
+          context={jobData ? { table: 'leads', source_file: jobData.job.file_name, rows_ingested: jobData.job.rows_ingested, columns: jobData.columns, sampleRows: jobData.rows?.slice(0, 3) } : undefined}
+        />
       </div>
     </>
   );
