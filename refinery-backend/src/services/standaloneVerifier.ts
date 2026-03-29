@@ -67,8 +67,8 @@ export interface SmtpConfig {
 }
 
 export const DEFAULT_SMTP_CONFIG: SmtpConfig = {
-  heloDomain: 'mail.refinery.local',
-  fromEmail: 'verify@refinery.local',
+  heloDomain: 'anwe.sh',
+  fromEmail: 'hello@anwe.sh',
   concurrency: 10,
   timeout: 15_000,
   port: 25,

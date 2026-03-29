@@ -125,8 +125,8 @@ const DEFAULT_THRESHOLDS: Thresholds = {
 const DEFAULT_SMTP: SmtpConfig = {
   concurrency: 10,
   timeout: 15000,
-  heloDomain: 'nexus.pipeline',
-  fromEmail: 'verify@nexus.pipeline',
+  heloDomain: 'anwe.sh',
+  fromEmail: 'hello@anwe.sh',
   port: 25,
   minIntervalMs: 2000,
   maxConcurrentPerDomain: 2,
