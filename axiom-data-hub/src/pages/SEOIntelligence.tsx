@@ -107,8 +107,7 @@ export default function SEOIntelligencePage() {
   const [compTarget, setCompTarget] = useState('');
   const [compStatus, setCompStatus] = useState<string | null>(null);
 
-  // ── Show preview mode (mock data) ──
-  const [, setShowPreview] = useState(true);
+
 
   // ── Pipeline Workflow ──
   const [pipelineKeyword, setPipelineKeyword] = useState('');
