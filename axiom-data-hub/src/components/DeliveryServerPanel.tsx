@@ -5,6 +5,7 @@ import { apiCall } from '../lib/api';
 import {
   Server, Plus, Trash2, Loader2,
   Zap, ChevronDown, ChevronRight, CheckCircle, XCircle, Edit2,
+  Upload, Radio,
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════
@@ -29,6 +30,14 @@ interface SmtpServer {
   last_test_ok: boolean | null;
   last_test_msg: string;
   created_at: string;
+}
+
+interface MTAProvider {
+  id: string;
+  name: string;
+  provider_type: string;
+  is_active: boolean;
+  last_test_ok: boolean | null;
 }
 
 const PROTOCOLS = ['smtp', 'smtps'];
@@ -56,6 +65,8 @@ export default function DeliveryServerPanel({ onRefresh }: { onRefresh?: () => v
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [showPassword, setShowPassword] = useState(false);
+  const [emaProviders, setEmaProviders] = useState<MTAProvider[]>([]);
+  const [pushingId, setPushingId] = useState<string | null>(null);
   const { success, error: toastError } = useToast();
 
   const fetchServers = useCallback(async () => {
@@ -69,7 +80,29 @@ export default function DeliveryServerPanel({ onRefresh }: { onRefresh?: () => v
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchServers(); }, [fetchServers]);
+  const fetchEmaProviders = useCallback(async () => {
+    try {
+      const data = await apiCall<MTAProvider[]>('/api/mta-providers');
+      setEmaProviders((data || []).filter(p => p.is_active));
+    } catch { /* no providers yet */ }
+  }, []);
+
+  useEffect(() => { fetchServers(); fetchEmaProviders(); }, [fetchServers, fetchEmaProviders]);
+
+  const handlePushToEma = async (serverId: string, serverLabel: string, providerId: string, providerName: string) => {
+    setPushingId(`${serverId}-${providerId}`);
+    try {
+      const result = await apiCall<{ ok: boolean; provider_name: string; provider_type: string }>(
+        `/api/smtp-servers/${serverId}/push-to-ema`, { method: 'POST', body: { provider_id: providerId } }
+      );
+      if (result.ok) {
+        success('Pushed', `${serverLabel} registered on ${providerName}`);
+      }
+    } catch (e: any) {
+      toastError('Push Failed', e.message);
+    }
+    setPushingId(null);
+  };
 
   const handleSave = async () => {
     if (!form.hostname || !form.username || !form.password) {
@@ -310,6 +343,33 @@ export default function DeliveryServerPanel({ onRefresh }: { onRefresh?: () => v
                       <Button variant="ghost" icon={deletingId === srv.id ? <Loader2 size={13} className="spin" /> : <Trash2 size={13} />}
                         onClick={() => handleDelete(srv.id, srv.hostname)} disabled={deletingId !== null}>Delete</Button>
                     </div>
+
+                    {/* Push to EMA buttons — shows all active EMA providers dynamically */}
+                    {emaProviders.length > 0 && (
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+                          Register on EMA
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {emaProviders.map(p => {
+                            const key = `${srv.id}-${p.id}`;
+                            const isPushing = pushingId === key;
+                            return (
+                              <Button key={p.id} variant="ghost"
+                                icon={isPushing ? <Loader2 size={12} className="spin" /> : <Upload size={12} />}
+                                onClick={() => handlePushToEma(srv.id, srv.label || srv.hostname, p.id, p.name)}
+                                disabled={isPushing}
+                                style={{ fontSize: 11, padding: '4px 10px' }}
+                              >
+                                <Radio size={10} style={{ marginRight: 4 }} />
+                                {p.name}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 10 }}>
                       <div>From: <strong>{srv.from_name || '(not set)'}</strong> &lt;{srv.from_email || srv.username}&gt;</div>
                     </div>

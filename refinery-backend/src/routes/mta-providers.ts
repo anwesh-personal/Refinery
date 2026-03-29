@@ -139,68 +139,11 @@ router.post('/domains/:domainId/check-dns', async (req, res) => {
   }
 });
 
-// ─── Delivery Server Management (proxied to MTA) ───
+// NOTE: Delivery server management has moved to /api/smtp-servers
+// SMTP servers are stored locally in ClickHouse and pushed to EMAs via
+// POST /api/smtp-servers/:id/push-to-ema
 
 import { getMtaAdapter } from '../services/mta/index.js';
-
-// GET  /api/mta-providers/delivery-servers      — list all delivery servers
-router.get('/delivery-servers', async (_req, res) => {
-  try {
-    const adapter = await getMtaAdapter() as any;
-    if (!adapter) return res.status(503).json({ error: 'MTA not configured' });
-    const result = await adapter.request('GET', 'v1/delivery-servers/index', undefined, { page: '1', per_page: '100' });
-    res.json(result.data?.records || []);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-// POST /api/mta-providers/delivery-servers      — create a delivery server
-router.post('/delivery-servers', async (req, res) => {
-  try {
-    const adapter = await getMtaAdapter() as any;
-    if (!adapter) return res.status(503).json({ error: 'MTA not configured' });
-    const { hostname, username, password, port, protocol, from_email, from_name, daily_quota, hourly_quota } = req.body;
-    if (!hostname || !username || !password) {
-      return res.status(400).json({ error: 'hostname, username, password are required' });
-    }
-    const payload = {
-      hostname,
-      username,
-      password,
-      port: port || 587,
-      protocol: protocol || 'smtp',
-      from_email: from_email || username,
-      from_name: from_name || 'Campaign',
-      status: 'active',
-      quota_value: daily_quota || 3000,
-      quota_time_value: 24,
-      quota_time_unit: 'hours',
-    };
-    const result = await adapter.request('POST', 'v1/delivery-servers/create', payload);
-    res.status(201).json(result.data?.record || result);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-// DELETE /api/mta-providers/delivery-servers/:id
-router.delete('/delivery-servers/:id', async (req, res) => {
-  try {
-    const adapter = await getMtaAdapter() as any;
-    if (!adapter) return res.status(503).json({ error: 'MTA not configured' });
-    await adapter.request('DELETE', `v1/delivery-servers/${req.params.id}/delete`);
-    res.json({ ok: true });
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-// POST /api/mta-providers/delivery-servers/:id/test
-router.post('/delivery-servers/:id/test', async (req, res) => {
-  try {
-    const adapter = await getMtaAdapter() as any;
-    if (!adapter) return res.status(503).json({ error: 'MTA not configured' });
-    // MailWizz doesn't have a test endpoint — we verify by fetching it
-    const result = await adapter.request('GET', `v1/delivery-servers/${req.params.id}`);
-    const server = result.data?.record;
-    res.json({ ok: !!server, status: server?.status || 'unknown', hostname: server?.hostname });
-  } catch (e: any) { res.status(500).json({ error: e.message, ok: false }); }
-});
 
 // POST /api/mta-providers/webhooks/setup  — configure MailWizz to POST back to Refinery
 router.post('/webhooks/setup', async (req, res) => {

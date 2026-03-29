@@ -7,7 +7,7 @@ import { query } from '../../db/clickhouse.js';
 // Config stored in system_config (ClickHouse), same as other configs
 // ═══════════════════════════════════════════════════════════════
 
-export type { MTAAdapter, MTAList, MTASubscriber, MTACampaign, MTACampaignStats, CreateCampaignInput } from './adapter.js';
+export type { MTAAdapter, MTAList, MTASubscriber, MTACampaign, MTACampaignStats, CreateCampaignInput, MTADeliveryServer, RegisterDeliveryServerInput } from './adapter.js';
 
 interface MTAConfig {
   provider: string;

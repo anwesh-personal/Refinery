@@ -17,14 +17,11 @@ interface Props {
   initial?: Partial<ProviderFormData> & { id?: string };
 }
 
+// Only show EMA platforms that actually have a working adapter.
+// MailWizz = campaign management EMA (self-hosted).
+// More can be added when their adapters are built.
 const PROVIDER_TYPES = [
-  { value: 'mailwizz', label: 'MailWizz' },
-  { value: 'sendgrid', label: 'SendGrid' },
-  { value: 'ses', label: 'Amazon SES' },
-  { value: 'mailgun', label: 'Mailgun' },
-  { value: 'sparkpost', label: 'SparkPost' },
-  { value: 'postmark', label: 'Postmark' },
-  { value: 'smtp', label: 'Generic SMTP' },
+  { value: 'mailwizz', label: 'MailWizz (Self-Hosted EMA)' },
 ];
 
 const inputStyle: React.CSSProperties = {
@@ -85,7 +82,7 @@ export default function MTAProviderModal({ open, onClose, onSave, initial }: Pro
         }}><X size={18} /></button>
 
         <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 24, color: 'var(--text-primary)' }}>
-          {isEdit ? 'Edit Provider' : 'Add MTA Provider'}
+          {isEdit ? 'Edit EMA Connection' : 'Add EMA Connection'}
         </h3>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>

@@ -38,13 +38,11 @@ interface SendingDomain {
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
-  mailwizz: 'MailWizz', sendgrid: 'SendGrid', ses: 'Amazon SES',
-  mailgun: 'Mailgun', sparkpost: 'SparkPost', postmark: 'Postmark', smtp: 'Generic SMTP',
+  mailwizz: 'MailWizz (Self-Hosted)',
 };
 
 const PROVIDER_COLORS: Record<string, string> = {
-  mailwizz: 'var(--blue)', sendgrid: 'var(--accent)', ses: 'var(--yellow)',
-  mailgun: 'var(--red)', sparkpost: 'var(--green)', postmark: 'var(--accent)', smtp: 'var(--text-tertiary)',
+  mailwizz: 'var(--blue)',
 };
 
 export default function MTAConfigPage() {
@@ -159,9 +157,9 @@ export default function MTAConfigPage() {
   return (
     <>
       <PageHeader
-        title="MTA & Swarm Config"
-        sub="Manage your email sending infrastructure. Connect providers, register domains, verify DNS."
-        description="Add your MailWizz instance or other EMA providers here. Register sending domains and verify their DNS health (SPF, DKIM, DMARC). The default provider is used for all campaign dispatches from the Queue page."
+        title="Email Infrastructure"
+        sub="Manage your EMA connections and SMTP delivery servers."
+        description="Connect your Email Marketing Application (MailWizz) here. SMTP delivery servers are managed separately below — add your servers, test them, then push to your EMA."
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20, marginBottom: 36 }}>
@@ -181,10 +179,10 @@ export default function MTAConfigPage() {
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Providers ({providers.length})</h3>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>EMA Connections ({providers.length})</h3>
         <div style={{ display: 'flex', gap: 8 }}>
           <Button variant="ghost" icon={<RefreshCw size={14} />} onClick={fetchData}>Refresh</Button>
-          <Button icon={<Plus size={14} />} onClick={() => { setEditProvider(null); setModalOpen(true); }}>Add Provider</Button>
+          <Button icon={<Plus size={14} />} onClick={() => { setEditProvider(null); setModalOpen(true); }}>Add EMA</Button>
         </div>
       </div>
 
@@ -200,8 +198,8 @@ export default function MTAConfigPage() {
             background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16,
           }}>
             <Radio size={28} style={{ marginBottom: 12, opacity: 0.4 }} />
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>No MTA Providers</div>
-            <div style={{ fontSize: 13 }}>Click "Add Provider" to connect MailWizz or another EMA</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>No EMA Connected</div>
+            <div style={{ fontSize: 13 }}>Click "Add EMA" to connect MailWizz or another email marketing application</div>
           </div>
         ) : (
           providers.map(provider => {

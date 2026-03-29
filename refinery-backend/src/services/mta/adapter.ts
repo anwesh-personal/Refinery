@@ -57,6 +57,30 @@ export interface CreateCampaignInput {
   reply_to?: string;
 }
 
+export interface MTADeliveryServer {
+  id: string;
+  hostname: string;
+  username: string;
+  port: number;
+  protocol: string;
+  from_email: string;
+  from_name: string;
+  status: string;
+  quota_value?: number;
+}
+
+export interface RegisterDeliveryServerInput {
+  hostname: string;
+  username: string;
+  password: string;
+  port?: number;
+  protocol?: string;
+  from_email?: string;
+  from_name?: string;
+  daily_quota?: number;
+  hourly_quota?: number;
+}
+
 export interface MTAAdapter {
   readonly provider: string;
 
@@ -89,4 +113,13 @@ export interface MTAAdapter {
 
   /** Configure webhook URLs on the MTA so it POSTs events back to Refinery */
   setupWebhooks(baseUrl: string): Promise<{ configured: boolean; webhooks: string[] }>;
+
+  /** Register a delivery server (SMTP pipe) on the EMA */
+  registerDeliveryServer(input: RegisterDeliveryServerInput): Promise<MTADeliveryServer>;
+
+  /** List all delivery servers registered on the EMA */
+  listDeliveryServers(): Promise<MTADeliveryServer[]>;
+
+  /** Remove a delivery server from the EMA */
+  deleteDeliveryServer(serverId: string): Promise<{ ok: boolean }>;
 }

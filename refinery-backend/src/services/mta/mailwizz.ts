@@ -5,6 +5,8 @@ import type {
   MTACampaign,
   MTACampaignStats,
   CreateCampaignInput,
+  MTADeliveryServer,
+  RegisterDeliveryServerInput,
 } from './adapter.js';
 
 // ═══════════════════════════════════════════════════════════════
@@ -293,5 +295,64 @@ export class MailWizzAdapter implements MTAAdapter {
       configured: configured.length > 0,
       webhooks: configured,
     };
+  }
+
+  // ── Delivery Server Management ──
+
+  async registerDeliveryServer(input: RegisterDeliveryServerInput): Promise<MTADeliveryServer> {
+    const payload = {
+      hostname: input.hostname,
+      username: input.username,
+      password: input.password,
+      port: input.port || 587,
+      protocol: input.protocol || 'smtp',
+      from_email: input.from_email || input.username,
+      from_name: input.from_name || 'Campaign',
+      status: 'active',
+      // MailWizz uses quota_value + quota_time_value + quota_time_unit
+      quota_value: input.daily_quota || 3000,
+      quota_time_value: 24,
+      quota_time_unit: 'hours',
+    };
+
+    const res = await this.request<any>('POST', 'v1/delivery-servers/create', payload);
+    const record = res?.data?.record || res || {};
+
+    return {
+      id: record.server_id || record.delivery_server_id || '',
+      hostname: record.hostname || input.hostname,
+      username: record.username || input.username,
+      port: Number(record.port) || input.port || 587,
+      protocol: record.protocol || input.protocol || 'smtp',
+      from_email: record.from_email || input.from_email || '',
+      from_name: record.from_name || input.from_name || '',
+      status: record.status || 'active',
+      quota_value: Number(record.quota_value) || input.daily_quota,
+    };
+  }
+
+  async listDeliveryServers(): Promise<MTADeliveryServer[]> {
+    const res = await this.request<any>('GET', 'v1/delivery-servers/index', undefined, {
+      page: '1', per_page: '100',
+    });
+    const records = res?.data?.records || res || [];
+    if (!Array.isArray(records)) return [];
+
+    return records.map((r: any) => ({
+      id: r.server_id || r.delivery_server_id || '',
+      hostname: r.hostname || '',
+      username: r.username || '',
+      port: Number(r.port) || 587,
+      protocol: r.protocol || 'smtp',
+      from_email: r.from_email || '',
+      from_name: r.from_name || '',
+      status: r.status || 'unknown',
+      quota_value: Number(r.quota_value) || undefined,
+    }));
+  }
+
+  async deleteDeliveryServer(serverId: string): Promise<{ ok: boolean }> {
+    await this.request('DELETE', `v1/delivery-servers/${serverId}/delete`);
+    return { ok: true };
   }
 }
