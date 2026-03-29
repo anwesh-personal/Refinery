@@ -22,10 +22,10 @@ interface BounceResult {
 }
 interface Job { id: string; status: string; totalProcessed: number; safe: number; uncertain: number; risky: number; results: any[] }
 
-const RISK_BG: Record<string, string> = { low: '#10a37f15', medium: '#ffd70015', high: '#ff6b3515', critical: '#ef444415' };
-const RISK_COLOR: Record<string, string> = { low: '#10a37f', medium: '#d4a800', high: '#ff6b35', critical: '#ef4444' };
-const SEV_COLOR: Record<string, string> = { info: '#4285f4', warning: '#ffd700', critical: '#ef4444' };
-const PRIO_COLOR: Record<string, string> = { immediate: '#ef4444', before_send: '#ff6b35', ongoing: '#4285f4' };
+const RISK_BG: Record<string, string> = { low: 'var(--green-muted)', medium: 'var(--yellow-muted)', high: 'var(--red-muted)', critical: 'var(--red-muted)' };
+const RISK_COLOR: Record<string, string> = { low: 'var(--green)', medium: 'var(--yellow)', high: 'var(--red)', critical: 'var(--red)' };
+const SEV_COLOR: Record<string, string> = { info: 'var(--blue)', warning: 'var(--yellow)', critical: 'var(--red)' };
+const PRIO_COLOR: Record<string, string> = { immediate: 'var(--red)', before_send: 'var(--yellow)', ongoing: 'var(--blue)' };
 
 const DEFAULT_CONFIG: BounceConfig = {
   analysisMode: 'pre_send', focusAreas: { smtpPatterns: true, domainHealth: true, infrastructureRisk: true, catchAllRisk: true, providerAnalysis: true, temporalPatterns: true },
@@ -71,9 +71,9 @@ export default function BounceAnalysisPage() {
     <>
       {/* Hero */}
       <div style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-sidebar) 100%)', borderRadius: 20, border: '1px solid var(--border)', padding: '28px 32px', marginBottom: 24, position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: '#ef4444', opacity: 0.04 }} />
+        <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'var(--red)', opacity: 0.04 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Activity size={18} style={{ color: '#fff' }} /></div>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 70%, #000) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Activity size={18} style={{ color: 'var(--accent-contrast, #fff)' }} /></div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Bounce Analysis</h1>
         </div>
         <p style={{ fontSize: 12, color: 'var(--text-tertiary)', maxWidth: 600, lineHeight: 1.6 }}>Pre-send deliverability prediction. Identifies bounce risks, domain health issues, and provides actionable recommendations.</p>
@@ -90,7 +90,7 @@ export default function BounceAnalysisPage() {
               </select>
               <ChevronDown size={12} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-tertiary)' }} />
             </div>
-            <button onClick={run} disabled={analyzing || !selectedJobId} style={{ padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, opacity: (analyzing || !selectedJobId) ? 0.5 : 1 }}>
+            <button onClick={run} disabled={analyzing || !selectedJobId} style={{ padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 70%, #000) 100%)', color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, opacity: (analyzing || !selectedJobId) ? 0.5 : 1 }}>
               {analyzing ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Activity size={14} />} {analyzing ? 'Analyzing...' : 'Analyze Bounces'}
             </button>
           </div>
@@ -108,14 +108,14 @@ export default function BounceAnalysisPage() {
             <div><label style={labelStyle}>Risk Tolerance</label>
               <div style={{ display: 'flex', gap: 4 }}>
                 {(['conservative', 'balanced', 'aggressive'] as const).map(r => (
-                  <button key={r} onClick={() => setConfig(p => ({ ...p, riskTolerance: r }))} style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: `1px solid ${config.riskTolerance === r ? '#ef4444' : 'var(--border)'}`, background: config.riskTolerance === r ? '#ef4444' : 'transparent', color: config.riskTolerance === r ? '#fff' : 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{r}</button>
+                  <button key={r} onClick={() => setConfig(p => ({ ...p, riskTolerance: r }))} style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: `1px solid ${config.riskTolerance === r ? 'var(--red)' : 'var(--border)'}`, background: config.riskTolerance === r ? 'var(--red)' : 'transparent', color: config.riskTolerance === r ? 'var(--accent-contrast, #fff)' : 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{r}</button>
                 ))}
               </div>
             </div>
             <div><label style={labelStyle}>Sender Reputation</label>
               <div style={{ display: 'flex', gap: 4 }}>
                 {(['new', 'warm', 'established'] as const).map(s => (
-                  <button key={s} onClick={() => setConfig(p => ({ ...p, senderReputation: s }))} style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: `1px solid ${config.senderReputation === s ? '#ef4444' : 'var(--border)'}`, background: config.senderReputation === s ? '#ef4444' : 'transparent', color: config.senderReputation === s ? '#fff' : 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{s}</button>
+                  <button key={s} onClick={() => setConfig(p => ({ ...p, senderReputation: s }))} style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: `1px solid ${config.senderReputation === s ? 'var(--red)' : 'var(--border)'}`, background: config.senderReputation === s ? 'var(--red)' : 'transparent', color: config.senderReputation === s ? 'var(--accent-contrast, #fff)' : 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{s}</button>
                 ))}
               </div>
             </div>
@@ -126,7 +126,7 @@ export default function BounceAnalysisPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6 }}>
               {Object.entries(config.focusAreas).map(([k, v]) => (
                 <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, color: 'var(--text-secondary)' }}>
-                  <input type="checkbox" checked={v} onChange={e => setConfig(p => ({ ...p, focusAreas: { ...p.focusAreas, [k]: e.target.checked } }))} style={{ accentColor: '#ef4444' }} />{k.replace(/([A-Z])/g, ' $1').trim()}
+                  <input type="checkbox" checked={v} onChange={e => setConfig(p => ({ ...p, focusAreas: { ...p.focusAreas, [k]: e.target.checked } }))} style={{ accentColor: 'var(--red)' }} />{k.replace(/([A-Z])/g, ' $1').trim()}
                 </label>
               ))}
             </div>
@@ -135,7 +135,7 @@ export default function BounceAnalysisPage() {
             <div style={{ display: 'flex', gap: 8 }}>
               {['safe', 'uncertain', 'risky', 'reject'].map(c => (
                 <label key={c} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 11, color: 'var(--text-secondary)' }}>
-                  <input type="checkbox" checked={config.includeClassifications.includes(c)} onChange={e => setConfig(p => ({ ...p, includeClassifications: e.target.checked ? [...p.includeClassifications, c] : p.includeClassifications.filter(x => x !== c) }))} style={{ accentColor: '#ef4444' }} />{c}
+                  <input type="checkbox" checked={config.includeClassifications.includes(c)} onChange={e => setConfig(p => ({ ...p, includeClassifications: e.target.checked ? [...p.includeClassifications, c] : p.includeClassifications.filter(x => x !== c) }))} style={{ accentColor: 'var(--red)' }} />{c}
                 </label>
               ))}
             </div>
@@ -149,7 +149,7 @@ export default function BounceAnalysisPage() {
           {/* Tabs */}
           <div style={{ display: 'flex', gap: 2, marginBottom: 16, background: 'var(--bg-card)', borderRadius: 10, padding: 3, border: '1px solid var(--border)', width: 'fit-content' }}>
             {[{ k: 'overview', l: 'Overview' }, { k: 'domains', l: `Domains (${result.domainHealth?.length || 0})` }, { k: 'patterns', l: `Patterns (${result.patterns?.length || 0})` }, { k: 'actions', l: 'Actions' }].map(t => (
-              <button key={t.k} onClick={() => setActiveTab(t.k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: activeTab === t.k ? '#ef4444' : 'transparent', color: activeTab === t.k ? '#fff' : 'var(--text-tertiary)', fontSize: 11, fontWeight: 600 }}>{t.l}</button>
+              <button key={t.k} onClick={() => setActiveTab(t.k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: activeTab === t.k ? 'var(--red)' : 'transparent', color: activeTab === t.k ? 'var(--accent-contrast, #fff)' : 'var(--text-tertiary)', fontSize: 11, fontWeight: 600 }}>{t.l}</button>
             ))}
           </div>
 
@@ -164,16 +164,16 @@ export default function BounceAnalysisPage() {
                   <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>Predicted Bounce Rate</div>
                 </div>
                 <div style={{ display: 'flex', gap: 16 }}>
-                  <StatBox icon={<CheckCircle size={14} />} value={result.overview.safeToSend} label="Safe" color="#10a37f" />
-                  <StatBox icon={<AlertTriangle size={14} />} value={result.overview.needsReview} label="Review" color="#ffd700" />
-                  <StatBox icon={<XCircle size={14} />} value={result.overview.doNotSend} label="Don't Send" color="#ef4444" />
+                  <StatBox icon={<CheckCircle size={14} />} value={result.overview.safeToSend} label="Safe" color="var(--green)" />
+                  <StatBox icon={<AlertTriangle size={14} />} value={result.overview.needsReview} label="Review" color="var(--yellow)" />
+                  <StatBox icon={<XCircle size={14} />} value={result.overview.doNotSend} label="Don't Send" color="var(--red)" />
                 </div>
               </div>
               {/* Bounce breakdown */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
                 <StatCard label="Total Analyzed" value={result.overview.totalAnalyzed} />
-                <StatCard label="Hard Bounces" value={result.overview.predictedHardBounces} color="#ef4444" />
-                <StatCard label="Soft Bounces" value={result.overview.predictedSoftBounces} color="#ff6b35" />
+                <StatCard label="Hard Bounces" value={result.overview.predictedHardBounces} color="var(--red)" />
+                <StatCard label="Soft Bounces" value={result.overview.predictedSoftBounces} color="var(--yellow)" />
               </div>
               {/* Risk Breakdown bars */}
               {result.riskBreakdown?.length > 0 && (
@@ -200,16 +200,16 @@ export default function BounceAnalysisPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 10 }}>
               {(result.domainHealth || []).map((d, i) => (
                 <div key={i} style={{ background: 'var(--bg-card)', borderRadius: 12, border: `1px solid ${RISK_COLOR[d.riskLevel] || 'var(--border)'}30`, overflow: 'hidden' }}>
-                  <div style={{ height: 4, background: 'var(--bg-app)' }}><div style={{ height: '100%', width: `${d.healthScore}%`, background: d.healthScore >= 70 ? '#10a37f' : d.healthScore >= 40 ? '#ffd700' : '#ef4444', borderRadius: 2 }} /></div>
+                  <div style={{ height: 4, background: 'var(--bg-app)' }}><div style={{ height: '100%', width: `${d.healthScore}%`, background: d.healthScore >= 70 ? 'var(--green)' : d.healthScore >= 40 ? 'var(--yellow)' : 'var(--red)', borderRadius: 2 }} /></div>
                   <div style={{ padding: '12px 16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                       <div><div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' }}>{d.domain}</div><div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{d.leadCount} leads · {d.predictedBounceRate} bounce</div></div>
-                      <div style={{ width: 42, height: 42, borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: d.healthScore >= 70 ? '#10a37f15' : d.healthScore >= 40 ? '#ffd70015' : '#ef444415', border: `1px solid ${d.healthScore >= 70 ? '#10a37f' : d.healthScore >= 40 ? '#ffd700' : '#ef4444'}40` }}>
-                        <div style={{ fontSize: 16, fontWeight: 900, color: d.healthScore >= 70 ? '#10a37f' : d.healthScore >= 40 ? '#d4a800' : '#ef4444' }}>{d.healthScore}</div>
+                      <div style={{ width: 42, height: 42, borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: d.healthScore >= 70 ? 'var(--green-muted)' : d.healthScore >= 40 ? 'var(--yellow-muted)' : 'var(--red-muted)', border: `1px solid ${d.healthScore >= 70 ? 'var(--green)' : d.healthScore >= 40 ? 'var(--yellow)' : 'var(--red)'}` }}>
+                        <div style={{ fontSize: 16, fontWeight: 900, color: d.healthScore >= 70 ? 'var(--green)' : d.healthScore >= 40 ? 'var(--yellow)' : 'var(--red)' }}>{d.healthScore}</div>
                       </div>
                     </div>
-                    {d.issues.length > 0 && <div style={{ marginBottom: 6 }}>{d.issues.map((is, j) => <div key={j} style={{ fontSize: 10, color: '#ef4444', display: 'flex', gap: 4, marginBottom: 2 }}><XCircle size={10} style={{ flexShrink: 0, marginTop: 1 }} /> {is}</div>)}</div>}
-                    {d.recommendations.length > 0 && <div>{d.recommendations.map((r, j) => <div key={j} style={{ fontSize: 10, color: 'var(--text-secondary)', display: 'flex', gap: 4, marginBottom: 2 }}><Shield size={10} style={{ color: '#4285f4', flexShrink: 0, marginTop: 1 }} /> {r}</div>)}</div>}
+                    {d.issues.length > 0 && <div style={{ marginBottom: 6 }}>{d.issues.map((is, j) => <div key={j} style={{ fontSize: 10, color: 'var(--red)', display: 'flex', gap: 4, marginBottom: 2 }}><XCircle size={10} style={{ flexShrink: 0, marginTop: 1 }} /> {is}</div>)}</div>}
+                    {d.recommendations.length > 0 && <div>{d.recommendations.map((r, j) => <div key={j} style={{ fontSize: 10, color: 'var(--text-secondary)', display: 'flex', gap: 4, marginBottom: 2 }}><Shield size={10} style={{ color: 'var(--blue)', flexShrink: 0, marginTop: 1 }} /> {r}</div>)}</div>}
                   </div>
                 </div>
               ))}
@@ -283,7 +283,7 @@ function EmptyState() {
   return <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--bg-card)', borderRadius: 20, border: '1px dashed var(--border)' }}><AlertTriangle size={32} style={{ color: 'var(--text-tertiary)', marginBottom: 12, opacity: 0.4 }} /><div style={{ fontSize: 14, color: 'var(--text-tertiary)', fontWeight: 500 }}>No verification jobs found</div></div>;
 }
 function Toast({ toast, onClose }: { toast: { type: string; message: string }; onClose: () => void }) {
-  return <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420, background: toast.type === 'error' ? 'var(--red)' : 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)', animation: 'slideUp 0.25s ease-out', cursor: 'pointer' }} onClick={onClose}>{toast.type === 'error' ? '❌' : 'ℹ️'} {toast.message}</div>;
+  return <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420, background: toast.type === 'error' ? 'var(--red)' : 'var(--accent)', color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 600, boxShadow: 'var(--shadow-lg)', animation: 'slideUp 0.25s ease-out', cursor: 'pointer' }} onClick={onClose}>{toast.type === 'error' ? '❌' : 'ℹ️'} {toast.message}</div>;
 }
 const labelStyle: React.CSSProperties = { fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 4 };
 const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 11px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 };

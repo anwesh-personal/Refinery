@@ -76,9 +76,9 @@ export default function ImpersonationBanner() {
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
         background: readOnly
-          ? 'linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%)'
+          ? 'linear-gradient(90deg, var(--purple) 0%, color-mix(in srgb, var(--purple) 80%, var(--blue)) 100%)'
           : 'linear-gradient(90deg, var(--yellow) 0%, var(--accent) 100%)',
-        color: '#fff', padding: '8px 24px',
+        color: 'var(--accent-contrast, #fff)', padding: '8px 24px',
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
         fontSize: 13, fontWeight: 700,
         boxShadow: '0 2px 12px rgba(0,0,0,0.2)',
@@ -93,7 +93,7 @@ export default function ImpersonationBanner() {
         <span style={{
           display: 'inline-flex', alignItems: 'center', gap: 4,
           padding: '2px 10px', borderRadius: 4, fontSize: 10,
-          background: 'rgba(255,255,255,0.2)', color: '#fff',
+          background: 'rgba(255,255,255,0.2)', color: 'var(--accent-contrast, #fff)',
           fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase',
         }}>
           <Shield size={10} /> Read-Only
@@ -106,7 +106,7 @@ export default function ImpersonationBanner() {
         style={{
           marginLeft: 12, padding: '4px 16px', borderRadius: 6,
           fontSize: 12, fontWeight: 700, border: '2px solid #fff',
-          background: 'transparent', color: '#fff', cursor: restoring ? 'wait' : 'pointer',
+          background: 'transparent', color: 'var(--accent-contrast, #fff)', cursor: restoring ? 'wait' : 'pointer',
           display: 'flex', alignItems: 'center', gap: 6,
           transition: 'all 0.15s', opacity: restoring ? 0.6 : 1,
         }}

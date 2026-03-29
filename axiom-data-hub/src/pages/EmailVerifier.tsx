@@ -920,7 +920,7 @@ export default function EmailVerifierPage() {
                         disabled={!result.results || result.results.length === 0}
                         icon={<Database size={14} />}
                         variant="secondary"
-                        style={{ background: 'var(--green)', color: '#fff', border: 'none' }}
+                        style={{ background: 'var(--green)', color: 'var(--accent-contrast, #fff)', border: 'none' }}
                       >
                         Save to Vault
                       </Button>
@@ -938,7 +938,7 @@ export default function EmailVerifierPage() {
                         disabled={pushingToDB || !result.results || result.results.length === 0}
                         icon={pushingToDB ? <ShieldAlert size={14} className="animate-pulse" /> : <Database size={14} />}
                         variant="secondary"
-                        style={pushingToDB ? {} : { background: 'var(--green)', color: '#fff', border: 'none' }}
+                        style={pushingToDB ? {} : { background: 'var(--green)', color: 'var(--accent-contrast, #fff)', border: 'none' }}
                       >
                         {pushingToDB ? 'Pushing...' : 'Push to DB'}
                       </Button>
@@ -1581,7 +1581,7 @@ export default function EmailVerifierPage() {
                   finally { setVaultSaving(false); }
                 }} style={{
                   padding: '10px 20px', borderRadius: 10, border: 'none',
-                  background: 'var(--green)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                  background: 'var(--green)', color: 'var(--accent-contrast, #fff)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
                   opacity: (vaultSaving || !vaultCustomName.trim() || !Object.values(vaultClassifications).some(Boolean)) ? 0.4 : 1,
                 }}>{vaultSaving ? '🔄 Saving...' : '🔐 Save to Vault'}</button>
               )}

@@ -30,8 +30,8 @@ interface SegmentationResult {
 interface Job { id: string; status: string; totalProcessed: number; safe: number; uncertain: number; risky: number; results: any[] }
 
 const PRIORITY_COLORS: Record<string, { border: string; bg: string; text: string; gradient: string }> = {
-  high: { border: '#10a37f', bg: '#10a37f12', text: '#10a37f', gradient: 'linear-gradient(135deg, #10a37f 0%, #0a7a5e 100%)' },
-  medium: { border: '#ffd700', bg: '#ffd70012', text: '#d4a800', gradient: 'linear-gradient(135deg, #ffd700 0%, #ccad00 100%)' },
+  high: { border: 'var(--green)', bg: '#10a37f12', text: 'var(--green)', gradient: 'linear-gradient(135deg, var(--green) 0%, color-mix(in srgb, var(--green) 70%, #000) 100%)' },
+  medium: { border: 'var(--yellow)', bg: '#ffd70012', text: 'var(--yellow)', gradient: 'linear-gradient(135deg, var(--yellow) 0%, #ccad00 100%)' },
   low: { border: '#a0a0a0', bg: '#a0a0a012', text: '#888', gradient: 'linear-gradient(135deg, #999 0%, #666 100%)' },
 };
 
@@ -112,10 +112,10 @@ export default function ListSegmentationPage() {
         borderRadius: 20, border: '1px solid var(--border)', padding: '28px 32px',
         marginBottom: 24, position: 'relative', overflow: 'hidden',
       }}>
-        <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: '#8b5cf6', opacity: 0.04 }} />
+        <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'var(--purple)', opacity: 0.04 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #8b5cf6 0%, #6d3ad4 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Layers size={18} style={{ color: '#fff' }} />
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--purple) 0%, color-mix(in srgb, var(--purple) 70%, #000) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Layers size={18} style={{ color: 'var(--accent-contrast, #fff)' }} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>List Segmentation</h1>
         </div>
@@ -138,7 +138,7 @@ export default function ListSegmentationPage() {
             </div>
             <button onClick={runSegmentation} disabled={segmenting || !selectedJobId} style={{
               padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer',
-              background: 'linear-gradient(135deg, #8b5cf6 0%, #6d3ad4 100%)', color: '#fff',
+              background: 'linear-gradient(135deg, var(--purple) 0%, color-mix(in srgb, var(--purple) 70%, #000) 100%)', color: 'var(--accent-contrast, #fff)',
               fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6,
               opacity: (segmenting || !selectedJobId) ? 0.5 : 1, boxShadow: '0 4px 14px rgba(139,92,246,0.25)',
             }}>
@@ -173,8 +173,8 @@ export default function ListSegmentationPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <input type="range" min={2} max={10} value={config.targetSegments}
                   onChange={e => setConfig(prev => ({ ...prev, targetSegments: Number(e.target.value) }))}
-                  style={{ flex: 1, accentColor: '#8b5cf6' }} />
-                <span style={{ fontSize: 18, fontWeight: 800, color: '#8b5cf6', minWidth: 24, textAlign: 'center' }}>{config.targetSegments}</span>
+                  style={{ flex: 1, accentColor: 'var(--purple)' }} />
+                <span style={{ fontSize: 18, fontWeight: 800, color: 'var(--purple)', minWidth: 24, textAlign: 'center' }}>{config.targetSegments}</span>
               </div>
             </div>
             <div>
@@ -197,7 +197,7 @@ export default function ListSegmentationPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6 }}>
               {Object.entries(config.criteria).map(([key, val]) => (
                 <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, color: 'var(--text-secondary)' }}>
-                  <input type="checkbox" checked={val} onChange={e => setConfig(prev => ({ ...prev, criteria: { ...prev.criteria, [key]: e.target.checked } }))} style={{ accentColor: '#8b5cf6' }} />
+                  <input type="checkbox" checked={val} onChange={e => setConfig(prev => ({ ...prev, criteria: { ...prev.criteria, [key]: e.target.checked } }))} style={{ accentColor: 'var(--purple)' }} />
                   {key.replace(/([A-Z])/g, ' $1').trim()}
                 </label>
               ))}
@@ -207,11 +207,11 @@ export default function ListSegmentationPage() {
           {/* Strategy toggles */}
           <div style={{ display: 'flex', gap: 16, marginTop: 14 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, color: 'var(--text-secondary)' }}>
-              <input type="checkbox" checked={config.generateCampaignStrategy} onChange={e => setConfig(prev => ({ ...prev, generateCampaignStrategy: e.target.checked }))} style={{ accentColor: '#8b5cf6' }} />
+              <input type="checkbox" checked={config.generateCampaignStrategy} onChange={e => setConfig(prev => ({ ...prev, generateCampaignStrategy: e.target.checked }))} style={{ accentColor: 'var(--purple)' }} />
               <strong>Generate Campaign Strategy</strong>
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11, color: 'var(--text-secondary)' }}>
-              <input type="checkbox" checked={config.generateSubjectLines} onChange={e => setConfig(prev => ({ ...prev, generateSubjectLines: e.target.checked }))} style={{ accentColor: '#8b5cf6' }} />
+              <input type="checkbox" checked={config.generateSubjectLines} onChange={e => setConfig(prev => ({ ...prev, generateSubjectLines: e.target.checked }))} style={{ accentColor: 'var(--purple)' }} />
               <strong>Generate Subject Lines</strong>
             </label>
           </div>
@@ -225,7 +225,7 @@ export default function ListSegmentationPage() {
                   <input type="checkbox" checked={config.includeClassifications.includes(c)}
                     onChange={e => setConfig(prev => ({
                       ...prev, includeClassifications: e.target.checked ? [...prev.includeClassifications, c] : prev.includeClassifications.filter(x => x !== c)
-                    }))} style={{ accentColor: '#8b5cf6' }} />
+                    }))} style={{ accentColor: 'var(--purple)' }} />
                   {c}
                 </label>
               ))}
@@ -248,10 +248,10 @@ export default function ListSegmentationPage() {
           {/* Overall Strategy */}
           {result.overallStrategy && (
             <div style={{
-              background: 'linear-gradient(135deg, #8b5cf610 0%, #6d3ad410 100%)',
-              borderRadius: 16, border: '1px solid #8b5cf630', padding: 22, marginBottom: 20,
+              background: 'linear-gradient(135deg, color-mix(in srgb, var(--purple) 6%, transparent) 0%, color-mix(in srgb, var(--purple) 6%, transparent) 100%)',
+              borderRadius: 16, border: '1px solid var(--purple)', padding: 22, marginBottom: 20,
             }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--purple)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
                 📋 Overall Strategy
               </div>
               <div style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.7, fontWeight: 500, marginBottom: 10 }}>
@@ -294,14 +294,14 @@ export default function ListSegmentationPage() {
                   {/* Gradient Header */}
                   <div style={{ background: pc.gradient, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{seg.name}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-contrast, #fff)' }}>{seg.name}</div>
                       <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>
                         {seg.leadCount} leads · {seg.estimatedResponseRate} est. response
                       </div>
                     </div>
                     <div style={{
                       padding: '4px 10px', borderRadius: 6, fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
-                      background: 'rgba(255,255,255,0.2)', color: '#fff',
+                      background: 'rgba(255,255,255,0.2)', color: 'var(--accent-contrast, #fff)',
                     }}>{seg.priority}</div>
                   </div>
 
@@ -406,7 +406,7 @@ export default function ListSegmentationPage() {
         <div style={{
           position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420,
           background: toast.type === 'error' ? 'var(--red)' : toast.type === 'warning' ? 'var(--yellow)' : 'var(--accent)',
-          color: '#fff', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+          color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
           animation: 'slideUp 0.25s ease-out', cursor: 'pointer',
         }} onClick={() => setToast(null)}>
           {toast.type === 'error' ? '❌' : toast.type === 'warning' ? '⚠️' : 'ℹ️'} {toast.message}

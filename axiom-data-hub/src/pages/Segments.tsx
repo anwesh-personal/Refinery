@@ -214,7 +214,7 @@ export default function SegmentsPage() {
           <Wand2 size={14} />
           <span style={{ flex: 1 }}>Auto-fix suggestion: <code style={{ fontFamily: 'monospace', fontWeight: 700 }}>{suggestion}</code></span>
           <button onClick={() => { setFilterQuery(suggestion); setSuggestion(null); setError(null); }}
-            style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+            style={{ background: 'var(--accent)', color: 'var(--accent-contrast, #fff)', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
             Apply Fix
           </button>
         </div>
@@ -478,7 +478,7 @@ export default function SegmentsPage() {
                 <Wand2 size={13} />
                 <span style={{ flex: 1 }}>Auto-fix: <code style={{ fontFamily: 'monospace', fontWeight: 700 }}>{editSuggestion}</code></span>
                 <button onClick={() => { setEditQuery(editSuggestion); setEditSuggestion(null); setEditError(null); }}
-                  style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Apply</button>
+                  style={{ background: 'var(--accent)', color: 'var(--accent-contrast, #fff)', border: 'none', borderRadius: 6, padding: '3px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Apply</button>
               </div>
             )}
             <FilterBuilder

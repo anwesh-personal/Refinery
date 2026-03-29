@@ -63,14 +63,14 @@ interface MemberNodeData {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const ROLE_COLORS: Record<string, string> = {
-  superadmin: '#a855f7',
-  admin: '#3b82f6',
+  superadmin: 'var(--purple)',
+  admin: 'var(--blue)',
   member: '#10b981',
 };
 
-const TEAM_COLORS = ['#a855f7', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899'];
+const TEAM_COLORS = ['var(--purple)', 'var(--blue)', '#10b981', '#f59e0b', 'var(--red)', '#06b6d4', '#ec4899'];
 
-const getRoleColor = (role: string) => ROLE_COLORS[role] || '#8b5cf6';
+const getRoleColor = (role: string) => ROLE_COLORS[role] || 'var(--purple)';
 const formatNum = (n: number) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : n.toString();
 const timeAgo = (d: string | null) => {
   if (!d) return 'Never';

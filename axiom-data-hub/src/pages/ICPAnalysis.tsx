@@ -43,15 +43,15 @@ interface ICPResult {
 interface Job { id: string; status: string; totalProcessed: number; safe: number; uncertain: number; risky: number; rejected: number; results: any[] }
 
 const INSIGHT_COLORS: Record<string, string> = {
-  opportunity: '#10a37f', warning: '#ff6b35', pattern: '#4285f4', recommendation: '#8b5cf6',
+  opportunity: 'var(--green)', warning: 'var(--yellow)', pattern: 'var(--blue)', recommendation: 'var(--purple)',
 };
 const INSIGHT_ICONS: Record<string, string> = {
   opportunity: '🚀', warning: '⚠️', pattern: '🔍', recommendation: '💡',
 };
 const IMPACT_BADGE: Record<string, { bg: string; color: string }> = {
-  high: { bg: '#ff6b3520', color: '#ff6b35' },
-  medium: { bg: '#ffd70020', color: '#d4a800' },
-  low: { bg: '#10a37f20', color: '#10a37f' },
+  high: { bg: '#ff6b3520', color: 'var(--yellow)' },
+  medium: { bg: '#ffd70020', color: 'var(--yellow)' },
+  low: { bg: '#10a37f20', color: 'var(--green)' },
 };
 
 const DEFAULT_CONFIG: ICPConfig = {
@@ -124,10 +124,10 @@ export default function ICPAnalysisPage() {
         borderRadius: 20, border: '1px solid var(--border)', padding: '28px 32px',
         marginBottom: 24, position: 'relative', overflow: 'hidden',
       }}>
-        <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: '#4285f4', opacity: 0.04 }} />
+        <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'var(--blue)', opacity: 0.04 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #4285f4 0%, #1a5bc4 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Target size={18} style={{ color: '#fff' }} />
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--blue) 0%, color-mix(in srgb, var(--blue) 70%, #000) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Target size={18} style={{ color: 'var(--accent-contrast, #fff)' }} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>ICP Analysis</h1>
         </div>
@@ -150,7 +150,7 @@ export default function ICPAnalysisPage() {
             </div>
             <button onClick={runAnalysis} disabled={analyzing || !selectedJobId} style={{
               padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer',
-              background: 'linear-gradient(135deg, #4285f4 0%, #1a5bc4 100%)', color: '#fff',
+              background: 'linear-gradient(135deg, var(--blue) 0%, color-mix(in srgb, var(--blue) 70%, #000) 100%)', color: 'var(--accent-contrast, #fff)',
               fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6,
               opacity: (analyzing || !selectedJobId) ? 0.5 : 1, boxShadow: '0 4px 14px rgba(66,133,244,0.25)',
             }}>
@@ -284,10 +284,10 @@ export default function ICPAnalysisPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {/* Summary */}
               <div style={{
-                background: 'linear-gradient(135deg, #4285f410 0%, #1a5bc410 100%)',
-                borderRadius: 16, border: '1px solid #4285f430', padding: 22,
+                background: 'linear-gradient(135deg, color-mix(in srgb, var(--blue) 6%, transparent) 0%, color-mix(in srgb, var(--blue) 6%, transparent) 100%)',
+                borderRadius: 16, border: '1px solid var(--blue)', padding: 22,
               }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#4285f4', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
                   <Target size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} /> ICP Summary
                 </div>
                 <div style={{ fontSize: 14, color: 'var(--text-primary)', lineHeight: 1.7, fontWeight: 500 }}>
@@ -297,15 +297,15 @@ export default function ICPAnalysisPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
                 {/* Ideal Domains */}
-                <ProfileCard title="Ideal Domain Types" icon={<Globe size={14} />} color="#10a37f" items={result.profile.idealDomainTypes} />
+                <ProfileCard title="Ideal Domain Types" icon={<Globe size={14} />} color="var(--green)" items={result.profile.idealDomainTypes} />
                 {/* Ideal Roles */}
-                <ProfileCard title="Ideal Roles" icon={<Users size={14} />} color="#4285f4" items={result.profile.idealRoles} />
+                <ProfileCard title="Ideal Roles" icon={<Users size={14} />} color="var(--blue)" items={result.profile.idealRoles} />
                 {/* Ideal Providers */}
-                <ProfileCard title="Ideal Providers" icon={<Shield size={14} />} color="#8b5cf6" items={result.profile.idealProviders} />
+                <ProfileCard title="Ideal Providers" icon={<Shield size={14} />} color="var(--purple)" items={result.profile.idealProviders} />
                 {/* Strength Indicators */}
-                <ProfileCard title="Strength Indicators" icon={<TrendingUp size={14} />} color="#ffd700" items={result.profile.strengthIndicators} />
+                <ProfileCard title="Strength Indicators" icon={<TrendingUp size={14} />} color="var(--yellow)" items={result.profile.strengthIndicators} />
                 {/* Red Flags */}
-                <ProfileCard title="Red Flags" icon={<AlertTriangle size={14} />} color="#ff6b35" items={result.profile.redFlags} />
+                <ProfileCard title="Red Flags" icon={<AlertTriangle size={14} />} color="var(--yellow)" items={result.profile.redFlags} />
               </div>
             </div>
           )}
@@ -325,7 +325,7 @@ export default function ICPAnalysisPage() {
                   <div style={{ height: 4, background: 'var(--bg-app)' }}>
                     <div style={{
                       height: '100%', width: `${seg.matchPercentage}%`,
-                      background: seg.matchPercentage >= 80 ? '#10a37f' : seg.matchPercentage >= 50 ? '#ffd700' : '#ff6b35',
+                      background: seg.matchPercentage >= 80 ? 'var(--green)' : seg.matchPercentage >= 50 ? 'var(--yellow)' : 'var(--yellow)',
                       borderRadius: 2, transition: 'width 0.5s ease',
                     }} />
                   </div>
@@ -337,10 +337,10 @@ export default function ICPAnalysisPage() {
                       </div>
                       <div style={{
                         padding: '6px 12px', borderRadius: 10, textAlign: 'center',
-                        background: seg.matchPercentage >= 80 ? '#10a37f15' : seg.matchPercentage >= 50 ? '#ffd70015' : '#ff6b3515',
-                        border: `1px solid ${seg.matchPercentage >= 80 ? '#10a37f' : seg.matchPercentage >= 50 ? '#ffd700' : '#ff6b35'}40`,
+                        background: seg.matchPercentage >= 80 ? 'var(--green-muted)' : seg.matchPercentage >= 50 ? 'var(--yellow-muted)' : 'var(--yellow-muted)',
+                        border: `1px solid ${seg.matchPercentage >= 80 ? 'var(--green)' : seg.matchPercentage >= 50 ? 'var(--yellow)' : 'var(--yellow)'}40`,
                       }}>
-                        <div style={{ fontSize: 18, fontWeight: 900, color: seg.matchPercentage >= 80 ? '#10a37f' : seg.matchPercentage >= 50 ? '#d4a800' : '#ff6b35' }}>{seg.matchPercentage}%</div>
+                        <div style={{ fontSize: 18, fontWeight: 900, color: seg.matchPercentage >= 80 ? 'var(--green)' : seg.matchPercentage >= 50 ? 'var(--yellow)' : 'var(--yellow)' }}>{seg.matchPercentage}%</div>
                         <div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Match</div>
                       </div>
                     </div>
@@ -404,10 +404,10 @@ export default function ICPAnalysisPage() {
           {activeTab === 'distribution' && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
               {([
-                { key: 'domainTypes', title: 'Domain Types', icon: <Globe size={14} />, color: '#4285f4' },
-                { key: 'roleTypes', title: 'Role Distribution', icon: <Users size={14} />, color: '#10a37f' },
-                { key: 'providerTypes', title: 'Email Providers', icon: <Shield size={14} />, color: '#8b5cf6' },
-                { key: 'authQuality', title: 'Auth Quality', icon: <Shield size={14} />, color: '#ffd700' },
+                { key: 'domainTypes', title: 'Domain Types', icon: <Globe size={14} />, color: 'var(--blue)' },
+                { key: 'roleTypes', title: 'Role Distribution', icon: <Users size={14} />, color: 'var(--green)' },
+                { key: 'providerTypes', title: 'Email Providers', icon: <Shield size={14} />, color: 'var(--purple)' },
+                { key: 'authQuality', title: 'Auth Quality', icon: <Shield size={14} />, color: 'var(--yellow)' },
               ] as const).map(dist => {
                 const items = result.distribution?.[dist.key] || [];
                 return (
@@ -448,7 +448,7 @@ export default function ICPAnalysisPage() {
           position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
           padding: '14px 22px', borderRadius: 12, maxWidth: 420,
           background: toast.type === 'error' ? 'var(--red)' : toast.type === 'warning' ? 'var(--yellow)' : 'var(--accent)',
-          color: '#fff', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+          color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
           animation: 'slideUp 0.25s ease-out', cursor: 'pointer',
         }} onClick={() => setToast(null)}>
           {toast.type === 'error' ? '❌' : toast.type === 'warning' ? '⚠️' : 'ℹ️'} {toast.message}

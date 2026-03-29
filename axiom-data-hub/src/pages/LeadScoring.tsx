@@ -51,11 +51,11 @@ interface VerificationJob {
 }
 
 const TIER_COLORS: Record<string, string> = {
-  platinum: '#c0c0e0', gold: '#ffd700', silver: '#c0c0c0', bronze: '#cd7f32', dead: '#666',
+  platinum: '#c0c0e0', gold: 'var(--yellow)', silver: '#c0c0c0', bronze: '#cd7f32', dead: '#666',
 };
 const TIER_GRADIENTS: Record<string, string> = {
   platinum: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  gold: 'linear-gradient(135deg, #f5af19 0%, #f12711 100%)',
+  gold: 'linear-gradient(135deg, color-mix(in srgb, var(--yellow) 80%, #000) 0%, #f12711 100%)',
   silver: 'linear-gradient(135deg, #b5b5b5 0%, #8e8e8e 100%)',
   bronze: 'linear-gradient(135deg, #cd7f32 0%, #8b5a2b 100%)',
   dead: 'linear-gradient(135deg, #555 0%, #333 100%)',
@@ -159,10 +159,10 @@ export default function LeadScoringPage() {
         borderRadius: 20, border: '1px solid var(--border)', padding: '28px 32px',
         marginBottom: 24, position: 'relative', overflow: 'hidden',
       }}>
-        <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: '#ffd700', opacity: 0.04 }} />
+        <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'var(--yellow)', opacity: 0.04 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #ffd700 0%, #f5af19 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Trophy size={18} style={{ color: '#fff' }} />
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--yellow) 0%, color-mix(in srgb, var(--yellow) 80%, #000) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Trophy size={18} style={{ color: 'var(--accent-contrast, #fff)' }} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>AI Lead Scoring</h1>
         </div>
@@ -189,7 +189,7 @@ export default function LeadScoringPage() {
             </div>
             <button onClick={runScoring} disabled={scoring || !selectedJobId} style={{
               padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer',
-              background: 'linear-gradient(135deg, #ffd700 0%, #f5af19 100%)', color: '#000',
+              background: 'linear-gradient(135deg, var(--yellow) 0%, color-mix(in srgb, var(--yellow) 80%, #000) 100%)', color: 'var(--accent-contrast, #000)',
               fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6,
               opacity: (scoring || !selectedJobId) ? 0.5 : 1, boxShadow: '0 4px 14px rgba(255,215,0,0.2)',
               transition: 'all 0.15s',
@@ -464,7 +464,7 @@ export default function LeadScoringPage() {
           position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
           padding: '14px 22px', borderRadius: 12, maxWidth: 420,
           background: toast.type === 'error' ? 'var(--red)' : toast.type === 'warning' ? 'var(--yellow)' : 'var(--accent)',
-          color: '#fff', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+          color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
           animation: 'slideUp 0.25s ease-out', cursor: 'pointer',
         }} onClick={() => setToast(null)}>
           {toast.type === 'error' ? '❌' : toast.type === 'warning' ? '⚠️' : 'ℹ️'} {toast.message}

@@ -17,13 +17,13 @@ interface TimeWindow { calls: number; tokens: number; cost: number }
 interface RecentCall { service: string; provider: string; model: string; tokens: number; latencyMs: number; success: boolean; wasFallback: boolean; cost: number; time: string }
 
 const FEATURES = [
-  { slug: 'lead_scoring', name: 'Lead Scoring', desc: 'AI-powered quality scoring with configurable weights and tier thresholds', icon: Sparkles, color: '#ffd700', gradient: 'linear-gradient(135deg, #ffd700 0%, #ccad00 100%)', path: '/lead-scoring' },
-  { slug: 'icp_analysis', name: 'ICP Analysis', desc: 'Build Ideal Customer Profiles from verified lead data', icon: Target, color: '#4285f4', gradient: 'linear-gradient(135deg, #4285f4 0%, #1a5bc4 100%)', path: '/icp-analysis' },
-  { slug: 'list_segmentation', name: 'List Segmentation', desc: 'Intelligent lead grouping with per-segment campaign strategy', icon: Layers, color: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6 0%, #6d3ad4 100%)', path: '/list-segmentation' },
-  { slug: 'bounce_analysis', name: 'Bounce Analysis', desc: 'Pre-send deliverability prediction and domain health scoring', icon: Activity, color: '#ef4444', gradient: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)', path: '/bounce-analysis' },
-  { slug: 'data_enrichment', name: 'Data Enrichment', desc: 'AI-inferred company, role, industry, tech stack from emails', icon: Database, color: '#10a37f', gradient: 'linear-gradient(135deg, #10a37f 0%, #0a7a5e 100%)', path: '/data-enrichment' },
+  { slug: 'lead_scoring', name: 'Lead Scoring', desc: 'AI-powered quality scoring with configurable weights and tier thresholds', icon: Sparkles, color: 'var(--yellow)', gradient: 'linear-gradient(135deg, #ffd700 0%, #ccad00 100%)', path: '/lead-scoring' },
+  { slug: 'icp_analysis', name: 'ICP Analysis', desc: 'Build Ideal Customer Profiles from verified lead data', icon: Target, color: 'var(--blue)', gradient: 'linear-gradient(135deg, #4285f4 0%, #1a5bc4 100%)', path: '/icp-analysis' },
+  { slug: 'list_segmentation', name: 'List Segmentation', desc: 'Intelligent lead grouping with per-segment campaign strategy', icon: Layers, color: 'var(--purple)', gradient: 'linear-gradient(135deg, #8b5cf6 0%, #6d3ad4 100%)', path: '/list-segmentation' },
+  { slug: 'bounce_analysis', name: 'Bounce Analysis', desc: 'Pre-send deliverability prediction and domain health scoring', icon: Activity, color: 'var(--red)', gradient: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)', path: '/bounce-analysis' },
+  { slug: 'data_enrichment', name: 'Data Enrichment', desc: 'AI-inferred company, role, industry, tech stack from emails', icon: Database, color: 'var(--green)', gradient: 'linear-gradient(135deg, #10a37f 0%, #0a7a5e 100%)', path: '/data-enrichment' },
   { slug: 'content_generation', name: 'Content Gen', desc: 'Email copywriting: subject lines, body, follow-ups, spam analysis', icon: PenTool, color: '#e91e63', gradient: 'linear-gradient(135deg, #e91e63 0%, #ad1457 100%)', path: '/content-generation' },
-  { slug: 'campaign_optimizer', name: 'Campaign Optimizer', desc: 'Send timing, volume pacing, A/B testing, reputation safeguards', icon: Rocket, color: '#ff6b35', gradient: 'linear-gradient(135deg, #ff6b35 0%, #cc5229 100%)', path: '/campaign-optimizer' },
+  { slug: 'campaign_optimizer', name: 'Campaign Optimizer', desc: 'Send timing, volume pacing, A/B testing, reputation safeguards', icon: Rocket, color: 'var(--yellow)', gradient: 'linear-gradient(135deg, #ff6b35 0%, #cc5229 100%)', path: '/campaign-optimizer' },
 ];
 
 const TYPE_ICONS: Record<string, string> = { anthropic: '🟣', gemini: '🔵', openai: '🟢', mistral: '🟠', private_vps: '🖥️', ollama: '🦙' };
@@ -61,7 +61,7 @@ export default function AIDashboardPage() {
       {/* Hero */}
       <div style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-sidebar) 100%)', borderRadius: 20, border: '1px solid var(--border)', padding: '28px 32px', marginBottom: 24, position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: -40, right: -40, width: 220, height: 220, borderRadius: '50%', background: 'var(--accent)', opacity: 0.04 }} />
-        <div style={{ position: 'absolute', bottom: -50, left: 200, width: 160, height: 160, borderRadius: '50%', background: '#8b5cf6', opacity: 0.03 }} />
+        <div style={{ position: 'absolute', bottom: -50, left: 200, width: 160, height: 160, borderRadius: '50%', background: 'var(--purple)', opacity: 0.03 }} />
         <div style={{ position: 'relative', zIndex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
             <div style={{ width: 40, height: 40, borderRadius: 12, background: 'var(--accent-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Sparkles size={20} style={{ color: 'var(--accent)' }} /></div>
@@ -86,12 +86,12 @@ export default function AIDashboardPage() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
             <MetricCard label="API Calls" value={displayCalls.toLocaleString()} icon={<Zap size={14} />} color="var(--accent)" />
-            <MetricCard label="Tokens Used" value={formatTokens(displayTokens)} icon={<Activity size={14} />} color="#8b5cf6" />
-            <MetricCard label="Est. Cost" value={`$${displayCost.toFixed(4)}`} icon={<TrendingUp size={14} />} color="#10a37f" />
+            <MetricCard label="Tokens Used" value={formatTokens(displayTokens)} icon={<Activity size={14} />} color="var(--purple)" />
+            <MetricCard label="Est. Cost" value={`$${displayCost.toFixed(4)}`} icon={<TrendingUp size={14} />} color="var(--green)" />
             {timeRange === 'all' && <>
-              <MetricCard label="Avg Latency" value={`${stats.totals.avgLatency}ms`} icon={<Clock size={14} />} color="#ffd700" />
-              <MetricCard label="Success Rate" value={`${stats.totals.successRate}%`} icon={<CheckCircle size={14} />} color="#10a37f" />
-              <MetricCard label="Fallback Rate" value={`${stats.totals.fallbackRate}%`} icon={<AlertTriangle size={14} />} color="#ff6b35" />
+              <MetricCard label="Avg Latency" value={`${stats.totals.avgLatency}ms`} icon={<Clock size={14} />} color="var(--yellow)" />
+              <MetricCard label="Success Rate" value={`${stats.totals.successRate}%`} icon={<CheckCircle size={14} />} color="var(--green)" />
+              <MetricCard label="Fallback Rate" value={`${stats.totals.fallbackRate}%`} icon={<AlertTriangle size={14} />} color="var(--yellow)" />
             </>}
           </div>
         </div>
@@ -113,11 +113,11 @@ export default function AIDashboardPage() {
               {/* Gradient header */}
               <div style={{ background: f.gradient, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Icon size={18} style={{ color: '#fff' }} />
-                  <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{f.name}</span>
+                  <Icon size={18} style={{ color: 'var(--accent-contrast, #fff)' }} />
+                  <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-contrast, #fff)' }}>{f.name}</span>
                 </div>
                 {usage && usage.calls > 0 && (
-                  <div style={{ padding: '3px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.2)', fontSize: 9, fontWeight: 700, color: '#fff' }}>
+                  <div style={{ padding: '3px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.2)', fontSize: 9, fontWeight: 700, color: 'var(--accent-contrast, #fff)' }}>
                     {usage.calls} calls
                   </div>
                 )}
@@ -129,7 +129,7 @@ export default function AIDashboardPage() {
                     <span>🔤 {formatTokens(usage.tokens)}</span>
                     <span>⚡ {usage.avgLatency}ms avg</span>
                     <span>💰 ${usage.cost.toFixed(4)}</span>
-                    {usage.errors > 0 && <span style={{ color: '#ef4444' }}>❌ {usage.errors}</span>}
+                    {usage.errors > 0 && <span style={{ color: 'var(--red)' }}>❌ {usage.errors}</span>}
                   </div>
                 ) : (
                   <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>No usage yet</div>
@@ -175,9 +175,9 @@ export default function AIDashboardPage() {
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    {c.success ? <CheckCircle size={9} style={{ color: '#10a37f' }} /> : <AlertTriangle size={9} style={{ color: '#ef4444' }} />}
+                    {c.success ? <CheckCircle size={9} style={{ color: 'var(--green)' }} /> : <AlertTriangle size={9} style={{ color: 'var(--red)' }} />}
                     {c.service.replace(/_/g, ' ')}
-                    {c.wasFallback && <span style={{ fontSize: 8, padding: '1px 4px', borderRadius: 3, background: '#ff6b3515', color: '#ff6b35', fontWeight: 700 }}>FB</span>}
+                    {c.wasFallback && <span style={{ fontSize: 8, padding: '1px 4px', borderRadius: 3, background: '#ff6b3515', color: 'var(--yellow)', fontWeight: 700 }}>FB</span>}
                   </div>
                   <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{c.provider} → {c.model}</div>
                 </div>

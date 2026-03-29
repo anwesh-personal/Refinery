@@ -237,7 +237,7 @@ export default function SegmentCard({ seg, onExecute, onDelete, onEdit, onRefres
           style={{
             display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 7,
             fontSize: 12, fontWeight: 600, cursor: executing ? 'not-allowed' : 'pointer', border: 'none',
-            background: 'var(--accent)', color: '#fff', opacity: executing ? 0.6 : 1,
+            background: 'var(--accent)', color: 'var(--accent-contrast, #fff)', opacity: executing ? 0.6 : 1,
           }}>
           {executing ? <Loader2 size={12} className="spin" /> : (count > 0 ? <RefreshCw size={12} /> : <Play size={12} />)}
           {executing ? 'Running...' : count > 0 ? 'Re-run' : 'Execute'}

@@ -104,7 +104,7 @@ const activityIcons: Record<string, any> = {
   target: Send,
 };
 
-const COLORS = ['#3b82f6', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444', '#ec4899', '#0ea5e9', '#6366f1'];
+const COLORS = ['var(--blue)', 'var(--purple)', 'var(--yellow)', '#10b981', 'var(--red)', '#ec4899', '#0ea5e9', '#6366f1'];
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -248,15 +248,15 @@ export default function DashboardPage() {
                 <AreaChart data={mappedIngestionTrends} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorVolume" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                      <stop offset="5%" stopColor="var(--blue)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--blue)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
                   <XAxis dataKey="formattedDay" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} dy={10} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} tickFormatter={(val) => formatNumber(val)} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Area type="monotone" dataKey="volume" name="Ingested Rows" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorVolume)" />
+                  <Area type="monotone" dataKey="volume" name="Ingested Rows" stroke="var(--blue)" strokeWidth={3} fillOpacity={1} fill="url(#colorVolume)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -317,7 +317,7 @@ export default function DashboardPage() {
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} tickFormatter={(val) => formatNumber(val)} />
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--bg-hover)' }} />
                 <Bar dataKey="Valid" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                <Bar dataKey="Invalid" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="Invalid" fill="var(--red)" radius={[4, 4, 0, 0]} maxBarSize={40} />
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -131,7 +131,7 @@ export default function AgentsPanel() {
         setEditModelId(full.model_id || '');
         setEditName(full.name || '');
         setEditRole(full.role || '');
-        setEditAccentColor(full.accent_color || '#8b5cf6');
+        setEditAccentColor(full.accent_color || 'var(--purple)');
         setEditAvatarUrl(full.avatar_url || '');
       }
     } catch {}
@@ -259,7 +259,7 @@ export default function AgentsPanel() {
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}><Loader2 size={24} style={{ animation: 'spin 1s linear infinite', color: 'var(--accent)' }} /></div>;
 
-  const color = selectedAgent?.accent_color || '#8b5cf6';
+  const color = selectedAgent?.accent_color || 'var(--purple)';
 
   // ═══ Agent Selection Grid ═══
   if (!selectedAgent || showModal) {

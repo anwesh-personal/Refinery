@@ -40,14 +40,14 @@ const TYPE_ICONS: Record<string, string> = {
   anthropic: '🟣', gemini: '🔵', openai: '🟢', mistral: '🟠', private_vps: '🖥️', ollama: '🦙',
 };
 const TYPE_COLORS: Record<string, string> = {
-  anthropic: '#d97757', gemini: '#4285f4', openai: '#10a37f', mistral: '#ff7000', private_vps: '#8b5cf6', ollama: '#a0a0a0',
+  anthropic: '#d97757', gemini: 'var(--blue)', openai: 'var(--green)', mistral: '#ff7000', private_vps: 'var(--purple)', ollama: '#a0a0a0',
 };
 const TYPE_GRADIENTS: Record<string, string> = {
   anthropic: 'linear-gradient(135deg, #d97757 0%, #b85d3a 100%)',
-  gemini: 'linear-gradient(135deg, #4285f4 0%, #1a5bc4 100%)',
-  openai: 'linear-gradient(135deg, #10a37f 0%, #0a7a5e 100%)',
+  gemini: 'linear-gradient(135deg, var(--blue) 0%, color-mix(in srgb, var(--blue) 70%, #000) 100%)',
+  openai: 'linear-gradient(135deg, var(--green) 0%, color-mix(in srgb, var(--green) 70%, #000) 100%)',
   mistral: 'linear-gradient(135deg, #ff7000 0%, #cc5a00 100%)',
-  private_vps: 'linear-gradient(135deg, #8b5cf6 0%, #6d3ad4 100%)',
+  private_vps: 'linear-gradient(135deg, var(--purple) 0%, color-mix(in srgb, var(--purple) 70%, #000) 100%)',
   ollama: 'linear-gradient(135deg, #666 0%, #444 100%)',
 };
 const TYPE_LABELS: Record<string, string> = {
@@ -255,7 +255,7 @@ export default function AISettingsPage() {
             </div>
             <button onClick={() => setShowAddForm(!showAddForm)} style={{
               padding: '10px 20px', borderRadius: 10, border: 'none', cursor: 'pointer',
-              background: 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 700,
+              background: 'var(--accent)', color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 700,
               display: 'flex', alignItems: 'center', gap: 6, transition: 'transform 0.15s, box-shadow 0.15s',
               boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
             }}
@@ -323,7 +323,7 @@ export default function AISettingsPage() {
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <button onClick={addProvider} disabled={adding || !newLabel.trim()} style={{
-              padding: '9px 22px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff',
+              padding: '9px 22px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'var(--accent-contrast, #fff)',
               fontSize: 12, fontWeight: 700, cursor: 'pointer', opacity: (adding || !newLabel.trim()) ? 0.5 : 1,
             }}>{adding ? 'Creating...' : 'Create Provider'}</button>
             <button onClick={() => setShowAddForm(false)} style={{
@@ -425,7 +425,7 @@ export default function AISettingsPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span style={{ fontSize: 22, filter: 'brightness(1.2)' }}>{TYPE_ICONS[p.provider_type]}</span>
                         <div>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{p.label}</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-contrast, #fff)' }}>{p.label}</div>
                           <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: 4 }}>
                             {TYPE_LABELS[p.provider_type]}
                             {p.validated && <><span style={{ margin: '0 2px' }}>·</span><CheckCircle size={9} style={{ color: '#90EE90' }} /> Verified</>}
@@ -452,7 +452,7 @@ export default function AISettingsPage() {
                         </label>
                         {/* Expand/collapse */}
                         <button onClick={() => setExpandedCards(prev => ({ ...prev, [p.id]: !expanded }))} style={{
-                          background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, padding: 4, cursor: 'pointer', color: '#fff',
+                          background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, padding: 4, cursor: 'pointer', color: 'var(--accent-contrast, #fff)',
                           transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s',
                         }}>
                           <ChevronDown size={14} />
@@ -683,7 +683,7 @@ export default function AISettingsPage() {
           position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
           padding: '14px 22px', borderRadius: 12, maxWidth: 420,
           background: toast.type === 'error' ? 'var(--red)' : toast.type === 'warning' ? 'var(--yellow)' : 'var(--accent)',
-          color: '#fff', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+          color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
           animation: 'slideUp 0.25s ease-out',
           cursor: 'pointer', backdropFilter: 'blur(8px)',
         }} onClick={() => setToast(null)}>

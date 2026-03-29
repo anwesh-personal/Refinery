@@ -34,7 +34,7 @@ function HubNode({ data }: NodeProps<Node<NodeData>>) {
       padding: '20px 28px', borderRadius: 20, minWidth: 220, textAlign: 'center',
       background: `linear-gradient(135deg, ${data.color} 0%, ${data.color}bb 100%)`,
       border: `3px solid ${data.color}`, boxShadow: `0 12px 40px ${data.color}40`,
-      color: '#fff', cursor: 'pointer', position: 'relative',
+      color: 'var(--accent-contrast, #fff)', cursor: 'pointer', position: 'relative',
     }}>
       <Handle type="target" position={Position.Top} style={{ background: data.color, border: '2px solid #fff', width: 12, height: 12 }} />
       <div style={{ fontSize: 32, marginBottom: 6, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}>{data.icon}</div>
@@ -134,7 +134,7 @@ const initialNodes: Node<NodeData>[] = [
   { id: 's3', type: 'data', position: { x: 630, y: 0 }, data: { label: 'S3 / MinIO', subtitle: 'Raw data files', color: '#666', icon: '☁️', layer: 'data', details: '**S3-compatible storage** holds your raw data files:\n\n- CSV/TSV uploads from data providers\n- Parquet files for bulk ingestion\n- Export files (target lists)\n\nIngestion pulls files from S3 → transforms → loads into ClickHouse.' } },
 
   // Row 1: Pipeline Steps
-  { id: 'ingest', type: 'pipeline', position: { x: 0, y: 150 }, data: { label: 'Ingestion', subtitle: 'Pull raw data from S3 into ClickHouse', color: '#4285f4', icon: '📥', layer: 'pipeline', details: '**Step 1: Ingestion**\n\nPulls raw data files from S3/MinIO, maps columns to the Universal Person schema, and bulk-inserts into ClickHouse.\n\n**What happens:** Source files (CSV/Parquet) → column mapping → dedup → INSERT INTO universal_person\n\n**Page:** `/ingestion`\n**Supports:** Multiple ingestion jobs, resume on failure, row-level dedup' } },
+  { id: 'ingest', type: 'pipeline', position: { x: 0, y: 150 }, data: { label: 'Ingestion', subtitle: 'Pull raw data from S3 into ClickHouse', color: 'var(--blue)', icon: '📥', layer: 'pipeline', details: '**Step 1: Ingestion**\n\nPulls raw data files from S3/MinIO, maps columns to the Universal Person schema, and bulk-inserts into ClickHouse.\n\n**What happens:** Source files (CSV/Parquet) → column mapping → dedup → INSERT INTO universal_person\n\n**Page:** `/ingestion`\n**Supports:** Multiple ingestion jobs, resume on failure, row-level dedup' } },
   { id: 'merge', type: 'pipeline', position: { x: 220, y: 150 }, data: { label: 'Merge', subtitle: 'Consolidate duplicate records', color: '#9c27b0', icon: '🔀', layer: 'pipeline', details: '**Step 2: Merge Playground**\n\nFinds duplicate leads (same email, same name+company, etc.) and consolidates them into a single golden record using configurable resolution rules.\n\n**What happens:** Identify merge keys → preview conflicts → resolve with anyIf/priority logic → materialize merged output\n\n**Page:** `/ingestion` (Merge tab)' } },
   { id: 'segment', type: 'pipeline', position: { x: 440, y: 150 }, data: { label: 'Segments', subtitle: 'Filter leads into targetable groups', color: '#fbbc05', icon: '📊', layer: 'pipeline', details: '**Step 3: Segmentation**\n\nCreates filtered subsets of your database based on criteria you define — industry, location, job title, company size, etc.\n\n**What happens:** Define filter conditions → generate segment → segment gets a materialized view in ClickHouse\n\n**Page:** `/segments`\n**Powers:** Target list creation, verification scoping' } },
   { id: 'verify', type: 'pipeline', position: { x: 660, y: 150 }, data: { label: 'Verification', subtitle: 'Validate emails via SMTP probing', color: '#ea4335', icon: '✅', layer: 'pipeline', details: '**Step 4: Verification**\n\nProbes each email address via SMTP to determine deliverability. Marks as valid/risky/invalid/unknown.\n\n**What happens:** Queue emails → DNS lookup → SMTP EHLO/MAIL FROM/RCPT TO → catch-all detection → risk scoring → write results back\n\n**Page:** `/verification`\n**Uses:** Verify550 API + built-in SMTP engine' } },
@@ -142,20 +142,20 @@ const initialNodes: Node<NodeData>[] = [
   { id: 'queue', type: 'pipeline', position: { x: 470, y: 300 }, data: { label: 'Queue', subtitle: 'Dispatch emails via MTA', color: '#e91e63', icon: '📤', layer: 'pipeline', details: '**Step 6: Send Queue**\n\nDispatches your target lists through configured MTA satellites (Postfix/PowerMTA).\n\n**What happens:** Target list → send queue → IP warmup scheduling → SMTP dispatch → delivery tracking\n\n**Page:** `/queue`' } },
 
   // Row 2: AI Nexus Hub (Center)
-  { id: 'nexus', type: 'hub', position: { x: 310, y: 440 }, data: { label: 'AI NEXUS', subtitle: 'Configuration hub for all AI agents, tools, and providers', color: '#8b5cf6', icon: '🧠', layer: 'hub', details: '**AI Nexus** is the central configuration hub.\n\n**It does NOT process data itself.** Instead, it:\n\n1. **Configures AI Providers** — API keys, model selection, fallback routing\n2. **Manages Agents** — Core prompts, prompt stacks, knowledge bases, temperature\n3. **Tracks Usage** — Token counts, costs, latency per call\n4. **Hosts Tools** — Standalone AI features (ICP, Scoring, Enrichment, etc.)\n\n**The agents configured here are then surfaced contextually on the pages where they\'re useful.** You don\'t chat with agents in AI Nexus — you configure them here, use them where they work.\n\n**Page:** `/ai-nexus`' } },
+  { id: 'nexus', type: 'hub', position: { x: 310, y: 440 }, data: { label: 'AI NEXUS', subtitle: 'Configuration hub for all AI agents, tools, and providers', color: 'var(--purple)', icon: '🧠', layer: 'hub', details: '**AI Nexus** is the central configuration hub.\n\n**It does NOT process data itself.** Instead, it:\n\n1. **Configures AI Providers** — API keys, model selection, fallback routing\n2. **Manages Agents** — Core prompts, prompt stacks, knowledge bases, temperature\n3. **Tracks Usage** — Token counts, costs, latency per call\n4. **Hosts Tools** — Standalone AI features (ICP, Scoring, Enrichment, etc.)\n\n**The agents configured here are then surfaced contextually on the pages where they\'re useful.** You don\'t chat with agents in AI Nexus — you configure them here, use them where they work.\n\n**Page:** `/ai-nexus`' } },
 
   // Row 3: Agents (Bottom)
-  { id: 'cortex', type: 'agent', position: { x: 0, y: 620 }, data: { label: 'Cortex', subtitle: 'Data Scientist — analyzes your data, finds patterns, builds ICPs', color: '#4285f4', icon: '📊', layer: 'agent', pages: ['Database', 'Merge', 'Segments'], dataAccess: ['ClickHouse schema', 'Table stats', 'Column metadata', 'Row samples'], capabilities: ['data_analysis', 'icp_building', 'pattern_detection', 'segmentation'], details: '**Cortex** is your data scientist.\n\n**Where you\'ll find it:** A collapsible card at the bottom of the **Database**, **Merge Playground**, and **Segments** pages.\n\n**What it sees:** Your ClickHouse table schema, column names, row counts, data distributions, and current filter state.\n\n**What to ask it:**\n- "Analyze the data quality of this table"\n- "Find patterns in my lead data"\n- "Suggest segments based on industry and seniority"\n- "Build an ICP from my best-performing leads"\n\n**How it connects:** When you click the Cortex card on the Database page, it automatically receives your table metadata, column list, and current view as context. No copy-pasting needed.' } },
-  { id: 'bastion', type: 'agent', position: { x: 190, y: 620 }, data: { label: 'Bastion', subtitle: 'SMTP Specialist — guards your infrastructure', color: '#ef4444', icon: '🛡️', layer: 'agent', pages: ['Config', 'MTA'], dataAccess: ['Server configs', 'DNS records', 'System settings'], capabilities: ['dns_analysis', 'smtp_troubleshooting', 'blacklist_checking'], details: '**Bastion** is your infrastructure guardian.\n\n**Where you\'ll find it:** A collapsible card at the bottom of the **Config** and **MTA Config** pages.\n\n**What it sees:** Your configured servers (ClickHouse, S3, MTA), their connection status, ping history, and system settings.\n\n**What to ask it:**\n- "Check the health of all my servers"\n- "Analyze my DNS configuration for deliverability"\n- "What\'s wrong with my MTA configuration?"\n- "IP warmup recommendations for a new satellite"\n\n**How it connects:** Server data from the Config page is automatically passed as context.' } },
+  { id: 'cortex', type: 'agent', position: { x: 0, y: 620 }, data: { label: 'Cortex', subtitle: 'Data Scientist — analyzes your data, finds patterns, builds ICPs', color: 'var(--blue)', icon: '📊', layer: 'agent', pages: ['Database', 'Merge', 'Segments'], dataAccess: ['ClickHouse schema', 'Table stats', 'Column metadata', 'Row samples'], capabilities: ['data_analysis', 'icp_building', 'pattern_detection', 'segmentation'], details: '**Cortex** is your data scientist.\n\n**Where you\'ll find it:** A collapsible card at the bottom of the **Database**, **Merge Playground**, and **Segments** pages.\n\n**What it sees:** Your ClickHouse table schema, column names, row counts, data distributions, and current filter state.\n\n**What to ask it:**\n- "Analyze the data quality of this table"\n- "Find patterns in my lead data"\n- "Suggest segments based on industry and seniority"\n- "Build an ICP from my best-performing leads"\n\n**How it connects:** When you click the Cortex card on the Database page, it automatically receives your table metadata, column list, and current view as context. No copy-pasting needed.' } },
+  { id: 'bastion', type: 'agent', position: { x: 190, y: 620 }, data: { label: 'Bastion', subtitle: 'SMTP Specialist — guards your infrastructure', color: 'var(--red)', icon: '🛡️', layer: 'agent', pages: ['Config', 'MTA'], dataAccess: ['Server configs', 'DNS records', 'System settings'], capabilities: ['dns_analysis', 'smtp_troubleshooting', 'blacklist_checking'], details: '**Bastion** is your infrastructure guardian.\n\n**Where you\'ll find it:** A collapsible card at the bottom of the **Config** and **MTA Config** pages.\n\n**What it sees:** Your configured servers (ClickHouse, S3, MTA), their connection status, ping history, and system settings.\n\n**What to ask it:**\n- "Check the health of all my servers"\n- "Analyze my DNS configuration for deliverability"\n- "What\'s wrong with my MTA configuration?"\n- "IP warmup recommendations for a new satellite"\n\n**How it connects:** Server data from the Config page is automatically passed as context.' } },
   { id: 'muse', type: 'agent', position: { x: 380, y: 620 }, data: { label: 'Muse', subtitle: 'Email Marketer — writes copy, plans campaigns', color: '#e91e63', icon: '✉️', layer: 'agent', pages: ['Targets', 'Queue'], dataAccess: ['Target lists', 'Segment composition', 'Audience profiles'], capabilities: ['copywriting', 'campaign_strategy', 'send_optimization'], details: '**Muse** is your creative marketing strategist.\n\n**Where you\'ll find it:** A collapsible card on the **Targets** and **Queue** pages.\n\n**What it sees:** Your target lists (names, email counts, status), available segments with their niche tags and lead counts.\n\n**What to ask it:**\n- "Write a 5-email cold outreach sequence for this audience"\n- "Optimize send timing for 50K emails"\n- "Subject line ideas for SaaS CTOs"\n- "Campaign strategy for this niche"\n\n**How it connects:** Target list and segment data is passed as context. Muse knows your audience composition.' } },
-  { id: 'overseer', type: 'agent', position: { x: 560, y: 620 }, data: { label: 'Overseer', subtitle: 'Supervisor — sees everything, makes strategic calls', color: '#ffd700', icon: '👑', layer: 'agent', pages: ['Dashboard'], dataAccess: ['All stats', 'All trends', 'All activity', 'All agents'], capabilities: ['strategic_planning', 'cross_domain_analysis', 'executive_briefing'], details: '**Overseer** is your AI twin — the all-rounder supervisor.\n\n**Where you\'ll find it:** A collapsible card on the **Dashboard** page.\n\n**What it sees:** Everything: total records, storage usage, ingestion trends (7d), verification trends (7d), top segments, recent activity feed.\n\n**What to ask it:**\n- "Give me a daily briefing"\n- "What should I prioritize today?"\n- "ROI analysis of my verification pipeline"\n- "Strategic recommendations for scaling"\n\n**How it connects:** Dashboard stats are automatically injected. Overseer has the widest context of any agent.' } },
-  { id: 'litmus', type: 'agent', position: { x: 750, y: 620 }, data: { label: 'Litmus', subtitle: 'Verification Engineer — the definitive test', color: '#10a37f', icon: '🔬', layer: 'agent', pages: ['Verification'], dataAccess: ['Job results', 'SMTP responses', 'Bounce patterns', 'Domain analysis'], capabilities: ['result_analysis', 'catch_all_detection', 'risk_assessment', 'retry_strategy'], details: '**Litmus** is your verification engineer.\n\n**Where you\'ll find it:** A collapsible card on the **Verification** page — appears after a job finishes.\n\n**What it sees:** Complete job data: file name, total emails, processed count, suppression results breakdown (ok, ok_for_all, risky, unknown, etc.), upload/completion timestamps.\n\n**What to ask it:**\n- "Analyze these verification results"\n- "Which domains are catch-all?"\n- "Recommend which unknowns to retry"\n- "Risk assessment for this batch"\n\n**How it connects:** After a verification job completes, Litmus automatically receives the full job results as context. Just click and ask.' } },
+  { id: 'overseer', type: 'agent', position: { x: 560, y: 620 }, data: { label: 'Overseer', subtitle: 'Supervisor — sees everything, makes strategic calls', color: 'var(--yellow)', icon: '👑', layer: 'agent', pages: ['Dashboard'], dataAccess: ['All stats', 'All trends', 'All activity', 'All agents'], capabilities: ['strategic_planning', 'cross_domain_analysis', 'executive_briefing'], details: '**Overseer** is your AI twin — the all-rounder supervisor.\n\n**Where you\'ll find it:** A collapsible card on the **Dashboard** page.\n\n**What it sees:** Everything: total records, storage usage, ingestion trends (7d), verification trends (7d), top segments, recent activity feed.\n\n**What to ask it:**\n- "Give me a daily briefing"\n- "What should I prioritize today?"\n- "ROI analysis of my verification pipeline"\n- "Strategic recommendations for scaling"\n\n**How it connects:** Dashboard stats are automatically injected. Overseer has the widest context of any agent.' } },
+  { id: 'litmus', type: 'agent', position: { x: 750, y: 620 }, data: { label: 'Litmus', subtitle: 'Verification Engineer — the definitive test', color: 'var(--green)', icon: '🔬', layer: 'agent', pages: ['Verification'], dataAccess: ['Job results', 'SMTP responses', 'Bounce patterns', 'Domain analysis'], capabilities: ['result_analysis', 'catch_all_detection', 'risk_assessment', 'retry_strategy'], details: '**Litmus** is your verification engineer.\n\n**Where you\'ll find it:** A collapsible card on the **Verification** page — appears after a job finishes.\n\n**What it sees:** Complete job data: file name, total emails, processed count, suppression results breakdown (ok, ok_for_all, risky, unknown, etc.), upload/completion timestamps.\n\n**What to ask it:**\n- "Analyze these verification results"\n- "Which domains are catch-all?"\n- "Recommend which unknowns to retry"\n- "Risk assessment for this batch"\n\n**How it connects:** After a verification job completes, Litmus automatically receives the full job results as context. Just click and ask.' } },
 ];
 
 const initialEdges: Edge[] = [
   // Data → Pipeline
-  { id: 'e-s3-ing', source: 's3', target: 'ingest', type: 'smoothstep', animated: true, style: { stroke: '#4285f4', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#4285f4' } },
-  { id: 'e-ch-ing', source: 'ch', target: 'ingest', type: 'smoothstep', style: { stroke: '#4285f440' } },
+  { id: 'e-s3-ing', source: 's3', target: 'ingest', type: 'smoothstep', animated: true, style: { stroke: 'var(--blue)', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--blue)' } },
+  { id: 'e-ch-ing', source: 'ch', target: 'ingest', type: 'smoothstep', style: { stroke: 'var(--blue)' } },
 
   // Pipeline flow (L→R)
   { id: 'e-ing-merge', source: 'ingest', target: 'merge', animated: true, style: { stroke: '#9c27b0', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#9c27b0' } },
@@ -166,27 +166,27 @@ const initialEdges: Edge[] = [
   { id: 'e-tgt-q', source: 'target', target: 'queue', animated: true, style: { stroke: '#e91e63', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#e91e63' } },
 
   // Nexus ↔ Agents
-  { id: 'e-nx-cortex', source: 'nexus', target: 'cortex', type: 'smoothstep', style: { stroke: '#8b5cf640', strokeWidth: 1.5 }, label: 'configures', labelStyle: { fontSize: 7, fill: 'var(--text-tertiary)' } },
-  { id: 'e-nx-bastion', source: 'nexus', target: 'bastion', type: 'smoothstep', style: { stroke: '#8b5cf640', strokeWidth: 1.5 } },
-  { id: 'e-nx-muse', source: 'nexus', target: 'muse', type: 'smoothstep', style: { stroke: '#8b5cf640', strokeWidth: 1.5 } },
-  { id: 'e-nx-overseer', source: 'nexus', target: 'overseer', type: 'smoothstep', style: { stroke: '#8b5cf640', strokeWidth: 1.5 } },
-  { id: 'e-nx-litmus', source: 'nexus', target: 'litmus', type: 'smoothstep', style: { stroke: '#8b5cf640', strokeWidth: 1.5 } },
+  { id: 'e-nx-cortex', source: 'nexus', target: 'cortex', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 }, label: 'configures', labelStyle: { fontSize: 7, fill: 'var(--text-tertiary)' } },
+  { id: 'e-nx-bastion', source: 'nexus', target: 'bastion', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 } },
+  { id: 'e-nx-muse', source: 'nexus', target: 'muse', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 } },
+  { id: 'e-nx-overseer', source: 'nexus', target: 'overseer', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 } },
+  { id: 'e-nx-litmus', source: 'nexus', target: 'litmus', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 } },
 
   // Pipeline → Nexus (AI enhancement)
-  { id: 'e-ing-nx', source: 'ingest', target: 'nexus', sourceHandle: 'bot', type: 'smoothstep', style: { stroke: '#4285f420' } },
+  { id: 'e-ing-nx', source: 'ingest', target: 'nexus', sourceHandle: 'bot', type: 'smoothstep', style: { stroke: 'var(--blue)' } },
   { id: 'e-seg-nx', source: 'segment', target: 'nexus', sourceHandle: 'bot', type: 'smoothstep', style: { stroke: '#fbbc0520' } },
   { id: 'e-ver-nx', source: 'verify', target: 'nexus', sourceHandle: 'bot', type: 'smoothstep', style: { stroke: '#ea433520' } },
 
   // Data stores
-  { id: 'e-sb-nx', source: 'sb', target: 'nexus', type: 'smoothstep', animated: true, style: { stroke: '#8b5cf6', strokeWidth: 1.5 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' } },
+  { id: 'e-sb-nx', source: 'sb', target: 'nexus', type: 'smoothstep', animated: true, style: { stroke: 'var(--purple)', strokeWidth: 1.5 }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--purple)' } },
 ];
 
 // ═══ LAYERS LEGEND ═══
 const LAYERS = [
   { key: 'data', label: 'Data Stores', color: '#666', emoji: '💾' },
-  { key: 'pipeline', label: 'Pipeline Steps', color: '#4285f4', emoji: '⚙️' },
-  { key: 'hub', label: 'AI Nexus (Config)', color: '#8b5cf6', emoji: '🧠' },
-  { key: 'agent', label: 'AI Agents (Contextual)', color: '#10a37f', emoji: '🤖' },
+  { key: 'pipeline', label: 'Pipeline Steps', color: 'var(--blue)', emoji: '⚙️' },
+  { key: 'hub', label: 'AI Nexus (Config)', color: 'var(--purple)', emoji: '🧠' },
+  { key: 'agent', label: 'AI Agents (Contextual)', color: 'var(--green)', emoji: '🤖' },
 ];
 
 // ═══ AGENT PROFILES (Tutorial Cards) ═══
@@ -198,7 +198,7 @@ interface AgentProfile {
 
 const AGENT_PROFILES: AgentProfile[] = [
   {
-    slug: 'cortex', name: 'Cortex', role: 'Data Scientist', color: '#4285f4',
+    slug: 'cortex', name: 'Cortex', role: 'Data Scientist', color: 'var(--blue)',
     pages: ['Database', 'Segments'],
     description: 'Cortex is your data scientist. It analyzes your ClickHouse database — schema, column distributions, row counts, and filter state. It lives as a collapsible card at the bottom of the Database page. When you click it, your current table metadata and column list are automatically passed as context.',
     dataAccess: ['ClickHouse schema', 'Table stats', 'Column metadata', 'Active filters', 'Visible columns'],
@@ -206,7 +206,7 @@ const AGENT_PROFILES: AgentProfile[] = [
     capabilities: ['data_analysis', 'icp_building', 'pattern_detection', 'schema_analysis'],
   },
   {
-    slug: 'bastion', name: 'Bastion', role: 'SMTP & Infrastructure Specialist', color: '#ef4444',
+    slug: 'bastion', name: 'Bastion', role: 'SMTP & Infrastructure Specialist', color: 'var(--red)',
     pages: ['Config', 'MTA & Swarm'],
     description: 'Bastion guards your infrastructure. It sees your configured servers (ClickHouse, S3, MTA satellites), their connection status, ping history, and system settings. It lives on the Server Config page and helps troubleshoot connectivity, DNS, and deliverability issues.',
     dataAccess: ['Server configs', 'Connection status', 'Ping history', 'System settings', 'DNS records'],
@@ -222,7 +222,7 @@ const AGENT_PROFILES: AgentProfile[] = [
     capabilities: ['copywriting', 'campaign_strategy', 'send_optimization', 'audience_analysis'],
   },
   {
-    slug: 'overseer', name: 'Overseer', role: 'AI Supervisor — Executive Briefings', color: '#ffd700',
+    slug: 'overseer', name: 'Overseer', role: 'AI Supervisor — Executive Briefings', color: 'var(--yellow)',
     pages: ['Dashboard'],
     description: 'Overseer is the all-seeing supervisor. It has the widest context: total records, storage usage, 7-day ingestion trends, verification trends, top segments, and the recent activity feed. It lives on the Dashboard and provides executive-level briefings and strategic recommendations.',
     dataAccess: ['All statistics', 'Ingestion trends (7d)', 'Verification trends (7d)', 'Top segments', 'Activity feed'],
@@ -230,7 +230,7 @@ const AGENT_PROFILES: AgentProfile[] = [
     capabilities: ['strategic_planning', 'cross_domain_analysis', 'executive_briefing', 'trend_analysis'],
   },
   {
-    slug: 'litmus', name: 'Litmus', role: 'Verification Engineer', color: '#10a37f',
+    slug: 'litmus', name: 'Litmus', role: 'Verification Engineer', color: 'var(--green)',
     pages: ['Verification'],
     description: 'Litmus is the verification expert. It appears as a card on the Verification page after a job finishes. It automatically receives the complete job data: file name, total/processed counts, suppression results breakdown, and timestamps. Ask it to analyze results, assess risk, or recommend retries.',
     dataAccess: ['Job results', 'Suppression breakdown', 'Domain analysis', 'Bounce patterns', 'Timestamps'],
@@ -288,7 +288,7 @@ export default function AIArchitecture() {
       }}>
         <div style={{
           width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 900, flexShrink: 0,
+          background: 'var(--accent)', color: 'var(--accent-contrast, #fff)', fontSize: 13, fontWeight: 900, flexShrink: 0,
         }}>{activeGuide + 1}</div>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text-primary)' }}>{GUIDES[activeGuide].title}</div>
@@ -354,12 +354,12 @@ export default function AIArchitecture() {
                 <span style={{ fontSize: 24 }}>{selectedNode.icon}</span>
               )}
               <div>
-                <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>{selectedNode.label}</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--accent-contrast, #fff)' }}>{selectedNode.label}</div>
                 <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>{selectedNode.subtitle}</div>
               </div>
             </div>
             <button onClick={() => setSelectedNode(null)} style={{
-              background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, padding: 4, cursor: 'pointer', color: '#fff',
+              background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, padding: 4, cursor: 'pointer', color: 'var(--accent-contrast, #fff)',
             }}><X size={14} /></button>
           </div>
 
@@ -426,9 +426,9 @@ export default function AIArchitecture() {
         {/* How It Works — 3 Column */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28 }}>
           {[
-            { step: '1', title: 'Configure in AI Nexus', desc: 'Go to Agents tab. Click any agent. Edit their Core Prompt, add Prompt Stack instructions, upload Knowledge Base entries, tune temperature.', color: '#8b5cf6' },
-            { step: '2', title: 'Agents Appear on Pages', desc: 'Each agent surfaces as a card on the page where they help. Litmus on Verification, Cortex on Database, etc. They receive the page\'s live data automatically.', color: '#4285f4' },
-            { step: '3', title: 'Ask & Get Insights', desc: 'Click the agent card, ask your question. The agent sees your current data context — no copy-pasting. Responses are powered by your configured AI provider.', color: '#10a37f' },
+            { step: '1', title: 'Configure in AI Nexus', desc: 'Go to Agents tab. Click any agent. Edit their Core Prompt, add Prompt Stack instructions, upload Knowledge Base entries, tune temperature.', color: 'var(--purple)' },
+            { step: '2', title: 'Agents Appear on Pages', desc: 'Each agent surfaces as a card on the page where they help. Litmus on Verification, Cortex on Database, etc. They receive the page\'s live data automatically.', color: 'var(--blue)' },
+            { step: '3', title: 'Ask & Get Insights', desc: 'Click the agent card, ask your question. The agent sees your current data context — no copy-pasting. Responses are powered by your configured AI provider.', color: 'var(--green)' },
           ].map(s => (
             <div key={s.step} style={{
               padding: '20px 22px', borderRadius: 14,
@@ -467,13 +467,13 @@ export default function AIArchitecture() {
                   border: '3px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
                 }} />
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 900, color: '#fff' }}>{agent.name}</div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--accent-contrast, #fff)' }}>{agent.name}</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>{agent.role}</div>
                   <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
                     {agent.pages.map(p => (
                       <span key={p} style={{
                         fontSize: 8, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
-                        background: 'rgba(255,255,255,0.15)', color: '#fff',
+                        background: 'rgba(255,255,255,0.15)', color: 'var(--accent-contrast, #fff)',
                       }}>📍 {p}</span>
                     ))}
                   </div>
@@ -540,8 +540,8 @@ export default function AIArchitecture() {
         {/* Configuration Reminder */}
         <div style={{
           padding: '20px 24px', borderRadius: 16,
-          background: `linear-gradient(135deg, #8b5cf610 0%, #4285f410 100%)`,
-          border: '1px solid #8b5cf620', display: 'flex', alignItems: 'center', gap: 16,
+          background: `linear-gradient(135deg, color-mix(in srgb, var(--purple) 6%, transparent) 0%, color-mix(in srgb, var(--blue) 6%, transparent) 100%)`,
+          border: '1px solid var(--purple)', display: 'flex', alignItems: 'center', gap: 16,
         }}>
           <div style={{ fontSize: 32, flexShrink: 0 }}>⚙️</div>
           <div>
