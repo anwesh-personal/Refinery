@@ -24,6 +24,39 @@ const AGENT_IMAGES: Record<string, string> = {
 
 const KB_CATEGORIES = ['general', 'instructions', 'examples', 'data', 'reference'];
 
+const AGENT_META: Record<string, { pages: string[]; description: string; dataAccess: string[]; examples: string[] }> = {
+  data_scientist: {
+    pages: ['Database', 'Segments'],
+    description: 'Analyzes your ClickHouse database — schema, column distributions, row counts, and filter state. Lives as a card on the Database page and auto-receives your table metadata.',
+    dataAccess: ['ClickHouse schema', 'Table stats', 'Column metadata', 'Active filters', 'Visible columns'],
+    examples: ['Analyze the data quality of this table', 'Find patterns in my lead data', 'Suggest segments based on industry and seniority', 'Build an ICP from top-performing leads'],
+  },
+  smtp_specialist: {
+    pages: ['Config', 'MTA & Swarm'],
+    description: 'Guards your infrastructure. Sees your configured servers, their connection status, ping history, and system settings. Lives on Config page and helps troubleshoot connectivity and deliverability.',
+    dataAccess: ['Server configs', 'Connection status', 'Ping history', 'System settings', 'DNS records'],
+    examples: ['Check the health of all my servers', 'Analyze DNS for deliverability issues', 'IP warmup plan for new satellites', 'Troubleshoot MTA configuration'],
+  },
+  email_marketer: {
+    pages: ['Targets', 'Queue'],
+    description: 'Your creative marketing strategist. Sees your target lists, segment composition, and audience profiles. Lives on the Targets page and helps craft campaigns, write copy, and optimize send strategies.',
+    dataAccess: ['Target lists', 'Segment composition', 'Audience profiles', 'Email counts', 'Niche tags'],
+    examples: ['Write a 5-email cold outreach sequence', 'Subject line ideas for SaaS CTOs', 'Campaign strategy for this niche', 'Optimize send timing for 50K emails'],
+  },
+  supervisor: {
+    pages: ['Dashboard'],
+    description: 'The all-seeing supervisor with the widest context. Sees total records, storage usage, ingestion trends, verification trends, top segments, and the activity feed. Lives on the Dashboard.',
+    dataAccess: ['All statistics', 'Ingestion trends (7d)', 'Verification trends (7d)', 'Top segments', 'Activity feed'],
+    examples: ['Give me a daily briefing', 'What should I prioritize today?', 'ROI analysis of the verification pipeline', 'Strategic recommendations for scaling'],
+  },
+  verification_engineer: {
+    pages: ['Verification'],
+    description: 'The verification expert. Appears on the Verification page after a job finishes. Auto-receives complete job data: file name, total/processed counts, suppression results, and timestamps.',
+    dataAccess: ['Job results', 'Suppression breakdown', 'Domain analysis', 'Bounce patterns', 'Timestamps'],
+    examples: ['Analyze these verification results', 'Which domains are catch-all?', 'Recommend which unknowns to retry', 'Risk assessment for this batch'],
+  },
+};
+
 export default function AgentsPanel() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,30 +234,100 @@ export default function AgentsPanel() {
           <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 6px' }}>AI Agents</h2>
           <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: 0 }}>5 specialist agents. Click to configure or chat.</p>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
-          {agents.map(a => (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 20 }}>
+          {agents.map(a => {
+            const meta = AGENT_META[a.slug];
+            return (
             <div key={a.id} onClick={() => openModal(a)} style={{
-              borderRadius: 16, overflow: 'hidden', background: 'var(--bg-card)', border: '1px solid var(--border)',
-              cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
+              borderRadius: 18, overflow: 'hidden', background: 'var(--bg-card)',
+              border: '1px solid var(--border)', cursor: 'pointer',
+              transition: 'transform 0.15s, box-shadow 0.15s',
             }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = `0 10px 30px ${a.accent_color}18`; }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = 'var(--shadow-lg)'; }}
               onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
             >
-              <div style={{ background: `linear-gradient(135deg, ${a.accent_color} 0%, ${a.accent_color}cc 100%)`, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 12, minHeight: 80 }}>
-                <img src={AGENT_IMAGES[a.slug] || ''} alt={a.name} style={{ width: 60, height: 60, borderRadius: 14, objectFit: 'cover', border: '2px solid rgba(255,255,255,0.3)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} />
+              {/* Header */}
+              <div style={{ background: `linear-gradient(135deg, ${a.accent_color} 0%, ${a.accent_color}cc 100%)`, padding: '20px 22px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                <img src={AGENT_IMAGES[a.slug] || ''} alt={a.name} style={{
+                  width: 64, height: 64, borderRadius: 16, objectFit: 'cover',
+                  border: '3px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                }} />
                 <div>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>{a.name}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', fontWeight: 500 }}>{a.role}</div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: '#fff' }}>{a.name}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>{a.role}</div>
+                  {meta && (
+                    <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                      {meta.pages.map(p => (
+                        <span key={p} style={{
+                          fontSize: 8, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
+                          background: 'rgba(255,255,255,0.15)', color: '#fff',
+                        }}>📍 {p}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
-              <div style={{ padding: '14px 20px' }}>
-                <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 10px' }}>{a.greeting}</p>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {a.capabilities.map(c => <span key={c} style={{ padding: '2px 7px', borderRadius: 4, fontSize: 8, fontWeight: 700, textTransform: 'uppercase', background: `${a.accent_color}12`, color: a.accent_color, border: `1px solid ${a.accent_color}30` }}>{c.replace(/_/g, ' ')}</span>)}
+
+              {/* Body */}
+              <div style={{ padding: '18px 22px' }}>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7, margin: '0 0 14px' }}>
+                  {meta?.description || a.greeting}
+                </p>
+
+                {/* What it sees */}
+                {meta && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                      🔍 What it sees (auto-injected)
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {meta.dataAccess.map(d => (
+                        <span key={d} style={{
+                          padding: '3px 8px', borderRadius: 5, fontSize: 9, fontWeight: 600,
+                          background: 'var(--bg-app)', border: '1px solid var(--border)', color: 'var(--text-secondary)',
+                        }}>{d}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Example Questions */}
+                {meta && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                      💬 Example questions
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {meta.examples.map((q, i) => (
+                        <div key={i} style={{
+                          padding: '6px 10px', borderRadius: 8, fontSize: 11, color: 'var(--text-primary)',
+                          background: 'var(--bg-hover)', border: '1px solid var(--border)',
+                          fontStyle: 'italic',
+                        }}>"{q}"</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Capabilities */}
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                    ⚡ Capabilities
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {a.capabilities.map(c => (
+                      <span key={c} style={{
+                        padding: '3px 8px', borderRadius: 4, fontSize: 8, fontWeight: 700,
+                        textTransform: 'uppercase',
+                        background: 'var(--accent-muted)', color: 'var(--accent)',
+                        border: '1px solid var(--accent-muted)',
+                      }}>{c.replace(/_/g, ' ')}</span>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-          ))}
+          );})}
         </div>
 
         {/* ═══ AGENT MANAGEMENT MODAL ═══ */}
