@@ -177,7 +177,28 @@ router.get('/:id/export', async (req, res) => {
     const rows = await segService.exportSegmentLeads(req.params.id);
     const user = getRequestUser(req);
     console.log(`[Export] Segment ${req.params.id} by ${user.name} — ${rows.length} rows`);
-    res.json({ rows, count: rows.length });
+
+    if (!rows.length) {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="segment-${req.params.id}-empty.csv"`);
+      return res.send('No data found\n');
+    }
+
+    const cols = Object.keys(rows[0]);
+    const header = cols.join(',');
+    const lines = rows.map((row: Record<string, any>) =>
+      cols.map(c => {
+        const v = row[c];
+        if (v === null || v === undefined) return '';
+        const s = String(v).replace(/"/g, '""');
+        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
+      }).join(',')
+    );
+    const csv = [header, ...lines].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="segment-${req.params.id}.csv"`);
+    res.send(csv);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 

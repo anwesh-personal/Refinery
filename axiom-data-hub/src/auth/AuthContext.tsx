@@ -241,11 +241,15 @@ interface AuthContextType {
   user:    AuthUser | null;
   session: Session | null;
   loading: boolean;
+  /** True when a superadmin is viewing as another user */
+  isImpersonating: boolean;
+  /** True when impersonating another superadmin (no writes allowed) */
+  isReadOnly: boolean;
   signIn:  (email: string, password: string) => Promise<{ error?: string }>;
   signUp:  (email: string, password: string, fullName: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   /**
-   * Fix #3: Fetches the user's full profile row from public.profiles.
+   * Fetches the user's full profile row from public.profiles.
    * Call this after a superadmin updates another user's permissions
    * so the superadmin's own session reflects any self-changes,
    * and so the Team page always shows fresh DB state.
@@ -402,8 +406,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(profileUser);
   };
 
+  // Derive impersonation state from sessionStorage (no extra API calls)
+  const isImpersonating = typeof window !== 'undefined' && !!sessionStorage.getItem('impersonation_superadmin_session');
+  const isReadOnly = typeof window !== 'undefined' && sessionStorage.getItem('impersonation_read_only') === '1';
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ user, session, loading, isImpersonating, isReadOnly, signIn, signUp, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

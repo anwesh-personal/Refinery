@@ -106,7 +106,7 @@ router.post('/send-reset-link', async (req, res) => {
   }
 });
 
-// Impersonate user
+// Impersonate user — returns session tokens for client-side swap
 router.post('/impersonate', async (req, res) => {
   try {
     const { userId } = req.body;
@@ -115,9 +115,9 @@ router.post('/impersonate', async (req, res) => {
     if (!userId) return res.status(400).json({ error: 'Missing target userId' });
     if (userId === adminId) return res.status(400).json({ error: 'Cannot impersonate yourself' });
 
-    const link = await adminService.generateImpersonationLink(userId);
-    await auditLog(adminId, 'admin_impersonate', userId, {});
-    res.json({ link });
+    const session = await adminService.generateImpersonationSession(userId);
+    await auditLog(adminId, 'admin_impersonate', userId, { readOnly: session.readOnly });
+    res.json(session);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

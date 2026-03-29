@@ -453,12 +453,35 @@ export default function TeamPage() {
     if (!selectedUser) return;
     if (selectedUser.id === user?.id) return;
 
-    const res = await handleAdminApiCall('impersonate', { userId: selectedUser.id }) as { link?: string } | null;
-    if (res?.link) {
-      // Store current token in session storage to return later
-      sessionStorage.setItem('impersonation_return_token', session?.access_token || '');
-      // Navigate via magic link
-      window.location.href = res.link;
+    const res = await handleAdminApiCall('impersonate', { userId: selectedUser.id }) as {
+      access_token?: string;
+      refresh_token?: string;
+      user?: { id: string; email: string; role: string; fullName: string };
+      readOnly?: boolean;
+    } | null;
+
+    if (res?.access_token && res?.refresh_token) {
+      // Store superadmin's current session for restoration
+      sessionStorage.setItem('impersonation_superadmin_session', JSON.stringify({
+        access_token: session?.access_token,
+        refresh_token: session?.refresh_token,
+      }));
+      sessionStorage.setItem('impersonation_target', JSON.stringify(res.user));
+      sessionStorage.setItem('impersonation_read_only', res.readOnly ? '1' : '0');
+
+      // Swap to the impersonated user's session — no redirect, no page reload
+      const { error } = await supabase.auth.setSession({
+        access_token: res.access_token,
+        refresh_token: res.refresh_token,
+      });
+
+      if (error) {
+        alert(`Impersonation failed: ${error.message}`);
+        sessionStorage.removeItem('impersonation_superadmin_session');
+        sessionStorage.removeItem('impersonation_target');
+        sessionStorage.removeItem('impersonation_read_only');
+      }
+      // AuthContext will detect session change and re-render
     }
   };
 

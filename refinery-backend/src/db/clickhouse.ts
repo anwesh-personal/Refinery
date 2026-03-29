@@ -48,3 +48,13 @@ export async function ping(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Stream a query result as raw CSV (with header row).
+ * Returns a Node.js readable stream — pipe directly to res.
+ * Zero memory footprint: ClickHouse generates CSV, Node just tunnels it.
+ */
+export async function streamCSV(sql: string) {
+  const result = await clickhouse.query({ query: sql, format: 'CSVWithNames' });
+  return result.stream();
+}

@@ -1,5 +1,6 @@
 import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle2, AlertCircle, FileText, Eye, Edit2, Trash2, Folder, CheckSquare, Square, Layers, ArrowUpDown, Filter, ChevronUp, ChevronDown, Zap, Settings, RotateCw, Calendar, X, Download, Search, ChevronLeft, ChevronRight, Table2, GitMerge } from 'lucide-react';
 import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
+import MergePlayground from './MergePlayground';
 import { ServerSelector } from '../components/ServerSelector';
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiCall } from '../lib/api';
@@ -187,25 +188,14 @@ export default function IngestionPage() {
   const [jobDataSortBy, setJobDataSortBy] = useState('');
   const [jobDataSortDir, setJobDataSortDir] = useState<'asc' | 'desc'>('asc');
   const [jobDataExporting, setJobDataExporting] = useState(false);
+  const [browsePageSize, setBrowsePageSize] = useState(50);
 
   // Date-range ingestion state
   const [dateRangeStart, setDateRangeStart] = useState('');
   const [dateRangeEnd, setDateRangeEnd] = useState('');
   const [dateRangeIngesting, setDateRangeIngesting] = useState(false);
 
-  // Data Consolidation (Merge) state
-  const [mergeKeyCandidates, setMergeKeyCandidates] = useState<{ name: string; type: string; distinctValues: number; jobsPresent: number; totalJobs: number; fillRate: number }[]>([]);
-  const [mergeKeyLoading, setMergeKeyLoading] = useState(false);
-  const [selectedMergeKey, setSelectedMergeKey] = useState('');
-  const [mergePreview, setMergePreview] = useState<{ columns: string[]; mergeKey: string; rows: Record<string, any>[]; total: number; totalBefore: number; orphanRows: number; reduction: number; page: number; pageSize: number } | null>(null);
-  const [mergePreviewLoading, setMergePreviewLoading] = useState(false);
-  const [mergePreviewPage, setMergePreviewPage] = useState(1);
-  const [mergePreviewSearch, setMergePreviewSearch] = useState('');
-  const [mergePreviewSortBy, setMergePreviewSortBy] = useState('');
-  const [mergePreviewSortDir, setMergePreviewSortDir] = useState<'asc' | 'desc'>('asc');
-  const [mergeExecuting, setMergeExecuting] = useState(false);
-  const [mergeExporting, setMergeExporting] = useState(false);
-  const [showMergePanel, setShowMergePanel] = useState(false);
+  const [activeView, setActiveView] = useState<'data' | 'merge'>('data');
 
   /* --- Fetch --- */
   const fetchData = useCallback(async () => {
@@ -286,7 +276,7 @@ export default function IngestionPage() {
   const fetchJobData = useCallback(async (jobId: string, page: number, search: string, sortBy: string, sortDir: 'asc' | 'desc') => {
     setJobDataLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), pageSize: '50', search, sortBy, sortDir });
+      const params = new URLSearchParams({ page: String(page), pageSize: String(browsePageSize), search, sortBy, sortDir });
       const data = await apiCall<any>(`/api/ingestion/${jobId}/data?${params}`);
       setJobData(data);
     } catch (e: any) {
@@ -294,7 +284,7 @@ export default function IngestionPage() {
     } finally {
       setJobDataLoading(false);
     }
-  }, []);
+  }, [browsePageSize]);
 
   const openJobDataViewer = (jobId: string) => {
     setViewingJobId(jobId);
@@ -317,7 +307,7 @@ export default function IngestionPage() {
     if (viewingJobId) {
       fetchJobData(viewingJobId, jobDataPage, jobDataSearch, jobDataSortBy, jobDataSortDir);
     }
-  }, [viewingJobId, jobDataPage, jobDataSortBy, jobDataSortDir, fetchJobData]);
+  }, [viewingJobId, jobDataPage, jobDataSortBy, jobDataSortDir, browsePageSize, fetchJobData]);
 
   // Debounced search
   useEffect(() => {
@@ -347,76 +337,6 @@ export default function IngestionPage() {
     }
   };
 
-  // ─── Data Consolidation (Merge) ───
-  const loadMergeKeys = async () => {
-    setMergeKeyLoading(true);
-    try {
-      const data = await apiCall<{ candidates: typeof mergeKeyCandidates; totalJobs: number }>('/api/ingestion/merge/keys');
-      setMergeKeyCandidates(data.candidates);
-      if (data.candidates.length > 0 && !selectedMergeKey) {
-        setSelectedMergeKey(data.candidates[0].name);
-      }
-    } catch (e: any) { setError(`Failed to load merge keys: ${e.message}`); }
-    finally { setMergeKeyLoading(false); }
-  };
-
-  const fetchMergePreview = useCallback(async (key: string, page: number, search: string, sortBy: string, sortDir: 'asc' | 'desc') => {
-    if (!key) return;
-    setMergePreviewLoading(true);
-    try {
-      const params = new URLSearchParams({ key, page: String(page), pageSize: '50', search, sortBy, sortDir });
-      const data = await apiCall<any>(`/api/ingestion/merge/preview?${params}`);
-      setMergePreview(data);
-    } catch (e: any) { setError(`Merge preview failed: ${e.message}`); }
-    finally { setMergePreviewLoading(false); }
-  }, []);
-
-  // Re-fetch preview when key/page/sort changes
-  useEffect(() => {
-    if (showMergePanel && selectedMergeKey) {
-      fetchMergePreview(selectedMergeKey, mergePreviewPage, mergePreviewSearch, mergePreviewSortBy, mergePreviewSortDir);
-    }
-  }, [showMergePanel, selectedMergeKey, mergePreviewPage, mergePreviewSortBy, mergePreviewSortDir, fetchMergePreview]);
-
-  // Debounced search for merge preview
-  useEffect(() => {
-    if (!showMergePanel || !selectedMergeKey) return;
-    const t = setTimeout(() => {
-      setMergePreviewPage(1);
-      fetchMergePreview(selectedMergeKey, 1, mergePreviewSearch, mergePreviewSortBy, mergePreviewSortDir);
-    }, 400);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mergePreviewSearch]);
-
-  const executeMerge = async () => {
-    if (!selectedMergeKey) return;
-    if (!confirm(`⚠️ MATERIALIZE MERGE on "${selectedMergeKey}"?\n\nThis will permanently consolidate all rows sharing the same ${selectedMergeKey} value into single rows.\n\nRows: ${mergePreview?.totalBefore?.toLocaleString()} → ~${mergePreview?.total?.toLocaleString()} (${mergePreview?.reduction}% reduction)\n\nThis CANNOT be undone.`)) return;
-    setMergeExecuting(true);
-    try {
-      const result = await apiCall<{ totalBefore: number; totalAfter: number; rowsConsolidated: number }>('/api/ingestion/merge/execute', { method: 'POST', body: { key: selectedMergeKey } });
-      setSuccess(`Merge complete: ${result.totalBefore.toLocaleString()} → ${result.totalAfter.toLocaleString()} rows (${result.rowsConsolidated.toLocaleString()} consolidated)`);
-      setTimeout(() => setSuccess(null), 8000);
-      fetchMergePreview(selectedMergeKey, 1, '', '', 'asc');
-      fetchData();
-    } catch (e: any) { setError(`Merge failed: ${e.message}`); }
-    finally { setMergeExecuting(false); }
-  };
-
-  const exportMergedData = async () => {
-    if (!selectedMergeKey) return;
-    setMergeExporting(true);
-    try {
-      const blob = await apiCall<Blob>(`/api/ingestion/merge/export?key=${selectedMergeKey}`, { responseType: 'blob' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `merged-${selectedMergeKey}-${Date.now()}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: any) { setError(`Export failed: ${e.message}`); }
-    finally { setMergeExporting(false); }
-  };
 
   // Auto-browse when source changes
   useEffect(() => {
@@ -830,6 +750,39 @@ export default function IngestionPage() {
         <StatCard label="Storage Used" value={loading ? '...' : formatBytes(totalBytes)} sub="on Object Storage" icon={<HardDrive size={18} />} color="var(--blue)" colorMuted="var(--blue-muted)" delay={0.18} />
         <StatCard label="Last Job" value={lastJob ? timeAgo(lastJob.started_at) : 'Never'} sub={lastJob?.file_name || 'No jobs yet'} icon={<FolderSync size={18} />} color="var(--purple)" colorMuted="var(--purple-muted)" delay={0.24} />
       </div>
+
+      {/* --- VIEW TABS --- */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 0, marginBottom: 28,
+        background: 'var(--bg-card)', borderRadius: 12, padding: '4px',
+        border: '1px solid var(--border)', width: 'fit-content',
+      }}>
+        {[
+          { key: 'data', label: 'Data & Sources', icon: <HardDrive size={14} /> },
+          { key: 'merge', label: 'Merge Playground', icon: <GitMerge size={14} /> },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveView(tab.key as 'data' | 'merge')}
+            style={{
+              padding: '8px 20px', borderRadius: 8, border: 'none',
+              background: activeView === tab.key ? 'var(--accent)' : 'transparent',
+              color: activeView === tab.key ? '#fff' : 'var(--text-tertiary)',
+              fontSize: 13, fontWeight: activeView === tab.key ? 700 : 500,
+              cursor: 'pointer', transition: 'all 0.2s',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+          >
+            {tab.icon} {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* --- MERGE PLAYGROUND TAB --- */}
+      {activeView === 'merge' && <MergePlayground />}
+
+      {/* --- DATA & SOURCES TAB --- */}
+      {activeView === 'data' && (<>
 
       {/* --- S3 SOURCES MANAGEMENT --- */}
       <SectionHeader title="Configured S3 Sources" />
@@ -1279,126 +1232,9 @@ export default function IngestionPage() {
                 } catch (e: any) { alert(e.message); }
               }}>Clear All</Button>
           )}
-          <Button variant="secondary" style={{ padding: '5px 10px', fontSize: 11, background: showMergePanel ? 'var(--accent)' : undefined, color: showMergePanel ? '#fff' : undefined, border: showMergePanel ? 'none' : undefined }} icon={<GitMerge size={12} />}
-            onClick={() => { if (!showMergePanel) { setShowMergePanel(true); loadMergeKeys(); } else setShowMergePanel(false); }}>Consolidate Data</Button>
           <Button variant="secondary" style={{ padding: '5px 10px', fontSize: 11 }} icon={<RotateCw size={12} />} onClick={fetchData}>Refresh</Button>
         </div>
       </div>
-
-      {/* ── Merge Panel ── */}
-      {showMergePanel && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--accent)', borderRadius: 16, padding: 24, marginBottom: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <GitMerge size={18} style={{ color: 'var(--accent)' }} />
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Data Consolidation</h3>
-              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Merge rows from multiple files on a shared key column</span>
-            </div>
-            <button onClick={() => setShowMergePanel(false)} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 4 }}><X size={16} /></button>
-          </div>
-
-          {/* Key selector */}
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 16, flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>Merge Key Column</label>
-              <select value={selectedMergeKey} onChange={e => { setSelectedMergeKey(e.target.value); setMergePreviewPage(1); setMergePreviewSearch(''); }}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }}>
-                <option value="">Select a merge key…</option>
-                {mergeKeyCandidates.map(c => (
-                  <option key={c.name} value={c.name}>{c.name} — {c.distinctValues.toLocaleString()} unique, {c.fillRate}% fill, {c.jobsPresent}/{c.totalJobs} jobs</option>
-                ))}
-              </select>
-            </div>
-            {mergeKeyLoading && <Loader2 size={16} className="spin" style={{ color: 'var(--accent)' }} />}
-          </div>
-
-          {/* Stats + Actions */}
-          {mergePreview && (
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <span style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>Before: {mergePreview.totalBefore.toLocaleString()} rows</span>
-                <span style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: 'var(--accent)', color: '#fff' }}>After: ~{mergePreview.total.toLocaleString()} rows</span>
-                <span style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: 'var(--green-muted)', color: 'var(--green)' }}>↓ {mergePreview.reduction}% reduction</span>
-                {mergePreview.orphanRows > 0 && <span style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: 'var(--yellow-muted)', color: 'var(--yellow)' }}>{mergePreview.orphanRows.toLocaleString()} rows without key</span>}
-              </div>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                <Button variant="secondary" style={{ padding: '5px 12px', fontSize: 11 }} icon={<Download size={12} />}
-                  onClick={exportMergedData} disabled={mergeExporting}>{mergeExporting ? 'Exporting…' : 'Export Merged CSV'}</Button>
-                <Button style={{ padding: '5px 12px', fontSize: 11, background: 'var(--green)', border: 'none' }} icon={mergeExecuting ? <Loader2 size={12} className="spin" /> : <GitMerge size={12} />}
-                  onClick={executeMerge} disabled={mergeExecuting}>{mergeExecuting ? 'Materializing…' : 'Materialize Merge'}</Button>
-              </div>
-            </div>
-          )}
-
-          {/* Search */}
-          {mergePreview && (
-            <div style={{ marginBottom: 12 }}>
-              <input type="text" placeholder="Search merged data…" value={mergePreviewSearch}
-                onChange={e => setMergePreviewSearch(e.target.value)}
-                style={{ width: '100%', maxWidth: 400, padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 }} />
-            </div>
-          )}
-
-          {/* Preview loading */}
-          {mergePreviewLoading && <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-tertiary)' }}><Loader2 size={20} className="spin" /> Loading preview…</div>}
-
-          {/* Merged data preview table */}
-          {mergePreview && !mergePreviewLoading && mergePreview.rows.length > 0 && (
-            <div style={{ overflowX: 'auto', maxHeight: 420, border: '1px solid var(--border)', borderRadius: 10 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg-hover)', position: 'sticky', top: 0, zIndex: 1 }}>
-                    {mergePreview.columns.map(col => (
-                      <th key={col} onClick={() => {
-                        if (mergePreviewSortBy === col) setMergePreviewSortDir(d => d === 'asc' ? 'desc' : 'asc');
-                        else { setMergePreviewSortBy(col); setMergePreviewSortDir('asc'); }
-                      }} style={{
-                        padding: '8px 10px', textAlign: 'left', fontWeight: 700, fontSize: 10,
-                        textTransform: 'uppercase', letterSpacing: '0.05em', cursor: 'pointer',
-                        color: col === mergePreview.mergeKey ? 'var(--accent)' : 'var(--text-tertiary)',
-                        borderBottom: '2px solid var(--border)', whiteSpace: 'nowrap', userSelect: 'none',
-                        background: col === mergePreview.mergeKey ? 'var(--accent)' + '10' : undefined,
-                      }}>
-                        {col} {mergePreviewSortBy === col ? (mergePreviewSortDir === 'asc' ? '↑' : '↓') : ''}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {mergePreview.rows.map((row: any, ri: number) => (
-                    <tr key={ri} style={{ borderBottom: '1px solid var(--border)' }}>
-                      {mergePreview.columns.map(col => (
-                        <td key={col} style={{
-                          padding: '6px 10px', maxWidth: 200, overflow: 'hidden',
-                          textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          color: row[col] ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                          fontWeight: col === mergePreview.mergeKey ? 600 : 400,
-                        }} title={row[col] ? String(row[col]) : ''}>
-                          {row[col] || '—'}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Pagination */}
-          {mergePreview && mergePreview.total > mergePreview.pageSize && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, fontSize: 12, color: 'var(--text-tertiary)' }}>
-              <span>{((mergePreview.page - 1) * mergePreview.pageSize) + 1}–{Math.min(mergePreview.page * mergePreview.pageSize, mergePreview.total)} of {mergePreview.total.toLocaleString()}</span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <button disabled={mergePreviewPage <= 1} onClick={() => setMergePreviewPage(p => p - 1)}
-                  style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 11, cursor: mergePreviewPage <= 1 ? 'not-allowed' : 'pointer' }}>← Prev</button>
-                <button disabled={mergePreviewPage >= Math.ceil(mergePreview.total / mergePreview.pageSize)} onClick={() => setMergePreviewPage(p => p + 1)}
-                  style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 11, cursor: mergePreviewPage >= Math.ceil(mergePreview.total / mergePreview.pageSize) ? 'not-allowed' : 'pointer' }}>Next →</button>
-              </div>
-            </div>
-          )}
-
-        </div>
-      )}
 
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
         {jobs.length > 0 ? (() => {
@@ -1951,7 +1787,26 @@ export default function IngestionPage() {
               }}>
                 <div style={{ color: 'var(--text-tertiary)' }}>
                   Showing {((jobData.page - 1) * jobData.pageSize) + 1}–{Math.min(jobData.page * jobData.pageSize, jobData.total)} of {formatNumber(jobData.total)} rows
-
+                  <select
+                    value={browsePageSize}
+                    onChange={e => { setBrowsePageSize(Number(e.target.value)); setJobDataPage(1); }}
+                    style={{
+                      marginLeft: 8, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--border)',
+                      background: 'var(--bg-input)', color: 'var(--text-secondary)', fontSize: 11, cursor: 'pointer',
+                    }}
+                    title="Rows per page"
+                  >
+                    {[
+                      { n: 25, label: '25' },
+                      { n: 50, label: '50 ★' },
+                      { n: 100, label: '100' },
+                      { n: 200, label: '200' },
+                      { n: 500, label: '500' },
+                      { n: 1000, label: '1k' },
+                    ].map(opt => (
+                      <option key={opt.n} value={opt.n}>{opt.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <button
@@ -1985,6 +1840,8 @@ export default function IngestionPage() {
           </div>
         </div>
       )}
+    </>
+    )}
     </>
   );
 }

@@ -94,7 +94,11 @@ router.post('/export', async (req, res) => {
   try {
     const result = await dbService.browseData({ ...req.body, page: 1, pageSize: 100000 });
     const rows = result.rows;
-    if (!rows.length) return res.status(200).send('');
+    if (!rows.length) {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="export-${Date.now()}-empty.csv"`);
+      return res.send('No data found\n');
+    }
     const cols = Object.keys(rows[0]);
     const header = cols.join(',');
     const lines = rows.map(row =>

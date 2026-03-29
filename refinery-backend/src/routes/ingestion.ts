@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as ingestionService from '../services/ingestion.js';
-import { query as q, command as cmd } from '../db/clickhouse.js';
+import { query as q, command as cmd, streamCSV } from '../db/clickhouse.js';
 import { getRequestUser } from '../types/auth.js';
 import { requireAuth } from '../middleware/auth.js';
 import { esc } from '../utils/sanitize.js';
@@ -217,7 +217,7 @@ router.get('/:id/data', async (req, res) => {
   try {
     const jobId = req.params.id;
     const page = Math.max(Number(req.query.page) || 1, 1);
-    const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 50, 10), 500);
+    const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 50, 10), 1000);
     const search = (req.query.search as string || '').trim();
     const sortBy = req.query.sortBy as string || '';
     const sortDir = (req.query.sortDir === 'desc' ? 'DESC' : 'ASC');
@@ -297,13 +297,19 @@ router.get('/:id/export', async (req, res) => {
     const allCols = colRows.map(c => c.name).filter(c => !internalCols.has(c));
     const selectCols = allCols.map(c => `\`${c}\``).join(', ');
 
+    const exportLimit = Number(req.query.limit) || 0; // 0 = unlimited
+
     const rows = await q(`
       SELECT ${selectCols} FROM universal_person
       WHERE _ingestion_job_id = '${esc(jobId)}'
-      LIMIT 1000000
+      ${exportLimit > 0 ? `LIMIT ${exportLimit}` : ''}
     `);
 
-    if (!rows.length) return res.status(200).send('');
+    if (!rows.length) {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="job-${jobId}-empty.csv"`);
+      return res.send('No data found\n');
+    }
 
     const cols = Object.keys(rows[0]);
     const header = cols.join(',');
@@ -355,142 +361,208 @@ function anyIfExpr(colName: string, chType: string): string {
   return `anyIf(${escaped}, ${cond}) as ${escaped}`;
 }
 
-// GET /api/ingestion/merge/keys â€” discover candidate merge key columns
-router.get('/merge/keys', async (_req, res) => {
+/**
+ * Priority-aware merge expression.
+ * If priorityJobIds is provided, generates a COALESCE chain:
+ *   COALESCE(anyIf(col, cond AND job='first'), anyIf(col, cond AND job='second'), ..., anyIf(col, cond))
+ * First file in the priority list wins when multiple files have non-empty values for the same key.
+ * Falls back to simple anyIf when no priority is set.
+ */
+function prioritizedMergeExpr(colName: string, chType: string, priorityJobIds?: string[]): string {
+  if (!priorityJobIds || priorityJobIds.length === 0) {
+    return anyIfExpr(colName, chType);
+  }
+  const escaped = `\`${colName}\``;
+  const cond = nonEmptyCondition(colName, chType);
+  const parts = priorityJobIds.map(jid =>
+    `anyIf(${escaped}, ${cond} AND _ingestion_job_id = '${esc(jid)}')`
+  );
+  // Fallback: any non-empty value from any source (covers edge cases)
+  parts.push(`anyIf(${escaped}, ${cond})`);
+  return `COALESCE(${parts.join(', ')}) as ${escaped}`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MERGE PLAYGROUND — Selective multi-file consolidation system
+// ═══════════════════════════════════════════════════════════════
+
+const INTERNAL_COLS = new Set([
+  '_ingestion_job_id', '_ingested_at', '_segment_ids',
+  '_verification_status', '_verified_at', '_v550_category',
+  '_bounced', '_source_file_name',
+]);
+
+
+
+/** Get non-internal data columns from universal_person */
+async function getDataColumns(): Promise<{ name: string; type: string }[]> {
+  const colRows = await q<{ name: string; type: string }>(`
+    SELECT name, type FROM system.columns
+    WHERE database = currentDatabase() AND table = 'universal_person'
+    ORDER BY position
+  `);
+  return colRows.filter(c => !INTERNAL_COLS.has(c.name));
+}
+
+// GET /api/ingestion/merge/sources — list completed jobs with column schemas
+router.get('/merge/sources', async (_req, res) => {
   try {
-    // Get all non-internal columns
-    const colRows = await q<{ name: string; type: string }>(` 
-      SELECT name, type FROM system.columns
-      WHERE database = currentDatabase() AND table = 'universal_person'
-      ORDER BY position
+    const jobs = await q<{
+      id: string; file_name: string; rows_ingested: string;
+      completed_at: string; source_key: string;
+    }>(`
+      SELECT id, file_name, rows_ingested, completed_at, source_key
+      FROM ingestion_jobs WHERE status = 'complete'
+      ORDER BY completed_at DESC
     `);
-    const internalCols = new Set([
-      '_ingestion_job_id', '_ingested_at', '_segment_ids',
-      '_verification_status', '_verified_at', '_v550_category',
-      '_bounced', '_source_file_name',
-    ]);
-    const dataCols = colRows.filter(c => !internalCols.has(c.name));
+    if (jobs.length === 0) return res.json({ sources: [] });
 
-    // For each column, check: how many distinct non-empty values, and across how many ingestion jobs
-    const candidates: { name: string; type: string; distinctValues: number; jobsPresent: number; totalJobs: number; fillRate: number }[] = [];
-
-    const [totalJobsRow] = await q<{ cnt: string }>(`SELECT countDistinct(_ingestion_job_id) as cnt FROM universal_person`);
-    const totalJobs = Number(totalJobsRow?.cnt || 0);
-
-    // Check top candidate columns (String/FixedString types with 'id' in name first, then others)
-    const idCols = dataCols.filter(c => c.name.toLowerCase().includes('id'));
-    const otherCols = dataCols.filter(c => !c.name.toLowerCase().includes('id') && isStringType(c.type));
-    const colsToCheck = [...idCols, ...otherCols.slice(0, 20)]; // Limit to avoid heavy queries
-
-    for (const col of colsToCheck) {
-      const cond = nonEmptyCondition(col.name, col.type);
-      const [stats] = await q<{ distinct_vals: string; jobs_present: string; fill_rate: string }>(`
-        SELECT
-          countDistinct(if(${cond}, toString(\`${col.name}\`), NULL)) as distinct_vals,
-          countDistinct(if(${cond}, _ingestion_job_id, NULL)) as jobs_present,
-          round(countIf(${cond}) / count() * 100, 1) as fill_rate
-        FROM universal_person
+    const dataCols = await getDataColumns();
+    const sources = await Promise.all(jobs.map(async (job) => {
+      const checkParts = dataCols.map(col => {
+        const cond = nonEmptyCondition(col.name, col.type);
+        return `countIf(${cond}) as \`_f_${col.name}\``;
+      });
+      const [fillResult] = await q<Record<string, string>>(`
+        SELECT ${checkParts.join(', ')} FROM universal_person
+        WHERE _ingestion_job_id = '${esc(job.id)}'
       `);
-      const dv = Number(stats?.distinct_vals || 0);
-      const jp = Number(stats?.jobs_present || 0);
-      const fr = Number(stats?.fill_rate || 0);
-
-      if (dv > 0 && jp >= 1) {
-        candidates.push({
-          name: col.name,
-          type: col.type,
-          distinctValues: dv,
-          jobsPresent: jp,
-          totalJobs,
-          fillRate: fr,
-        });
-      }
-    }
-
-    // Sort: columns present in most jobs first, then by distinct values
-    candidates.sort((a, b) => {
-      if (b.jobsPresent !== a.jobsPresent) return b.jobsPresent - a.jobsPresent;
-      return b.distinctValues - a.distinctValues;
-    });
-
-    res.json({ candidates, totalJobs, totalColumns: dataCols.length });
+      const populatedColumns = dataCols
+        .filter(col => Number(fillResult?.[`_f_${col.name}`] || 0) > 0)
+        .map(col => col.name);
+      return {
+        jobId: job.id, fileName: job.file_name, sourceKey: job.source_key,
+        rowCount: Number(job.rows_ingested), completedAt: job.completed_at,
+        columns: populatedColumns, columnCount: populatedColumns.length,
+      };
+    }));
+    res.json({ sources, allColumns: dataCols.map(c => c.name) });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// GET /api/ingestion/merge/preview â€” preview merged data
-router.get('/merge/preview', async (req, res) => {
+// GET /api/ingestion/merge/common-keys?jobIds=id1,id2,id3
+router.get('/merge/common-keys', async (req, res) => {
   try {
+    const jobIdsRaw = (req.query.jobIds as string || '').split(',').filter(Boolean);
+    if (jobIdsRaw.length < 2) return res.status(400).json({ error: 'At least 2 jobIds required' });
+    const jobIdsSafe = jobIdsRaw.map(id => esc(id.trim()));
+    const jobIdsSQL = jobIdsSafe.map(id => `'${id}'`).join(',');
+
+    const jobMeta = await q<{ id: string; file_name: string }>(`
+      SELECT id, file_name FROM ingestion_jobs WHERE id IN (${jobIdsSQL})
+    `);
+    const jobNameMap = new Map(jobMeta.map(j => [j.id, j.file_name]));
+    const dataCols = await getDataColumns();
+    const candidates: { column: string; type: string; filesPresent: number; totalFiles: number; perFile: { jobId: string; fileName: string; uniqueValues: number; fillRate: number }[]; overlapCount: number; overlapRate: number; recommendation: string }[] = [];
+
+    for (const col of dataCols) {
+      const cond = nonEmptyCondition(col.name, col.type);
+      const perJobStats = await q<{
+        job_id: string; unique_vals: string; total_rows: string; filled_rows: string;
+      }>(`
+        SELECT _ingestion_job_id as job_id,
+          countDistinct(if(${cond}, toString(\`${col.name}\`), NULL)) as unique_vals,
+          count() as total_rows, countIf(${cond}) as filled_rows
+        FROM universal_person WHERE _ingestion_job_id IN (${jobIdsSQL})
+        GROUP BY _ingestion_job_id
+      `);
+      const jobsWithData = perJobStats.filter(s => Number(s.unique_vals) > 0);
+      if (jobsWithData.length < 2) continue;
+
+      const [overlapRow] = await q<{ overlap_count: string }>(`
+        SELECT count() as overlap_count FROM (
+          SELECT toString(\`${col.name}\`) as val FROM universal_person
+          WHERE _ingestion_job_id IN (${jobIdsSQL}) AND ${cond}
+          GROUP BY val HAVING countDistinct(_ingestion_job_id) >= 2
+        )
+      `);
+      const overlapCount = Number(overlapRow?.overlap_count || 0);
+      const maxUnique = Math.max(...jobsWithData.map(s => Number(s.unique_vals)));
+      const overlapRate = maxUnique > 0 ? Math.round(overlapCount / maxUnique * 1000) / 10 : 0;
+
+      candidates.push({
+        column: col.name, type: col.type,
+        filesPresent: jobsWithData.length, totalFiles: jobIdsSafe.length,
+        perFile: jobsWithData.map(s => ({
+          jobId: s.job_id, fileName: jobNameMap.get(s.job_id) || s.job_id,
+          uniqueValues: Number(s.unique_vals),
+          fillRate: Number(s.total_rows) > 0 ? Math.round(Number(s.filled_rows) / Number(s.total_rows) * 1000) / 10 : 0,
+        })),
+        overlapCount, overlapRate,
+        recommendation: overlapRate >= 70 ? 'excellent' : overlapRate >= 30 ? 'good' : 'poor',
+      });
+    }
+    candidates.sort((a, b) => {
+      const order: Record<string, number> = { excellent: 0, good: 1, poor: 2 };
+      if (order[a.recommendation] !== order[b.recommendation]) return order[a.recommendation] - order[b.recommendation];
+      return b.overlapRate - a.overlapRate;
+    });
+    res.json({ candidates, totalFiles: jobIdsSafe.length });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/ingestion/merge/preview-selective
+router.get('/merge/preview-selective', async (req, res) => {
+  try {
+    const jobIdsRaw = (req.query.jobIds as string || '').split(',').filter(Boolean);
     const mergeKey = req.query.key as string;
+    const excludeColsRaw = (req.query.excludeCols as string || '').split(',').filter(Boolean);
+    if (jobIdsRaw.length < 2) return res.status(400).json({ error: 'At least 2 jobIds required' });
     if (!mergeKey) return res.status(400).json({ error: 'key parameter required' });
 
+    const jobIdsSQL = jobIdsRaw.map(id => `'${esc(id.trim())}'`).join(',');
     const page = Math.max(Number(req.query.page) || 1, 1);
-    const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 50, 10), 500);
+    const pageSize = Math.min(Math.max(Number(req.query.pageSize) || 50, 10), 1000);
     const search = (req.query.search as string || '').trim();
     const sortBy = req.query.sortBy as string || '';
-    const sortDir = (req.query.sortDir === 'desc' ? 'DESC' : 'ASC');
+    const sortDir = req.query.sortDir === 'desc' ? 'DESC' : 'ASC';
     const offset = (page - 1) * pageSize;
 
-    // Get all columns WITH types (needed for type-aware merge)
-    const colRows = await q<{ name: string; type: string }>(`
-      SELECT name, type FROM system.columns
-      WHERE database = currentDatabase() AND table = 'universal_person'
-      ORDER BY position
-    `);
-    const internalCols = new Set([
-      '_ingestion_job_id', '_ingested_at', '_segment_ids',
-      '_verification_status', '_verified_at', '_v550_category',
-      '_bounced', '_source_file_name',
-    ]);
-    const dataCols = colRows.filter(c => !internalCols.has(c.name));
+    const dataCols = await getDataColumns();
     const allCols = dataCols.map(c => c.name);
     const colTypeMap = new Map(dataCols.map(c => [c.name, c.type]));
+    if (!allCols.includes(mergeKey)) return res.status(400).json({ error: `Column '${mergeKey}' not found` });
 
-    if (!allCols.includes(mergeKey)) {
-      return res.status(400).json({ error: `Column '${mergeKey}' not found` });
-    }
-
-    // Build the merged SELECT with type-aware anyIf
+    const excludeSet = new Set(excludeColsRaw);
+    const activeCols = dataCols.filter(c => !excludeSet.has(c.name));
     const mergeKeyType = colTypeMap.get(mergeKey) || 'String';
     const mergeKeyCond = nonEmptyCondition(mergeKey, mergeKeyType);
-    const selectParts = dataCols.map(col => {
-      if (col.name === mergeKey) return `\`${col.name}\``;
-      return anyIfExpr(col.name, col.type);
-    });
+    const jobFilter = `_ingestion_job_id IN (${jobIdsSQL})`;
+
+    // Parse priority order: comma-separated job IDs, first = highest priority
+    const priorityRaw = (req.query.priority as string || '').split(',').filter(Boolean);
+    const priorityJobIds = priorityRaw.length > 0 ? priorityRaw.map(id => id.trim()) : undefined;
+
+    const selectParts = activeCols.map(col =>
+      col.name === mergeKey ? `\`${col.name}\`` : prioritizedMergeExpr(col.name, col.type, priorityJobIds)
+    );
 
     const baseQuery = `
-      SELECT ${selectParts.join(', ')}
-      FROM universal_person
-      WHERE ${mergeKeyCond}
+      SELECT ${selectParts.join(', ')} FROM universal_person
+      WHERE ${jobFilter} AND ${mergeKeyCond}
       GROUP BY \`${mergeKey}\`
     `;
 
-    // Search filter â€” wrap in subquery
     let wrappedQuery = baseQuery;
     if (search) {
-      const escaped = search.replace(/'/g, "\\'");
-      const searchCols = allCols.slice(0, 6);
-      const searchClauses = searchCols.map(c => `lower(toString(\`${c}\`)) LIKE lower('%${escaped}%')`).join(' OR ');
-      wrappedQuery = `SELECT * FROM (${baseQuery}) WHERE ${searchClauses}`;
+      const escaped = esc(search);
+      const searchCols = activeCols.slice(0, 6).map(c => c.name);
+      const clauses = searchCols.map(c => `lower(toString(\`${c}\`)) LIKE lower('%${escaped}%')`).join(' OR ');
+      wrappedQuery = `SELECT * FROM (${baseQuery}) WHERE ${clauses}`;
     }
 
-    // Count
     const [countResult] = await q<{ cnt: string }>(`SELECT count() as cnt FROM (${wrappedQuery})`);
     const total = Number(countResult?.cnt || 0);
-
-    // Before-merge count
-    const [beforeCount] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE ${mergeKeyCond}`);
+    const [beforeCount] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE ${jobFilter} AND ${mergeKeyCond}`);
     const totalBefore = Number(beforeCount?.cnt || 0);
-
-    // Rows without key (will be excluded from merge)
-    const [orphanCount] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE NOT (${mergeKeyCond})`);
+    const [orphanCount] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person WHERE ${jobFilter} AND NOT (${mergeKeyCond})`);
     const orphanRows = Number(orphanCount?.cnt || 0);
 
-    // Sort
     const safeSortBy = (sortBy && allCols.includes(sortBy)) ? `\`${sortBy}\`` : `\`${mergeKey}\``;
-
-    // Fetch page
     const rows = await q(`
       SELECT * FROM (${wrappedQuery})
       ORDER BY ${safeSortBy} ${sortDir}
@@ -498,112 +570,190 @@ router.get('/merge/preview', async (req, res) => {
     `);
 
     res.json({
-      columns: allCols,
-      mergeKey,
-      rows,
-      total,
-      totalBefore,
-      orphanRows,
+      columns: activeCols.map(c => c.name), mergeKey, rows, total, totalBefore, orphanRows,
       reduction: totalBefore > 0 ? Math.round((1 - total / totalBefore) * 100) : 0,
-      page,
-      pageSize,
+      page, pageSize,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// POST /api/ingestion/merge/execute — materialize the merged data
-router.post('/merge/execute', async (req, res) => {
+// GET /api/ingestion/merge/conflict-sample
+// Analyzes overlapping keys to find column-level value conflicts across files.
+// Returns samples showing what each file has and who wins based on priority.
+// This data feeds both the visual conflict preview and future AI analysis.
+router.get('/merge/conflict-sample', async (req, res) => {
   try {
-    const mergeKey = req.body.key as string;
-    if (!mergeKey) return res.status(400).json({ error: 'key parameter required' });
+    const jobIdsRaw = (req.query.jobIds as string || '').split(',').filter(Boolean);
+    const mergeKey = req.query.key as string;
+    const priorityRaw = (req.query.priority as string || '').split(',').filter(Boolean);
+    if (jobIdsRaw.length < 2 || !mergeKey) return res.status(400).json({ error: 'jobIds and key required' });
 
-    const user = getRequestUser(req);
-
-    // Validate column exists — fetch types too
-    const colRows = await q<{ name: string; type: string }>(`
-      SELECT name, type FROM system.columns
-      WHERE database = currentDatabase() AND table = 'universal_person'
-      ORDER BY position
-    `);
-    const internalCols = new Set([
-      '_ingestion_job_id', '_ingested_at', '_segment_ids',
-      '_verification_status', '_verified_at', '_v550_category',
-      '_bounced', '_source_file_name',
-    ]);
-    const dataCols = colRows.filter(c => !internalCols.has(c.name));
-    const allCols = dataCols.map(c => c.name);
-    const intCols = colRows.filter(c => internalCols.has(c.name));
-    const internalColNames = intCols.map(c => c.name);
-
-    if (!allCols.includes(mergeKey)) {
-      return res.status(400).json({ error: `Column '${mergeKey}' not found` });
-    }
-
+    const jobIdsSQL = jobIdsRaw.map(id => `'${esc(id.trim())}'`).join(',');
+    const dataCols = await getDataColumns();
     const mergeKeyType = dataCols.find(c => c.name === mergeKey)?.type || 'String';
     const mergeKeyCond = nonEmptyCondition(mergeKey, mergeKeyType);
 
-    // Count before
+    // 1. Find keys present in 2+ files (these are the merge candidates with potential conflicts)
+    const sharedKeys = await q<{ kv: string }>(`
+      SELECT \`${esc(mergeKey)}\` as kv FROM universal_person
+      WHERE _ingestion_job_id IN (${jobIdsSQL}) AND ${mergeKeyCond}
+      GROUP BY kv HAVING countDistinct(_ingestion_job_id) > 1
+      LIMIT 50
+    `);
+
+    if (!sharedKeys.length) return res.json({ totalConflictKeys: 0, totalConflictCells: 0, samples: [] });
+
+    // 2. Fetch per-file raw values for those shared keys
+    const keyVals = sharedKeys.map(k => `'${esc(String(k.kv))}'`).join(',');
+    const nonInternalCols = dataCols.filter(c => !INTERNAL_COLS.has(c.name)).map(c => c.name);
+    const selectCols = [...nonInternalCols.map(c => `\`${c}\``), '_ingestion_job_id'].join(', ');
+
+    const rawRows = await q<Record<string, any>>(`
+      SELECT ${selectCols} FROM universal_person
+      WHERE \`${esc(mergeKey)}\` IN (${keyVals}) AND _ingestion_job_id IN (${jobIdsSQL})
+      ORDER BY \`${esc(mergeKey)}\`, _ingestion_job_id
+    `);
+
+    // 3. Group by key value
+    const grouped = new Map<string, Record<string, any>[]>();
+    for (const row of rawRows) {
+      const kv = String(row[mergeKey] ?? '');
+      if (!grouped.has(kv)) grouped.set(kv, []);
+      grouped.get(kv)!.push(row);
+    }
+
+    // 4. Detect column-level conflicts and resolve with priority
+    const priority = priorityRaw.length > 0 ? priorityRaw : jobIdsRaw;
+    let totalConflictKeys = 0;
+    let totalConflictCells = 0;
+    const samples: any[] = [];
+
+    for (const [keyValue, rows] of grouped) {
+      const conflicts: any[] = [];
+
+      for (const col of nonInternalCols) {
+        if (col === mergeKey) continue;
+
+        // Collect non-empty values per file
+        const nonEmptyVals = new Map<string, string>();
+        for (const row of rows) {
+          const val = row[col] != null ? String(row[col]) : '';
+          if (val) nonEmptyVals.set(row._ingestion_job_id, val);
+        }
+
+        // Only a conflict if 2+ files have DIFFERENT non-empty values
+        if (nonEmptyVals.size < 2) continue;
+        const uniqueVals = new Set(nonEmptyVals.values());
+        if (uniqueVals.size < 2) continue;
+
+        totalConflictCells++;
+
+        // Resolve: first file in priority order with a non-empty value wins
+        let resolvedValue = '', resolvedFromJobId = '';
+        for (const jid of priority) {
+          if (nonEmptyVals.has(jid)) {
+            resolvedValue = nonEmptyVals.get(jid)!;
+            resolvedFromJobId = jid;
+            break;
+          }
+        }
+
+        conflicts.push({
+          column: col,
+          perFile: Array.from(nonEmptyVals.entries()).map(([jid, val]) => ({ jobId: jid, value: val })),
+          resolvedValue,
+          resolvedFromJobId,
+        });
+      }
+
+      if (conflicts.length > 0) {
+        totalConflictKeys++;
+        if (samples.length < 10) samples.push({ keyValue, conflicts });
+      }
+    }
+
+    res.json({ totalConflictKeys, totalConflictCells, samples });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/ingestion/merge/execute-selective
+router.post('/merge/execute-selective', async (req, res) => {
+  try {
+    const { jobIds, key, excludeColumns, priorityJobIds } = req.body as {
+      jobIds: string[]; key: string; excludeColumns?: string[]; priorityJobIds?: string[];
+    };
+    if (!jobIds || jobIds.length < 2) return res.status(400).json({ error: 'At least 2 jobIds required' });
+    if (!key) return res.status(400).json({ error: 'key parameter required' });
+
+    const user = getRequestUser(req);
+    const jobIdsSQL = jobIds.map(id => `'${esc(id)}'`).join(',');
+    const jobFilter = `_ingestion_job_id IN (${jobIdsSQL})`;
+
+    const dataCols = await getDataColumns();
+    const allCols = dataCols.map(c => c.name);
+    if (!allCols.includes(key)) return res.status(400).json({ error: `Column '${key}' not found` });
+
+    const colRows = await q<{ name: string }>(`
+      SELECT name FROM system.columns
+      WHERE database = currentDatabase() AND table = 'universal_person'
+      ORDER BY position
+    `);
+    const internalColNames = colRows.filter(c => INTERNAL_COLS.has(c.name)).map(c => c.name);
+
+    const excludeSet = new Set(excludeColumns || []);
+    const activeCols = dataCols.filter(c => !excludeSet.has(c.name));
+    const mergeKeyType = dataCols.find(c => c.name === key)?.type || 'String';
+    const mergeKeyCond = nonEmptyCondition(key, mergeKeyType);
+
     const [beforeRow] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person`);
     const totalBefore = Number(beforeRow?.cnt || 0);
 
-    console.log(`[Merge] Starting materialization on key='${mergeKey}' by ${user.name} — ${totalBefore} rows before`);
+    console.log(`[Merge] Selective materialization key='${key}' by ${user.name} — jobs: ${jobIds.length}`);
 
-    // Build merge SELECT with type-aware anyIf
+    const resolvedPriority = priorityJobIds && priorityJobIds.length > 0 ? priorityJobIds : undefined;
+
     const selectParts = [
-      ...dataCols.map(col => {
-        if (col.name === mergeKey) return `\`${col.name}\``;
-        return anyIfExpr(col.name, col.type);
-      }),
-      // Keep internal cols: use the latest values
+      ...activeCols.map(col => col.name === key ? `\`${col.name}\`` : prioritizedMergeExpr(col.name, col.type, resolvedPriority)),
       ...internalColNames.map(col => `any(\`${col}\`) as \`${col}\``),
     ];
+    const allColsQuoted = [...activeCols.map(c => c.name), ...internalColNames].map(c => `\`${c}\``).join(', ');
 
-    // Step 1: Create temp table with same structure
     const tmpTable = `_merge_tmp_${Date.now()}`;
     await cmd(`CREATE TABLE ${tmpTable} AS universal_person`);
 
     try {
-      // Step 2: Insert merged rows (rows WITH the key)
-      const allColsQuoted = [...allCols, ...internalColNames].map(c => `\`${c}\``).join(', ');
-      await cmd(`
-        INSERT INTO ${tmpTable} (${allColsQuoted})
-        SELECT ${selectParts.join(', ')}
-        FROM universal_person
-        WHERE ${mergeKeyCond}
-        GROUP BY \`${mergeKey}\`
-      `);
+      await cmd(`INSERT INTO ${tmpTable} (${allColsQuoted})
+        SELECT ${selectParts.join(', ')} FROM universal_person
+        WHERE ${jobFilter} AND ${mergeKeyCond} GROUP BY \`${key}\``);
 
-      // Step 3: Insert orphan rows (rows WITHOUT the key — preserve as-is)
-      await cmd(`
-        INSERT INTO ${tmpTable}
-        SELECT * FROM universal_person
-        WHERE NOT (${mergeKeyCond})
-      `);
+      await cmd(`INSERT INTO ${tmpTable}
+        SELECT * FROM universal_person WHERE ${jobFilter} AND NOT (${mergeKeyCond})`);
 
-      // Step 4: Atomic swap
+      await cmd(`INSERT INTO ${tmpTable}
+        SELECT * FROM universal_person WHERE NOT (${jobFilter})`);
+
       await cmd(`EXCHANGE TABLES universal_person AND ${tmpTable}`);
-
-      // Step 5: Drop old table (now named tmpTable)
       await cmd(`DROP TABLE IF EXISTS ${tmpTable}`);
 
-      // Count after
       const [afterRow] = await q<{ cnt: string }>(`SELECT count() as cnt FROM universal_person`);
       const totalAfter = Number(afterRow?.cnt || 0);
 
-      console.log(`[Merge] Complete — ${totalBefore} → ${totalAfter} rows (${totalBefore - totalAfter} consolidated)`);
-
+      console.log(`[Merge] Complete — ${totalBefore} → ${totalAfter} rows`);
+      const reductionPercent = totalBefore > 0 ? Math.round((1 - totalAfter / totalBefore) * 100) : 0;
       res.json({
-        success: true,
-        mergeKey,
-        totalBefore,
-        totalAfter,
+        success: true, mergeKey: key, totalBefore, totalAfter,
         rowsConsolidated: totalBefore - totalAfter,
+        reductionPercent,
+        filesCount: jobIds.length,
+        priorityApplied: !!resolvedPriority,
         performedBy: user.name,
+        performedAt: new Date().toISOString(),
       });
     } catch (innerErr: any) {
-      // Cleanup temp table on failure
       await cmd(`DROP TABLE IF EXISTS ${tmpTable}`).catch(() => {});
       throw innerErr;
     }
@@ -613,62 +763,74 @@ router.post('/merge/execute', async (req, res) => {
   }
 });
 
-// GET /api/ingestion/merge/export — export merged data as CSV (without materializing)
-router.get('/merge/export', async (req, res) => {
+// GET /api/ingestion/merge/export-selective — STREAMING CSV export
+router.get('/merge/export-selective', async (req, res) => {
   try {
+    const jobIdsRaw = (req.query.jobIds as string || '').split(',').filter(Boolean);
     const mergeKey = req.query.key as string;
-    if (!mergeKey) return res.status(400).json({ error: 'key parameter required' });
+    if (jobIdsRaw.length < 2 || !mergeKey) return res.status(400).json({ error: 'jobIds and key required' });
 
-    const colRows = await q<{ name: string; type: string }>(`
-      SELECT name, type FROM system.columns
-      WHERE database = currentDatabase() AND table = 'universal_person'
-      ORDER BY position
-    `);
-    const internalCols = new Set([
-      '_ingestion_job_id', '_ingested_at', '_segment_ids',
-      '_verification_status', '_verified_at', '_v550_category',
-      '_bounced', '_source_file_name',
-    ]);
-    const dataCols = colRows.filter(c => !internalCols.has(c.name));
+    const jobIdsSQL = jobIdsRaw.map(id => `'${esc(id.trim())}'`).join(',');
+    const dataCols = await getDataColumns();
     const mergeKeyType = dataCols.find(c => c.name === mergeKey)?.type || 'String';
     const mergeKeyCond = nonEmptyCondition(mergeKey, mergeKeyType);
 
-    const selectParts = dataCols.map(col => {
-      if (col.name === mergeKey) return `\`${col.name}\``;
-      return anyIfExpr(col.name, col.type);
-    });
+    // Parse excluded columns
+    const excludeColsRaw = (req.query.excludeCols as string || '').split(',').filter(Boolean);
+    const excludeSet = new Set(excludeColsRaw);
+    const activeCols = excludeSet.size > 0 ? dataCols.filter(c => !excludeSet.has(c.name)) : dataCols;
 
-    const rows = await q(`
-      SELECT ${selectParts.join(', ')}
-      FROM universal_person
-      WHERE ${mergeKeyCond}
-      GROUP BY \`${mergeKey}\`
-      LIMIT 1000000
-    `);
+    // Parse priority order for conflict resolution
+    const priorityRaw = (req.query.priority as string || '').split(',').filter(Boolean);
+    const priorityJobIds = priorityRaw.length > 0 ? priorityRaw.map(id => id.trim()) : undefined;
 
-    if (!rows.length) return res.status(200).send('');
-
-    const cols = Object.keys(rows[0]);
-    const header = cols.join(',');
-    const lines = rows.map((row: any) =>
-      cols.map(c => {
-        const v = row[c];
-        if (v === null || v === undefined) return '';
-        const s = String(v).replace(/"/g, '""');
-        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
-      }).join(',')
+    const selectParts = activeCols.map(col =>
+      col.name === mergeKey ? `\`${col.name}\`` : prioritizedMergeExpr(col.name, col.type, priorityJobIds)
     );
-    const csv = [header, ...lines].join('\n');
+
+    const exportLimit = Number(req.query.limit) || 0;
+
+    const sql = `
+      SELECT ${selectParts.join(', ')} FROM universal_person
+      WHERE _ingestion_job_id IN (${jobIdsSQL}) AND ${mergeKeyCond}
+      GROUP BY \`${mergeKey}\` ${exportLimit > 0 ? `LIMIT ${exportLimit}` : ''}
+    `;
 
     const user = getRequestUser(req);
-    console.log(`[Merge] Export on key='${mergeKey}' — ${rows.length} merged rows by ${user.name}`);
+    console.log(`[Merge] Streaming export key='${mergeKey}' by ${user.name} — SQL length: ${sql.length}`);
+
+    // Stream CSV directly from ClickHouse — zero Node.js memory usage
+    const stream = await streamCSV(sql);
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="merged-${mergeKey}-${Date.now()}.csv"`);
-    res.send(csv);
+    res.setHeader('Transfer-Encoding', 'chunked');
+
+    let hasData = false;
+    for await (const rows of stream) {
+      for (const row of rows) {
+        hasData = true;
+        res.write(row.text);
+        res.write('\n');
+      }
+    }
+
+    if (!hasData) {
+      res.write('No data found\n');
+    }
+
+    res.end();
+    console.log(`[Merge] Streaming export complete for key='${mergeKey}'`);
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    // If headers already sent, we can't send JSON error
+    if (res.headersSent) {
+      console.error(`[Merge] Streaming export error (headers sent): ${e.message}`);
+      res.end();
+    } else {
+      res.status(500).json({ error: e.message });
+    }
   }
 });
 
 export default router;
+
