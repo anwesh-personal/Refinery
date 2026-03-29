@@ -19,6 +19,7 @@ import TutorialPage from './pages/Tutorial';
 import JanitorPage from './pages/Janitor';
 import MTAConfigPage from './pages/MTAConfig';
 import AINexusPage from './pages/AINexus';
+import SEOIntelligencePage from './pages/SEOIntelligence';
 import ImpersonationBanner from './components/ImpersonationBanner';
 import { CommandPalette } from './components/CommandPalette';
 import { ServerProvider } from './components/ServerSelector';
@@ -56,6 +57,7 @@ export default function App() {
                     <Route path="/janitor" element={<JanitorPage />} />
                     <Route path="/mta-config" element={<ProtectedRoute requires="canViewConfig"><MTAConfigPage /></ProtectedRoute>} />
                     <Route path="/ai-nexus" element={<ProtectedRoute requires="canViewConfig"><AINexusPage /></ProtectedRoute>} />
+                    <Route path="/seo-intelligence" element={<ProtectedRoute requires="canViewConfig"><SEOIntelligencePage /></ProtectedRoute>} />
                     {/* Catch-all 404 for protected routes */}
                     <Route path="*" element={<NotFoundPage />} />
                   </Routes>
