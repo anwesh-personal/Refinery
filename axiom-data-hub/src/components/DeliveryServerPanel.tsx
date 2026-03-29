@@ -4,25 +4,37 @@ import { useToast } from './Toast';
 import { apiCall } from '../lib/api';
 import {
   Server, Plus, Trash2, Loader2,
-  Zap, ChevronDown, ChevronRight,
+  Zap, ChevronDown, ChevronRight, CheckCircle, XCircle, Edit2,
 } from 'lucide-react';
 
-interface DeliveryServer {
-  server_id?: string;
-  delivery_server_id?: string;
+// ═══════════════════════════════════════════════════════════════
+// SMTP Delivery Servers — stored locally in ClickHouse.
+// Real SMTP handshake testing (EHLO/STARTTLS/AUTH LOGIN).
+// NOT proxied to MailWizz — these are YOUR mail pipes.
+// ═══════════════════════════════════════════════════════════════
+
+interface SmtpServer {
+  id: string;
+  label: string;
   hostname: string;
-  username: string;
   port: number;
   protocol: string;
+  username: string;
+  password: string;
   from_email: string;
   from_name: string;
-  status: string;
-  quota_value?: number;
+  daily_quota: number;
+  is_active: boolean;
+  last_test_at: string | null;
+  last_test_ok: boolean | null;
+  last_test_msg: string;
+  created_at: string;
 }
 
-const PROTOCOLS = ['smtp', 'smtps', 'sendmail', 'pickup'];
+const PROTOCOLS = ['smtp', 'smtps'];
 
 const emptyForm = {
+  label: '',
   hostname: '',
   username: '',
   password: '',
@@ -34,10 +46,11 @@ const emptyForm = {
 };
 
 export default function DeliveryServerPanel({ onRefresh }: { onRefresh?: () => void }) {
-  const [servers, setServers] = useState<DeliveryServer[]>([]);
+  const [servers, setServers] = useState<SmtpServer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -48,10 +61,9 @@ export default function DeliveryServerPanel({ onRefresh }: { onRefresh?: () => v
   const fetchServers = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiCall<DeliveryServer[]>('/api/mta-providers/delivery-servers');
-      setServers(Array.isArray(data) ? data : []);
-    } catch (e: any) {
-      // MTA not configured yet — show empty
+      const data = await apiCall<{ servers: SmtpServer[] }>('/api/smtp-servers');
+      setServers(data.servers || []);
+    } catch {
       setServers([]);
     }
     setLoading(false);
@@ -59,29 +71,51 @@ export default function DeliveryServerPanel({ onRefresh }: { onRefresh?: () => v
 
   useEffect(() => { fetchServers(); }, [fetchServers]);
 
-  const handleAdd = async () => {
+  const handleSave = async () => {
     if (!form.hostname || !form.username || !form.password) {
       toastError('Validation', 'Hostname, username, and password are required');
       return;
     }
-    setAdding(true);
+    setSaving(true);
     try {
-      await apiCall('/api/mta-providers/delivery-servers', { method: 'POST', body: form });
-      success('Server Added', `${form.hostname} added to MailWizz`);
+      if (editId) {
+        await apiCall(`/api/smtp-servers/${editId}`, { method: 'PUT', body: form });
+        success('Updated', `${form.hostname} saved`);
+      } else {
+        await apiCall('/api/smtp-servers', { method: 'POST', body: form });
+        success('Server Added', `${form.hostname} saved locally`);
+      }
       setForm(emptyForm);
       setShowForm(false);
+      setEditId(null);
       fetchServers();
       onRefresh?.();
     } catch (e: any) { toastError('Error', e.message); }
-    setAdding(false);
+    setSaving(false);
+  };
+
+  const handleEdit = (srv: SmtpServer) => {
+    setForm({
+      label: srv.label,
+      hostname: srv.hostname,
+      username: srv.username,
+      password: srv.password, // will be masked
+      port: srv.port,
+      protocol: srv.protocol,
+      from_email: srv.from_email,
+      from_name: srv.from_name,
+      daily_quota: srv.daily_quota,
+    });
+    setEditId(srv.id);
+    setShowForm(true);
   };
 
   const handleDelete = async (id: string, hostname: string) => {
-    if (!confirm(`Remove ${hostname} from MailWizz?`)) return;
+    if (!confirm(`Delete ${hostname}?`)) return;
     setDeletingId(id);
     try {
-      await apiCall(`/api/mta-providers/delivery-servers/${id}`, { method: 'DELETE' });
-      success('Removed', `${hostname} deleted`);
+      await apiCall(`/api/smtp-servers/${id}`, { method: 'DELETE' });
+      success('Deleted', `${hostname} removed`);
       fetchServers();
     } catch (e: any) { toastError('Error', e.message); }
     setDeletingId(null);
@@ -90,9 +124,15 @@ export default function DeliveryServerPanel({ onRefresh }: { onRefresh?: () => v
   const handleTest = async (id: string) => {
     setTestingId(id);
     try {
-      const result = await apiCall<any>(`/api/mta-providers/delivery-servers/${id}/test`, { method: 'POST' });
-      if (result.ok) success('Online', `${result.hostname} — status: ${result.status}`);
-      else toastError('Failed', result.hostname || 'Server check failed');
+      const result = await apiCall<{ ok: boolean; message: string; latencyMs: number }>(
+        `/api/smtp-servers/${id}/test`, { method: 'POST' }
+      );
+      if (result.ok) {
+        success('SMTP OK', `${result.message} (${result.latencyMs}ms)`);
+      } else {
+        toastError('SMTP Failed', result.message);
+      }
+      fetchServers();
     } catch (e: any) { toastError('Error', e.message); }
     setTestingId(null);
   };
@@ -113,28 +153,33 @@ export default function DeliveryServerPanel({ onRefresh }: { onRefresh?: () => v
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>
-            Delivery Servers <span style={{ fontWeight: 500, color: 'var(--text-tertiary)', fontSize: 12 }}>({servers.length})</span>
+            SMTP Delivery Servers <span style={{ fontWeight: 500, color: 'var(--text-tertiary)', fontSize: 12 }}>({servers.length})</span>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>
-            SMTP servers registered in MailWizz for sending
+            Your SMTP delivery infrastructure — stored locally, tested via real SMTP handshake
           </div>
         </div>
-        <Button icon={<Plus size={13} />} onClick={() => setShowForm(v => !v)}>Add Server</Button>
+        <Button icon={<Plus size={13} />} onClick={() => { setEditId(null); setForm(emptyForm); setShowForm(v => !v); }}>Add Server</Button>
       </div>
 
-      {/* Add Form */}
+      {/* Add/Edit Form */}
       {showForm && (
         <div style={{
           background: 'var(--bg-elevated)', border: '1px solid var(--accent)', borderRadius: 12,
           padding: 20, marginBottom: 20,
         }} className="animate-fadeIn">
           <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', marginBottom: 16 }}>
-            New Delivery Server
+            {editId ? 'Edit SMTP Server' : 'New SMTP Server'}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={labelStyle}>Label</label>
+              <input style={inputStyle} placeholder="e.g. xSMTP Server 1" value={form.label}
+                onChange={e => setForm(f => ({ ...f, label: e.target.value }))} />
+            </div>
             <div>
               <label style={labelStyle}>SMTP Hostname *</label>
-              <input style={inputStyle} placeholder="smtp.example.com" value={form.hostname}
+              <input style={inputStyle} placeholder="smtp.xsmtp.co" value={form.hostname}
                 onChange={e => setForm(f => ({ ...f, hostname: e.target.value }))} />
             </div>
             <div>
@@ -144,7 +189,7 @@ export default function DeliveryServerPanel({ onRefresh }: { onRefresh?: () => v
             </div>
             <div>
               <label style={labelStyle}>Username *</label>
-              <input style={inputStyle} placeholder="smtp_user or email@domain.com" value={form.username}
+              <input style={inputStyle} placeholder="smtp_user" value={form.username}
                 onChange={e => setForm(f => ({ ...f, username: e.target.value }))} />
             </div>
             <div style={{ position: 'relative' }}>
@@ -160,11 +205,11 @@ export default function DeliveryServerPanel({ onRefresh }: { onRefresh?: () => v
               <label style={labelStyle}>Protocol</label>
               <select style={inputStyle} value={form.protocol}
                 onChange={e => setForm(f => ({ ...f, protocol: e.target.value }))}>
-                {PROTOCOLS.map(p => <option key={p} value={p}>{p.toUpperCase()}</option>)}
+                {PROTOCOLS.map(p => <option key={p} value={p}>{p.toUpperCase()} {p === 'smtp' ? '(STARTTLS)' : '(SSL)'}</option>)}
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Daily Quota (emails/day)</label>
+              <label style={labelStyle}>Daily Quota</label>
               <input style={inputStyle} type="number" value={form.daily_quota}
                 onChange={e => setForm(f => ({ ...f, daily_quota: Number(e.target.value) }))} />
             </div>
@@ -180,11 +225,11 @@ export default function DeliveryServerPanel({ onRefresh }: { onRefresh?: () => v
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <Button onClick={handleAdd} disabled={adding}
-              icon={adding ? <Loader2 size={14} className="spin" /> : <Plus size={14} />}>
-              {adding ? 'Adding...' : 'Add to MailWizz'}
+            <Button onClick={handleSave} disabled={saving}
+              icon={saving ? <Loader2 size={14} className="spin" /> : <Plus size={14} />}>
+              {saving ? 'Saving...' : (editId ? 'Update Server' : 'Save Server')}
             </Button>
-            <Button variant="ghost" onClick={() => { setShowForm(false); setForm(emptyForm); }}>Cancel</Button>
+            <Button variant="ghost" onClick={() => { setShowForm(false); setForm(emptyForm); setEditId(null); }}>Cancel</Button>
           </div>
         </div>
       )}
@@ -193,7 +238,7 @@ export default function DeliveryServerPanel({ onRefresh }: { onRefresh?: () => v
       {loading ? (
         <div style={{ textAlign: 'center', padding: 32, color: 'var(--text-tertiary)' }}>
           <Loader2 size={20} className="spin" style={{ marginBottom: 8 }} />
-          <div>Loading delivery servers...</div>
+          <div>Loading SMTP servers...</div>
         </div>
       ) : servers.length === 0 ? (
         <div style={{
@@ -202,56 +247,71 @@ export default function DeliveryServerPanel({ onRefresh }: { onRefresh?: () => v
         }}>
           <Server size={24} style={{ opacity: 0.3, marginBottom: 8 }} />
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
-            No Delivery Servers
+            No SMTP Servers
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-            Add your 5 SMTP servers here. MailWizz will rotate sending across all of them.
+            Add your SMTP delivery servers here. They're stored locally and tested via real SMTP handshake.
           </div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {servers.map((srv, i) => {
-            const id = String(srv.server_id || srv.delivery_server_id || i);
-            const isExpanded = expandedId === id;
-            const isActive = srv.status === 'active';
+          {servers.map(srv => {
+            const isExpanded = expandedId === srv.id;
             return (
-              <div key={id} style={{
+              <div key={srv.id} style={{
                 background: 'var(--bg-elevated)', border: '1px solid var(--border)',
                 borderRadius: 10, overflow: 'hidden',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer' }}
-                  onClick={() => setExpandedId(isExpanded ? null : id)}>
+                  onClick={() => setExpandedId(isExpanded ? null : srv.id)}>
                   <div style={{
                     width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: isActive ? 'var(--green-muted)' : 'var(--bg-card)',
-                    color: isActive ? 'var(--green)' : 'var(--text-tertiary)', flexShrink: 0,
+                    background: srv.last_test_ok === true ? 'var(--green-muted)' : srv.last_test_ok === false ? 'var(--red-muted)' : 'var(--bg-card)',
+                    color: srv.last_test_ok === true ? 'var(--green)' : srv.last_test_ok === false ? 'var(--red)' : 'var(--text-tertiary)',
+                    flexShrink: 0,
                   }}>
                     <Server size={15} />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>{srv.hostname}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)' }}>{srv.label || srv.hostname}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1 }}>
-                      {srv.username} · Port {srv.port} · {srv.protocol?.toUpperCase()}
-                      {srv.quota_value ? ` · ${srv.quota_value.toLocaleString()}/day` : ''}
+                      {srv.hostname}:{srv.port} · {srv.protocol?.toUpperCase()} · {srv.username}
+                      {srv.daily_quota ? ` · ${srv.daily_quota.toLocaleString()}/day` : ''}
                     </div>
                   </div>
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, textTransform: 'uppercase', padding: '3px 8px', borderRadius: 5,
-                    background: isActive ? 'var(--green-muted)' : 'var(--bg-card)',
-                    color: isActive ? 'var(--green)' : 'var(--text-tertiary)',
-                  }}>{srv.status || 'active'}</span>
+
+                  {/* Test status */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, flexShrink: 0 }}>
+                    {srv.last_test_ok === true && <><CheckCircle size={13} style={{ color: 'var(--green)' }} /><span style={{ color: 'var(--green)' }}>OK</span></>}
+                    {srv.last_test_ok === false && <><XCircle size={13} style={{ color: 'var(--red)' }} /><span style={{ color: 'var(--red)' }}>Fail</span></>}
+                    {srv.last_test_ok === null && <span style={{ color: 'var(--text-tertiary)' }}>Untested</span>}
+                  </div>
+
                   {isExpanded ? <ChevronDown size={14} style={{ color: 'var(--text-tertiary)' }} /> : <ChevronRight size={14} style={{ color: 'var(--text-tertiary)' }} />}
                 </div>
                 {isExpanded && (
                   <div style={{ padding: '0 16px 14px', borderTop: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', gap: 8, paddingTop: 12 }}>
-                      <Button variant="ghost" icon={testingId === id ? <Loader2 size={13} className="spin" /> : <Zap size={13} />}
-                        onClick={() => handleTest(id)} disabled={testingId !== null}>Test</Button>
-                      <Button variant="ghost" icon={deletingId === id ? <Loader2 size={13} className="spin" /> : <Trash2 size={13} />}
-                        onClick={() => handleDelete(id, srv.hostname)} disabled={deletingId !== null}>Remove</Button>
+                    {srv.last_test_msg && (
+                      <div style={{
+                        fontSize: 12, padding: '8px 12px', borderRadius: 8, marginTop: 10, marginBottom: 6,
+                        background: srv.last_test_ok ? 'var(--green-muted)' : 'var(--red-muted)',
+                        color: srv.last_test_ok ? 'var(--green)' : 'var(--red)',
+                        border: `1px solid ${srv.last_test_ok ? 'var(--green)' : 'var(--red)'}`,
+                      }}>
+                        {srv.last_test_msg}
+                        {srv.last_test_at && <span style={{ opacity: 0.6, marginLeft: 8 }}>({new Date(srv.last_test_at).toLocaleString()})</span>}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 8, paddingTop: 10 }}>
+                      <Button variant="ghost" icon={testingId === srv.id ? <Loader2 size={13} className="spin" /> : <Zap size={13} />}
+                        onClick={() => handleTest(srv.id)} disabled={testingId !== null}>Test SMTP</Button>
+                      <Button variant="ghost" icon={<Edit2 size={13} />}
+                        onClick={() => handleEdit(srv)}>Edit</Button>
+                      <Button variant="ghost" icon={deletingId === srv.id ? <Loader2 size={13} className="spin" /> : <Trash2 size={13} />}
+                        onClick={() => handleDelete(srv.id, srv.hostname)} disabled={deletingId !== null}>Delete</Button>
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 10 }}>
-                      <div>From: <strong>{srv.from_name}</strong> &lt;{srv.from_email}&gt;</div>
+                      <div>From: <strong>{srv.from_name || '(not set)'}</strong> &lt;{srv.from_email || srv.username}&gt;</div>
                     </div>
                   </div>
                 )}
