@@ -49,7 +49,7 @@ export async function callAI(
   serviceSlug: string,
   systemPrompt: string,
   userPrompt: string,
-  options?: { maxTokens?: number; temperature?: number; timeout?: number }
+  options?: { maxTokens?: number; temperature?: number; timeout?: number; userId?: string }
 ): Promise<AICallResult> {
   // 1. Resolve service config
   const { data: svc, error: svcErr } = await supabaseAdmin
@@ -73,7 +73,11 @@ export async function callAI(
     const model = config.model_id || primary.selected_model;
     if (model) {
       const result = await executeCall(primary, model, systemPrompt, userPrompt, options);
-      if (result.success) return { ...result, wasFallback: false };
+      if (result.success) {
+        const out = { ...result, wasFallback: false };
+        logUsage(serviceSlug, primary, model, out, options?.userId).catch(() => {});
+        return out;
+      }
       console.warn(`[AI] Primary provider "${primary.label}" failed for ${serviceSlug}: ${result.error}`);
     }
   }
@@ -86,7 +90,9 @@ export async function callAI(
       if (model) {
         console.log(`[AI] Falling back to "${fallback.label}" for ${serviceSlug}`);
         const result = await executeCall(fallback, model, systemPrompt, userPrompt, options);
-        return { ...result, wasFallback: true };
+        const out = { ...result, wasFallback: true };
+        logUsage(serviceSlug, fallback, model, out, options?.userId).catch(() => {});
+        return out;
       }
     }
   }
@@ -102,7 +108,7 @@ export async function callAIJSON<T = any>(
   serviceSlug: string,
   systemPrompt: string,
   userPrompt: string,
-  options?: { maxTokens?: number; temperature?: number; timeout?: number }
+  options?: { maxTokens?: number; temperature?: number; timeout?: number; userId?: string }
 ): Promise<{ data: T | null; raw: AICallResult }> {
   const jsonSystemPrompt = `${systemPrompt}\n\nIMPORTANT: Respond ONLY with valid JSON. No markdown, no code fences, no explanation — just raw JSON.`;
   const result = await callAI(serviceSlug, jsonSystemPrompt, userPrompt, options);
@@ -270,4 +276,43 @@ async function executeCall(
 
 function fail(error: string, latencyMs: number): AICallResult {
   return { success: false, response: '', providerType: '', providerLabel: '', model: '', latencyMs, wasFallback: false, error };
+}
+
+// ─── Usage Logging ───
+
+const COST_PER_1K_TOKENS: Record<string, { input: number; output: number }> = {
+  // Approximate costs in USD per 1K tokens — updated as needed
+  'anthropic': { input: 0.003, output: 0.015 },
+  'openai': { input: 0.005, output: 0.015 },
+  'gemini': { input: 0.0005, output: 0.0015 },
+  'mistral': { input: 0.001, output: 0.003 },
+  'private_vps': { input: 0, output: 0 },
+  'ollama': { input: 0, output: 0 },
+};
+
+async function logUsage(
+  serviceSlug: string,
+  provider: ProviderRow,
+  model: string,
+  result: AICallResult,
+  userId?: string
+): Promise<void> {
+  const tokens = result.tokensUsed || 0;
+  const costs = COST_PER_1K_TOKENS[provider.provider_type] || { input: 0, output: 0 };
+  const estimatedCost = (tokens / 1000) * ((costs.input + costs.output) / 2);
+
+  await supabaseAdmin.from('ai_usage_log').insert({
+    service_slug: serviceSlug,
+    provider_id: provider.id,
+    provider_type: provider.provider_type,
+    provider_label: provider.label,
+    model,
+    tokens_used: tokens,
+    latency_ms: result.latencyMs,
+    success: result.success,
+    was_fallback: result.wasFallback,
+    error_message: result.error || '',
+    estimated_cost_usd: estimatedCost,
+    triggered_by: userId || null,
+  });
 }

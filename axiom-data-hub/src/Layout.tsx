@@ -39,6 +39,7 @@ const NAV = [
   {
     label: 'AI TOOLS',
     items: [
+      { name: 'AI Dashboard', icon: LayoutDashboard, path: '/ai-dashboard', requires: 'canViewConfig' as PermissionKey },
       { name: 'Lead Scoring', icon: Sparkles, path: '/lead-scoring', requires: 'canViewConfig' as PermissionKey },
       { name: 'ICP Analysis', icon: Target, path: '/icp-analysis', requires: 'canViewConfig' as PermissionKey },
       { name: 'List Segmentation', icon: Layers, path: '/list-segmentation', requires: 'canViewConfig' as PermissionKey },

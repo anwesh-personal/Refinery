@@ -26,6 +26,7 @@ import BounceAnalysisPage from './pages/BounceAnalysis';
 import DataEnrichmentPage from './pages/DataEnrichment';
 import ContentGenerationPage from './pages/ContentGeneration';
 import CampaignOptimizerPage from './pages/CampaignOptimizer';
+import AIDashboardPage from './pages/AIDashboard';
 import ImpersonationBanner from './components/ImpersonationBanner';
 import { CommandPalette } from './components/CommandPalette';
 import { ServerProvider } from './components/ServerSelector';
@@ -63,6 +64,7 @@ export default function App() {
                     <Route path="/janitor" element={<JanitorPage />} />
                     <Route path="/mta-config" element={<ProtectedRoute requires="canViewConfig"><MTAConfigPage /></ProtectedRoute>} />
                     <Route path="/ai-settings" element={<ProtectedRoute requires="canViewConfig"><AISettingsPage /></ProtectedRoute>} />
+                    <Route path="/ai-dashboard" element={<ProtectedRoute requires="canViewConfig"><AIDashboardPage /></ProtectedRoute>} />
                     <Route path="/lead-scoring" element={<ProtectedRoute requires="canViewConfig"><LeadScoringPage /></ProtectedRoute>} />
                     <Route path="/icp-analysis" element={<ProtectedRoute requires="canViewConfig"><ICPAnalysisPage /></ProtectedRoute>} />
                     <Route path="/list-segmentation" element={<ProtectedRoute requires="canViewConfig"><ListSegmentationPage /></ProtectedRoute>} />
