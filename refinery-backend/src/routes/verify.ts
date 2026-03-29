@@ -666,7 +666,7 @@ router.post('/jobs/:id/save-to-vault', requireSuperadmin, async (req, res) => {
     let allResults: any[];
     try { allResults = JSON.parse(job.results_json); } catch { return res.status(500).json({ error: 'Corrupt results data' }); }
 
-    const { customName, classifications, maxRiskScore } = req.body || {};
+    const { customName, classifications, maxRiskScore, emailType, excludeRoleBased, excludeCatchAll } = req.body || {};
     if (!customName || typeof customName !== 'string' || customName.trim().length === 0) {
       return res.status(400).json({ error: 'customName is required' });
     }
@@ -675,6 +675,26 @@ router.post('/jobs/:id/save-to-vault', requireSuperadmin, async (req, res) => {
     }
 
     const maxRisk = typeof maxRiskScore === 'number' ? maxRiskScore : Infinity;
+    const eType: 'all' | 'business' | 'free' = emailType || 'all';
+
+    // Apply granular filters to ALL results before classification split
+    const preFiltered = allResults.filter((r: any) => {
+      // Risk score filter
+      if ((r.riskScore ?? 0) > maxRisk) return false;
+
+      // Email type filter (Business vs Free Provider)
+      if (eType === 'business' && r.checks?.freeProvider?.detected === true) return false;
+      if (eType === 'free' && r.checks?.freeProvider?.detected !== true) return false;
+
+      // Role-based filter
+      if (excludeRoleBased && r.checks?.roleBased?.detected === true) return false;
+
+      // Catch-all filter
+      if (excludeCatchAll && r.checks?.catchAll === true) return false;
+
+      return true;
+    });
+
     const safeName = customName.trim().replace(/[^a-zA-Z0-9._\- ]/g, '_').replace(/\s+/g, '_');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 
@@ -686,9 +706,7 @@ router.post('/jobs/:id/save-to-vault', requireSuperadmin, async (req, res) => {
 
     // Create one file PER classification
     for (const cls of classifications) {
-      const rows = allResults.filter((r: any) =>
-        r.classification === cls && (r.riskScore ?? 0) <= maxRisk
-      );
+      const rows = preFiltered.filter((r: any) => r.classification === cls);
 
       if (rows.length === 0) continue;
 

@@ -179,6 +179,9 @@ export default function EmailVerifierPage() {
   const [vaultClassifications, setVaultClassifications] = useState<Record<string, boolean>>({ safe: true, uncertain: true, risky: false, reject: false });
   const [vaultMaxRisk, setVaultMaxRisk] = useState<number>(100);
   const [vaultCustomName, setVaultCustomName] = useState('');
+  const [vaultEmailType, setVaultEmailType] = useState<'all' | 'business' | 'free'>('all');
+  const [vaultExcludeRoleBased, setVaultExcludeRoleBased] = useState(false);
+  const [vaultExcludeCatchAll, setVaultExcludeCatchAll] = useState(false);
   const [vaultSaving, setVaultSaving] = useState(false);
   const [vaultResult, setVaultResult] = useState<any>(null);
 
@@ -1451,6 +1454,57 @@ export default function EmailVerifierPage() {
               </div>
             </div>
 
+            {/* ── Granular Filters ── */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Email Type
+              </label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {([['all', '🌐 All Emails', 'Business + Free providers'], ['business', '🏢 Business Only', 'Exclude Gmail, Yahoo, etc.'], ['free', '📧 Free Providers', 'Gmail, Yahoo, Outlook only']] as const).map(([val, label, desc]) => (
+                  <label key={val} style={{
+                    flex: 1, padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+                    border: vaultEmailType === val ? '1px solid var(--accent)' : '1px solid var(--border)',
+                    background: vaultEmailType === val ? 'var(--accent-muted)' : 'var(--bg-app)',
+                    transition: 'all 0.15s ease',
+                  }}>
+                    <input type="radio" name="vaultEmailType" checked={vaultEmailType === val} onChange={() => setVaultEmailType(val as any)}
+                      style={{ display: 'none' }} />
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{label}</div>
+                    <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2 }}>{desc}</div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 24, display: 'flex', gap: 12 }}>
+              <label style={{
+                flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                borderRadius: 10, border: vaultExcludeRoleBased ? '1px solid var(--yellow)' : '1px solid var(--border)',
+                background: vaultExcludeRoleBased ? 'var(--yellow-muted)' : 'var(--bg-app)',
+                cursor: 'pointer', transition: 'all 0.15s ease',
+              }}>
+                <input type="checkbox" checked={vaultExcludeRoleBased} onChange={() => setVaultExcludeRoleBased(v => !v)}
+                  style={{ accentColor: 'var(--yellow)', width: 15, height: 15 }} />
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>Exclude Role-Based</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>Remove info@, admin@, support@ etc.</div>
+                </div>
+              </label>
+              <label style={{
+                flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                borderRadius: 10, border: vaultExcludeCatchAll ? '1px solid var(--orange, #f59e0b)' : '1px solid var(--border)',
+                background: vaultExcludeCatchAll ? 'rgba(245,158,11,0.1)' : 'var(--bg-app)',
+                cursor: 'pointer', transition: 'all 0.15s ease',
+              }}>
+                <input type="checkbox" checked={vaultExcludeCatchAll} onChange={() => setVaultExcludeCatchAll(v => !v)}
+                  style={{ accentColor: 'var(--orange, #f59e0b)', width: 15, height: 15 }} />
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>Exclude Catch-All</div>
+                  <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>Remove unverifiable catch-all domains</div>
+                </div>
+              </label>
+            </div>
+
             {/* Save Result */}
             {vaultResult && (
               <div style={{
@@ -1494,6 +1548,9 @@ export default function EmailVerifierPage() {
                         customName: vaultCustomName.trim(),
                         classifications: Object.entries(vaultClassifications).filter(([, v]) => v).map(([k]) => k),
                         maxRiskScore: vaultMaxRisk,
+                        emailType: vaultEmailType,
+                        excludeRoleBased: vaultExcludeRoleBased,
+                        excludeCatchAll: vaultExcludeCatchAll,
                       },
                     });
                     setVaultResult(resp);
