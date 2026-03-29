@@ -21,6 +21,8 @@ export interface AICallResult {
   tokensUsed?: number;
   wasFallback: boolean;
   error?: string;
+  /** If the LLM wants to call a tool instead of responding with text */
+  toolCalls?: Array<{ id: string; name: string; arguments: Record<string, any> }>;
 }
 
 interface ProviderRow {
@@ -125,6 +127,152 @@ export async function callAIJSON<T = any>(
     return { data, raw: result };
   } catch {
     return { data: null, raw: { ...result, success: false, error: `Failed to parse AI response as JSON: ${result.response.slice(0, 200)}` } };
+  }
+}
+
+// ─── Tool-aware AI call ───
+
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  tool_call_id?: string;
+  name?: string;
+}
+
+/**
+ * Call AI with tool definitions. Returns either a text response or tool call requests.
+ * Used by the agent chat system for tool-calling conversations.
+ */
+export async function callAIWithTools(
+  serviceSlug: string,
+  messages: ChatMessage[],
+  tools: any[],
+  options?: { maxTokens?: number; temperature?: number; timeout?: number; userId?: string }
+): Promise<AICallResult> {
+  const { data: svc } = await supabaseAdmin
+    .from('ai_service_config').select('*').eq('service_slug', serviceSlug).single();
+  if (!svc?.provider_id) return fail(`Service "${serviceSlug}" not configured`, 0);
+
+  const provider = await resolveProvider(svc.provider_id);
+  if (!provider) return fail(`Provider not found for service "${serviceSlug}"`, 0);
+
+  const model = svc.model_id || provider.selected_model;
+  if (!model) return fail('No model configured', 0);
+
+  const start = Date.now();
+  const maxTokens = options?.maxTokens ?? 4096;
+  const temperature = options?.temperature ?? 0.3;
+  const timeoutMs = options?.timeout ?? 90_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const base: Omit<AICallResult, 'success' | 'response' | 'error' | 'wasFallback'> = {
+    providerType: provider.provider_type, providerLabel: provider.label, model, latencyMs: 0,
+  };
+
+  try {
+    switch (provider.provider_type) {
+      case 'openai':
+      case 'mistral':
+      case 'private_vps': {
+        const endpoint = provider.provider_type === 'openai'
+          ? 'https://api.openai.com/v1/chat/completions'
+          : provider.provider_type === 'mistral'
+            ? 'https://api.mistral.ai/v1/chat/completions'
+            : `${(provider.endpoint || '').replace(/\/$/, '')}/v1/chat/completions`;
+
+        const r = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${provider.api_key}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model, max_tokens: maxTokens, temperature, messages,
+            tools: tools.length > 0 ? tools : undefined,
+            tool_choice: tools.length > 0 ? 'auto' : undefined,
+          }),
+          signal: controller.signal,
+        });
+        const data: any = await r.json();
+        base.latencyMs = Date.now() - start;
+        base.tokensUsed = data.usage?.total_tokens;
+        if (!r.ok) return { ...base, success: false, response: '', error: data.error?.message || `HTTP ${r.status}`, wasFallback: false };
+
+        const choice = data.choices?.[0]?.message;
+        if (choice?.tool_calls?.length) {
+          return {
+            ...base, success: true, response: choice.content || '', wasFallback: false,
+            toolCalls: choice.tool_calls.map((tc: any) => ({
+              id: tc.id,
+              name: tc.function.name,
+              arguments: typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments,
+            })),
+          };
+        }
+        return { ...base, success: true, response: choice?.content || '', wasFallback: false };
+      }
+
+      case 'anthropic': {
+        // Anthropic uses separate system param + tools format
+        const systemMsg = messages.find(m => m.role === 'system');
+        const nonSystem = messages.filter(m => m.role !== 'system').map(m => {
+          if (m.role === 'tool') {
+            return { role: 'user' as const, content: [{ type: 'tool_result' as const, tool_use_id: m.tool_call_id || '', content: m.content }] };
+          }
+          return { role: m.role as 'user' | 'assistant', content: m.content };
+        });
+
+        // Convert tools to Anthropic format
+        const anthropicTools = tools.map((t: any) => ({
+          name: t.function?.name || t.name,
+          description: t.function?.description || t.description,
+          input_schema: t.function?.parameters || t.input_schema || t.parameters,
+        }));
+
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'x-api-key': provider.api_key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model, max_tokens: maxTokens, temperature,
+            system: systemMsg?.content || '',
+            messages: nonSystem,
+            tools: anthropicTools.length > 0 ? anthropicTools : undefined,
+          }),
+          signal: controller.signal,
+        });
+        const data: any = await r.json();
+        base.latencyMs = Date.now() - start;
+        base.tokensUsed = (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0);
+        if (!r.ok) return { ...base, success: false, response: '', error: data.error?.message || `HTTP ${r.status}`, wasFallback: false };
+
+        // Check for tool use in response
+        const toolUseBlocks = (data.content || []).filter((b: any) => b.type === 'tool_use');
+        const textBlocks = (data.content || []).filter((b: any) => b.type === 'text');
+
+        if (toolUseBlocks.length > 0) {
+          return {
+            ...base, success: true,
+            response: textBlocks.map((b: any) => b.text).join('\n') || '',
+            wasFallback: false,
+            toolCalls: toolUseBlocks.map((b: any) => ({ id: b.id, name: b.name, arguments: b.input })),
+          };
+        }
+        return { ...base, success: true, response: textBlocks.map((b: any) => b.text).join('\n') || '', wasFallback: false };
+      }
+
+      default:
+        // For providers that don't support tool calling (ollama, gemini), fall back to text-only
+        return callAI(serviceSlug, messages[0]?.content || '', messages[messages.length - 1]?.content || '', options);
+    }
+  } catch (err: any) {
+    return {
+      ...base, success: false, response: '', wasFallback: false,
+      error: err.name === 'AbortError' ? `Timed out after ${timeoutMs / 1000}s` : err.message,
+      latencyMs: Date.now() - start,
+    };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

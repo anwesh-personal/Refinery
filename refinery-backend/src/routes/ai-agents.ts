@@ -2,6 +2,11 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { supabaseAdmin } from '../services/supabaseAdmin.js';
 import { callAI } from '../services/aiClient.js';
+import { callAIWithTools, type ChatMessage } from '../services/aiClient.js';
+import { buildSystemManifest } from '../agents/manifest.js';
+import { getToolsForAgent } from '../agents/tools/registry.js';
+import { toOpenAITools } from '../agents/tools/types.js';
+import { executeTool } from '../agents/tools/executor.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -70,11 +75,12 @@ router.get('/conversations/:convId/messages', async (req: Request, res: Response
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Send message (the core agent executor) ──
+// ── Send message (the core agent executor with tool calling) ──
 router.post('/conversations/:convId/messages', async (req: Request, res: Response) => {
   const start = Date.now();
   try {
     const userId = (req as any).user?.id;
+    const accessToken = String(req.headers.authorization || '').replace('Bearer ', '');
     const { message } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
     const convId = req.params.convId;
@@ -92,57 +98,99 @@ router.post('/conversations/:convId/messages', async (req: Request, res: Respons
 
     // 3. Build conversation context
     const { data: history } = await supabaseAdmin
-      .from('ai_agent_messages').select('role, content')
+      .from('ai_agent_messages').select('role, content, tool_name, tool_input, tool_output')
       .eq('conversation_id', convId).order('created_at', { ascending: true }).limit(40);
 
-    // 4. Gather system context + KB
+    // 4. Gather system context + KB + manifest
     const systemContext = await gatherContext(agent.id, agent.capabilities || []);
-
-    // 5. Custom instructions
+    const manifest = buildSystemManifest(agent.slug);
     const customBlock = agent.custom_instructions ? `\n=== CUSTOM INSTRUCTIONS ===\n${agent.custom_instructions}` : '';
 
-    // 6. Build the full prompt
-    const systemPrompt = `${agent.system_prompt}${customBlock}
-
-=== CURRENT SYSTEM CONTEXT ===
-${systemContext}
-
-=== CONVERSATION RULES ===
+    // 5. Build the full system prompt with manifest
+    const systemPrompt = `${manifest}\n\n${agent.system_prompt}${customBlock}\n\n=== LIVE SYSTEM CONTEXT ===\n${systemContext}\n\n=== CONVERSATION RULES ===
 - You are chatting with a user. Be conversational but expert.
-- If the user asks you to DO something (score leads, analyze data, etc.), tell them exactly what you would do and with what parameters.
+- If the user asks you to DO something, USE YOUR TOOLS to actually do it.
 - Reference the system context when relevant.
 - Keep responses focused and actionable. No filler.
-- Use markdown formatting for clarity (bold, lists, code blocks).
-- When presenting data, use tables or structured formatting.`;
+- Use markdown formatting for clarity (bold, lists, code blocks, tables).`;
 
-    const conversationHistory = (history || [])
-      .filter(m => m.role === 'user' || m.role === 'assistant')
-      .map(m => `${m.role === 'user' ? 'USER' : 'ASSISTANT'}: ${m.content}`)
-      .join('\n\n');
+    // 6. Get tools for this agent
+    const agentTools = getToolsForAgent(agent.slug);
+    const openAITools = toOpenAITools(agentTools);
 
-    const userPrompt = conversationHistory ? `${conversationHistory}\n\nUSER: ${message}` : `USER: ${message}`;
+    // 7. Build messages array (proper chat format for tool-calling)
+    const chatMessages: ChatMessage[] = [
+      { role: 'system', content: systemPrompt },
+    ];
 
-    // 7. Resolve provider+model via 3-tier cascade:
-    //    Tier 1: Agent-specific override (provider_id + model_id on ai_agents row)
-    //    Tier 2: System default — `agent_chat` service config
-    //    Tier 3: First enabled provider with a selected_model (ultimate fallback)
+    // Add history
+    for (const m of (history || [])) {
+      if (m.role === 'user' || m.role === 'assistant') {
+        chatMessages.push({ role: m.role as 'user' | 'assistant', content: m.content });
+      }
+    }
+
+    // 8. Resolve provider
     const resolved = await resolveAgentProvider(agent);
-
     if (!resolved) {
       await supabaseAdmin.from('ai_agent_messages').insert({
         conversation_id: convId, role: 'assistant',
-        content: '⚠️ No AI provider configured.\n\nGo to **AI Settings** → activate a provider and choose a model. All agents will automatically use it.',
+        content: '⚠️ No AI provider configured.\n\nGo to **AI Settings** → activate a provider and choose a model.',
         latency_ms: Date.now() - start,
       });
       return res.json({ reply: '⚠️ No AI provider configured. Go to AI Settings → activate a provider and choose a model.', latencyMs: Date.now() - start });
     }
 
-    // 8. Call AI with resolved provider+model
-    const aiResult = await callAI(resolved.serviceSlug, systemPrompt, userPrompt, {
+    // 9. Call AI with tools
+    let aiResult = await callAIWithTools(resolved.serviceSlug, chatMessages, openAITools, {
       maxTokens: agent.max_tokens || 4096,
       temperature: parseFloat(agent.temperature) || 0.5,
       userId,
     });
+
+    // 10. Handle tool calls (multi-turn loop — max 3 rounds)
+    let toolRounds = 0;
+    while (aiResult.success && aiResult.toolCalls?.length && toolRounds < 3) {
+      toolRounds++;
+
+      // Add assistant's tool-calling message to context
+      chatMessages.push({
+        role: 'assistant',
+        content: aiResult.response || `Calling tool: ${aiResult.toolCalls[0].name}`,
+      });
+
+      // Execute each tool call
+      for (const tc of aiResult.toolCalls) {
+        const toolResult = await executeTool(
+          { id: tc.id, name: tc.name, arguments: tc.arguments },
+          { userId: String(userId), agentSlug: agent.slug, conversationId: String(convId), accessToken }
+        );
+
+        // Save tool execution to messages
+        await supabaseAdmin.from('ai_agent_messages').insert({
+          conversation_id: convId, role: 'assistant',
+          content: `🔧 Used tool: **${tc.name}**`,
+          tool_name: tc.name,
+          tool_input: tc.arguments,
+          tool_output: toolResult.data || toolResult.error,
+        });
+
+        // Add tool result to conversation for LLM
+        chatMessages.push({
+          role: 'tool',
+          content: JSON.stringify(toolResult),
+          tool_call_id: tc.id,
+          name: tc.name,
+        });
+      }
+
+      // Call LLM again with tool results
+      aiResult = await callAIWithTools(resolved.serviceSlug, chatMessages, openAITools, {
+        maxTokens: agent.max_tokens || 4096,
+        temperature: parseFloat(agent.temperature) || 0.5,
+        userId,
+      });
+    }
 
     const latency = Date.now() - start;
 
@@ -155,14 +203,14 @@ ${systemContext}
       return res.json({ reply: `⚠️ AI provider error: ${aiResult.error}`, latencyMs: latency });
     }
 
-    // 8. Save assistant response
+    // 11. Save final assistant response
     await supabaseAdmin.from('ai_agent_messages').insert({
       conversation_id: convId, role: 'assistant', content: aiResult.response,
       tokens_used: aiResult.tokensUsed || 0, latency_ms: latency,
       provider_used: aiResult.providerLabel, model_used: aiResult.model,
     });
 
-    // 9. Auto-title
+    // 12. Auto-title
     if ((history || []).length <= 2) {
       const title = message.length > 60 ? message.slice(0, 57) + '...' : message;
       await supabaseAdmin.from('ai_agent_conversations').update({ title }).eq('id', convId);
@@ -172,6 +220,7 @@ ${systemContext}
       reply: aiResult.response, latencyMs: latency,
       tokensUsed: aiResult.tokensUsed, provider: aiResult.providerLabel,
       model: aiResult.model, wasFallback: aiResult.wasFallback,
+      toolsUsed: toolRounds > 0,
     });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
