@@ -280,14 +280,14 @@ export default function AgentsPanel() {
                   border: '3px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
                 }} />
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 900, color: '#fff' }}>{a.name}</div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--accent-contrast, #fff)' }}>{a.name}</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>{a.role}</div>
                   {meta && (
                     <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
                       {meta.pages.map(p => (
                         <span key={p} style={{
                           fontSize: 8, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
-                          background: 'rgba(255,255,255,0.15)', color: '#fff',
+                          background: 'rgba(255,255,255,0.15)', color: 'var(--accent-contrast, #fff)',
                         }}>📍 {p}</span>
                       ))}
                     </div>
@@ -360,19 +360,19 @@ export default function AgentsPanel() {
         {/* ═══ AGENT MANAGEMENT MODAL ═══ */}
         {showModal && agentDetails && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 20 }} onClick={closeModal}>
-            <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-card)', borderRadius: 20, border: '1px solid var(--border)', width: '100%', maxWidth: 800, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: `0 25px 60px ${color}15` }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg-card)', borderRadius: 20, border: '1px solid var(--border)', width: '100%', maxWidth: 800, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: 'var(--shadow-lg)' }}>
               {/* Modal Header */}
               <div style={{ background: `linear-gradient(135deg, ${color} 0%, ${color}cc 100%)`, padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <img src={AGENT_IMAGES[agentDetails.slug] || ''} alt={agentDetails.name} style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover', border: '2px solid rgba(255,255,255,0.3)' }} />
                   <div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: '#fff' }}>{agentDetails.name}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent-contrast, #fff)' }}>{agentDetails.name}</div>
                     <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>{agentDetails.role}</div>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={startChat} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.2)', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}><MessageCircle size={13} /> Chat</button>
-                  <button onClick={closeModal} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '6px', cursor: 'pointer', color: '#fff' }}><X size={18} /></button>
+                  <button onClick={startChat} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.2)', color: 'var(--accent-contrast, #fff)', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}><MessageCircle size={13} /> Chat</button>
+                  <button onClick={closeModal} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '6px', cursor: 'pointer', color: 'var(--accent-contrast, #fff)' }}><X size={18} /></button>
                 </div>
               </div>
 
@@ -419,7 +419,7 @@ export default function AgentsPanel() {
                     </div>
                     <button onClick={saveAgent} disabled={saving} style={{
                       alignSelf: 'flex-end', padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                      background: `linear-gradient(135deg, ${color} 0%, ${color}cc 100%)`, color: '#fff',
+                      background: `linear-gradient(135deg, ${color} 0%, color-mix(in srgb, ${color} 80%, transparent) 100%)`, color: 'var(--accent-contrast, #fff)',
                       fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: saving ? 0.6 : 1,
                     }}><Save size={13} /> {saving ? 'Saving...' : 'Save Core Prompt'}</button>
                   </div>
@@ -428,7 +428,7 @@ export default function AgentsPanel() {
                 {/* PROMPT STACK TAB (Custom Instructions) */}
                 {modalTab === 'prompts' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    <div style={{ padding: 14, borderRadius: 10, background: `${color}08`, border: `1px solid ${color}20` }}>
+                    <div style={{ padding: 14, borderRadius: 10, background: `color-mix(in srgb, ${color} 8%, var(--bg-app))`, border: '1px solid var(--border)' }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: color, marginBottom: 4 }}>How Prompt Stack Works</div>
                       <div style={{ fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.5 }}>Custom instructions are injected AFTER the core prompt but BEFORE the conversation context. Use this to add project-specific rules, constraints, or personality tweaks without modifying the core prompt.</div>
                     </div>
@@ -443,7 +443,7 @@ export default function AgentsPanel() {
                     </div>
                     <button onClick={saveAgent} disabled={saving} style={{
                       alignSelf: 'flex-end', padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                      background: `linear-gradient(135deg, ${color} 0%, ${color}cc 100%)`, color: '#fff',
+                      background: `linear-gradient(135deg, ${color} 0%, color-mix(in srgb, ${color} 80%, transparent) 100%)`, color: 'var(--accent-contrast, #fff)',
                       fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: saving ? 0.6 : 1,
                     }}><Save size={13} /> {saving ? 'Saving...' : 'Save Instructions'}</button>
                   </div>
@@ -452,7 +452,7 @@ export default function AgentsPanel() {
                 {/* KNOWLEDGE BASE TAB */}
                 {modalTab === 'kb' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    <div style={{ padding: 14, borderRadius: 10, background: `${color}08`, border: `1px solid ${color}20` }}>
+                    <div style={{ padding: 14, borderRadius: 10, background: `color-mix(in srgb, ${color} 8%, var(--bg-app))`, border: '1px solid var(--border)' }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: color, marginBottom: 4 }}>Knowledge Base</div>
                       <div style={{ fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.5 }}>KB entries are injected as context in every conversation. The agent references this knowledge when answering. Higher priority entries are injected first.</div>
                     </div>
@@ -467,7 +467,7 @@ export default function AgentsPanel() {
                         </select>
                       </div>
                       <textarea value={newKBContent} onChange={e => setNewKBContent(e.target.value)} rows={4} placeholder="Knowledge content..." style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12, fontFamily: 'monospace', lineHeight: 1.5, resize: 'vertical', boxSizing: 'border-box', marginBottom: 8 }} />
-                      <button onClick={addKBEntry} disabled={!newKBTitle.trim() || !newKBContent.trim()} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', background: color, color: '#fff', fontSize: 11, fontWeight: 700, opacity: !newKBTitle.trim() || !newKBContent.trim() ? 0.4 : 1 }}><Plus size={12} style={{ verticalAlign: 'middle', marginRight: 3 }} />Add Entry</button>
+                      <button onClick={addKBEntry} disabled={!newKBTitle.trim() || !newKBContent.trim()} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', background: color, color: 'var(--accent-contrast, #fff)', fontSize: 11, fontWeight: 700, opacity: !newKBTitle.trim() || !newKBContent.trim() ? 0.4 : 1 }}><Plus size={12} style={{ verticalAlign: 'middle', marginRight: 3 }} />Add Entry</button>
                     </div>
 
                     {/* Existing entries */}
@@ -476,12 +476,12 @@ export default function AgentsPanel() {
                       <div key={entry.id} style={{ padding: 14, borderRadius: 10, border: '1px solid var(--border)', background: entry.enabled ? 'var(--bg-card)' : 'var(--bg-app)', opacity: entry.enabled ? 1 : 0.5 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4, background: `${color}15`, color }}>{entry.category}</span>
+                            <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4, background: `color-mix(in srgb, ${color} 15%, var(--bg-elevated))`, color }}>{entry.category}</span>
                             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{entry.title}</span>
                           </div>
                           <div style={{ display: 'flex', gap: 4 }}>
-                            <button onClick={() => toggleKBEntry(entry)} style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', background: entry.enabled ? `${color}15` : 'var(--bg-app)', color: entry.enabled ? color : 'var(--text-tertiary)', fontSize: 9, fontWeight: 600, cursor: 'pointer' }}>{entry.enabled ? 'ON' : 'OFF'}</button>
-                            <button onClick={() => deleteKBEntry(entry.id)} style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-app)', color: '#ef4444', fontSize: 9, cursor: 'pointer' }}><Trash2 size={10} /></button>
+                            <button onClick={() => toggleKBEntry(entry)} style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', background: entry.enabled ? `color-mix(in srgb, ${color} 15%, var(--bg-elevated))` : 'var(--bg-app)', color: entry.enabled ? color : 'var(--text-tertiary)', fontSize: 9, fontWeight: 600, cursor: 'pointer' }}>{entry.enabled ? 'ON' : 'OFF'}</button>
+                            <button onClick={() => deleteKBEntry(entry.id)} style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-app)', color: 'var(--red)', fontSize: 9, cursor: 'pointer' }}><Trash2 size={10} /></button>
                           </div>
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5, whiteSpace: 'pre-wrap', maxHeight: 100, overflow: 'auto' }}>{entry.content}</div>
@@ -581,7 +581,7 @@ export default function AgentsPanel() {
 
                     <button onClick={saveAgent} disabled={saving} style={{
                       alignSelf: 'flex-end', padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                      background: `linear-gradient(135deg, ${color} 0%, ${color}cc 100%)`, color: '#fff',
+                      background: `linear-gradient(135deg, ${color} 0%, color-mix(in srgb, ${color} 80%, transparent) 100%)`, color: 'var(--accent-contrast, #fff)',
                       fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: saving ? 0.6 : 1,
                     }}><Save size={13} /> {saving ? 'Saving...' : 'Save Settings'}</button>
                   </div>
@@ -610,15 +610,15 @@ export default function AgentsPanel() {
           </div>
         </div>
         <div style={{ display: 'flex', gap: 4, padding: '8px 10px 4px' }}>
-          <button onClick={createConversation} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: `1px solid ${color}40`, background: `${color}10`, color, fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}><Plus size={12} /> New Chat</button>
+          <button onClick={createConversation} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: `color-mix(in srgb, ${color} 12%, var(--bg-elevated))`, color: 'var(--text-primary)', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}><Plus size={12} /> New Chat</button>
           <button onClick={() => openModal(selectedAgent)} style={{ padding: '8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-app)', color: 'var(--text-tertiary)', cursor: 'pointer' }}><Sliders size={12} /></button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 6px' }}>
           {conversations.map(c => (
             <div key={c.id} onClick={() => setActiveConv(c.id)} style={{
               padding: '8px 10px', borderRadius: 8, cursor: 'pointer', marginBottom: 2,
-              background: activeConv === c.id ? `${color}12` : 'transparent',
-              border: activeConv === c.id ? `1px solid ${color}30` : '1px solid transparent',
+              background: activeConv === c.id ? `color-mix(in srgb, ${color} 12%, var(--bg-elevated))` : 'transparent',
+              border: activeConv === c.id ? '1px solid var(--border-hover)' : '1px solid transparent',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -628,7 +628,7 @@ export default function AgentsPanel() {
                 <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{new Date(c.updated_at).toLocaleDateString()}</div>
               </div>
               <button onClick={e => { e.stopPropagation(); deleteConversation(c.id); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-tertiary)', opacity: 0.4 }}
-                onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = '#ef4444'; }}
+                onMouseEnter={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--red)'; }}
                 onMouseLeave={e => { e.currentTarget.style.opacity = '0.4'; e.currentTarget.style.color = 'var(--text-tertiary)'; }}
               ><Trash2 size={10} /></button>
             </div>
@@ -641,10 +641,10 @@ export default function AgentsPanel() {
       <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg-app)' }}>
         {!activeConv ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 12, padding: 40 }}>
-            <img src={AGENT_IMAGES[selectedAgent.slug]} alt="" style={{ width: 80, height: 80, borderRadius: 16, objectFit: 'cover', border: `3px solid ${color}40` }} />
+            <img src={AGENT_IMAGES[selectedAgent.slug]} alt="" style={{ width: 80, height: 80, borderRadius: 16, objectFit: 'cover', border: '3px solid var(--border)' }} />
             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>{selectedAgent.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-tertiary)', maxWidth: 400, textAlign: 'center', lineHeight: 1.6 }}>{selectedAgent.greeting}</div>
-            <button onClick={createConversation} style={{ marginTop: 8, padding: '10px 20px', borderRadius: 10, border: 'none', cursor: 'pointer', background: `linear-gradient(135deg, ${color} 0%, ${color}cc 100%)`, color: '#fff', fontSize: 12, fontWeight: 700, boxShadow: `0 4px 14px ${color}30` }}>
+            <button onClick={createConversation} style={{ marginTop: 8, padding: '10px 20px', borderRadius: 10, border: 'none', cursor: 'pointer', background: `linear-gradient(135deg, ${color} 0%, color-mix(in srgb, ${color} 80%, transparent) 100%)`, color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 700, boxShadow: 'var(--shadow-md)' }}>
               <MessageSquare size={13} style={{ verticalAlign: 'middle', marginRight: 5 }} />Start Conversation
             </button>
           </div>

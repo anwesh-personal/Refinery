@@ -130,26 +130,26 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
   return (
     <div style={{
       borderRadius: 20, overflow: 'hidden',
-      background: 'var(--bg-card)', border: `1px solid ${color}25`,
-      boxShadow: `0 4px 20px ${color}08`,
+      background: 'var(--bg-card)', border: '1px solid var(--border)',
+      boxShadow: 'var(--shadow-sm)',
       transition: 'all 0.3s ease',
     }}>
       {/* Agent Header — always visible */}
       <div
         onClick={() => setExpanded(!expanded)}
         style={{
-          background: `linear-gradient(135deg, ${color}12 0%, ${color}06 100%)`,
+          background: `color-mix(in srgb, ${color} 8%, var(--bg-card))`,
           padding: '16px 20px', cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: 14,
-          borderBottom: expanded ? `1px solid ${color}15` : 'none',
+          borderBottom: expanded ? '1px solid var(--border)' : 'none',
         }}
       >
-        {img && <img src={img} alt={agent.name} style={{ width: 52, height: 52, borderRadius: 14, objectFit: 'cover', border: `2px solid ${color}30`, boxShadow: `0 4px 12px ${color}15` }} />}
+        {img && <img src={img} alt={agent.name} style={{ width: 52, height: 52, borderRadius: 14, objectFit: 'cover', border: '2px solid var(--border)', boxShadow: 'var(--shadow-sm)' }} />}
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Sparkles size={12} style={{ color }} />
             <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>{agent.name}</span>
-            <span style={{ fontSize: 9, fontWeight: 600, color, padding: '1px 6px', borderRadius: 4, background: `${color}12` }}>{agent.role}</span>
+            <span style={{ fontSize: 9, fontWeight: 600, color, padding: '1px 6px', borderRadius: 4, background: `color-mix(in srgb, ${color} 15%, transparent)` }}>{agent.role}</span>
           </div>
           <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 3, lineHeight: 1.4 }}>
             {contextLabel || agent.greeting}
@@ -177,12 +177,12 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {prompts.map(p => (
                   <button key={p} onClick={() => { setExpanded(true); sendMessage(p); }} style={{
-                    padding: '6px 12px', borderRadius: 8, border: `1px solid ${color}25`,
-                    background: `${color}06`, color, fontSize: 10, fontWeight: 600,
+                    padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)',
+                    background: `color-mix(in srgb, ${color} 10%, var(--bg-elevated))`, color: 'var(--text-primary)', fontSize: 10, fontWeight: 600,
                     cursor: 'pointer', transition: 'all 0.15s',
                   }}
-                    onMouseEnter={e => { e.currentTarget.style.background = `${color}15`; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = `${color}06`; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = `color-mix(in srgb, ${color} 22%, var(--bg-elevated))`; e.currentTarget.style.borderColor = color; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = `color-mix(in srgb, ${color} 10%, var(--bg-elevated))`; e.currentTarget.style.borderColor = 'var(--border)'; }}
                   >{p}</button>
                 ))}
               </div>
