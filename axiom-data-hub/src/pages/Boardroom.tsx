@@ -202,18 +202,41 @@ export default function BoardroomPage() {
         </div>
 
         {/* Agent Roster */}
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', marginBottom: 8 }}>Participants</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ padding: '14px 14px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', marginBottom: 10 }}>Participants</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {AGENT_SLUGS.map(slug => {
               const a = AGENTS[slug];
               return (
-                <div key={slug} onClick={() => insertMention(a.name)} title={`@${a.name} — ${a.role}`} style={{ cursor: 'pointer', position: 'relative' }}>
-                  <img src={a.img + IMG_V} alt={a.name} style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover', border: `2px solid ${a.color}40`, transition: 'all 0.15s' }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = a.color; e.currentTarget.style.transform = 'scale(1.1)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = `${a.color}40`; e.currentTarget.style.transform = 'scale(1)'; }}
-                  />
-                  <div style={{ position: 'absolute', bottom: -1, right: -1, width: 10, height: 10, borderRadius: '50%', background: '#22c55e', border: '2px solid var(--bg-sidebar)' }} />
+                <div key={slug} onClick={() => insertMention(a.name)} className="agent-roster-item" style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px',
+                  borderRadius: 10, cursor: 'pointer', transition: 'all 0.2s ease',
+                  border: '1px solid transparent',
+                }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = `${a.color}10`;
+                    e.currentTarget.style.borderColor = `${a.color}30`;
+                    const img = e.currentTarget.querySelector('img');
+                    if (img) { img.style.transform = 'scale(1.12)'; img.style.boxShadow = `0 0 14px ${a.color}50`; }
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.borderColor = 'transparent';
+                    const img = e.currentTarget.querySelector('img');
+                    if (img) { img.style.transform = 'scale(1)'; img.style.boxShadow = 'none'; }
+                  }}
+                >
+                  <div style={{ position: 'relative', flexShrink: 0 }}>
+                    <img src={a.img + IMG_V} alt={a.name} style={{
+                      width: 38, height: 38, borderRadius: 10, objectFit: 'cover',
+                      border: `2px solid ${a.color}50`, transition: 'all 0.25s ease',
+                    }} />
+                    <div style={{ position: 'absolute', bottom: -1, right: -1, width: 10, height: 10, borderRadius: '50%', background: '#22c55e', border: '2px solid var(--bg-sidebar)' }} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: a.color }}>{a.name}</div>
+                    <div style={{ fontSize: 9, color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.role}</div>
+                  </div>
                 </div>
               );
             })}
@@ -281,7 +304,7 @@ export default function BoardroomPage() {
               const a = AGENTS[msg.slug || ''] || AGENTS.data_scientist;
               return (
                 <div key={msg.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', animation: 'fadeSlideIn 0.3s ease-out' }}>
-                  <img src={a.img + IMG_V} alt={a.name} style={{ width: 32, height: 32, borderRadius: 10, objectFit: 'cover', border: `2px solid ${a.color}` }} />
+                  <img src={a.img + IMG_V} alt={a.name} style={{ width: 40, height: 40, borderRadius: 12, objectFit: 'cover', border: `2px solid ${a.color}`, boxShadow: `0 0 10px ${a.color}30`, flexShrink: 0, transition: 'all 0.2s' }} />
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 700, color: a.color, marginBottom: 4 }}>{a.name}</div>
                     <div style={{ padding: '10px 14px', borderRadius: '4px 16px 16px 16px', background: 'var(--bg-hover)', border: '1px solid var(--border)', display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -297,11 +320,15 @@ export default function BoardroomPage() {
             const a = AGENTS[msg.slug || ''] || AGENTS.data_scientist;
             const isSummary = msg.id === 'crucible-summary';
             return (
-              <div key={msg.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', animation: 'fadeSlideIn 0.4s ease-out' }}>
-                <img src={a.img + IMG_V} alt={a.name} style={{
-                  width: 32, height: 32, borderRadius: 10, objectFit: 'cover', flexShrink: 0,
-                  border: `2px solid ${a.color}`, boxShadow: isSummary ? `0 0 12px ${a.color}40` : 'none',
-                }} />
+              <div key={msg.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', animation: 'fadeSlideIn 0.4s ease-out' }}>
+                <img src={a.img + IMG_V} alt={a.name} className="chat-avatar" style={{
+                  width: 40, height: 40, borderRadius: 12, objectFit: 'cover', flexShrink: 0,
+                  border: `2px solid ${a.color}`, transition: 'all 0.25s ease',
+                  boxShadow: isSummary ? `0 0 16px ${a.color}50` : `0 0 8px ${a.color}20`,
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.12)'; e.currentTarget.style.boxShadow = `0 0 18px ${a.color}60`; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = isSummary ? `0 0 16px ${a.color}50` : `0 0 8px ${a.color}20`; }}
+                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                     <span style={{ fontSize: 12, fontWeight: 800, color: a.color }}>{a.name}</span>
