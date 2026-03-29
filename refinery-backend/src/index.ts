@@ -32,6 +32,7 @@ import segmentColumnsRoutes from './routes/segment-columns.js';
 import aiProvidersRoutes from './routes/ai-providers.js';
 import aiLeadScoringRoutes from './routes/ai-lead-scoring.js';
 import aiICPAnalysisRoutes from './routes/ai-icp-analysis.js';
+import aiListSegmentationRoutes from './routes/ai-list-segmentation.js';
 import { setupScheduler } from './services/ingestion-rules.js';
 import { ensureEnvServersRegistered } from './services/servers.js';
 
@@ -101,6 +102,7 @@ app.use('/api/segment-columns', segmentColumnsRoutes);
 app.use('/api/ai', aiProvidersRoutes);
 app.use('/api/ai/lead-scoring', aiLeadScoringRoutes);
 app.use('/api/ai/icp-analysis', aiICPAnalysisRoutes);
+app.use('/api/ai/list-segmentation', aiListSegmentationRoutes);
 
 // ── v1 API (machine-to-machine, API key authenticated) ──
 app.use('/api/v1/keys', v1KeysRoutes);
