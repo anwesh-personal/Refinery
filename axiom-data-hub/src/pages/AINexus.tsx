@@ -23,6 +23,20 @@ interface Agent { id: string; slug: string; name: string; role: string; avatar_e
 interface Conversation { id: string; title: string; pinned: boolean; created_at: string; updated_at: string }
 interface Msg { id: string; role: string; content: string; tool_name?: string; tokens_used: number; latency_ms: number; provider_used?: string; model_used?: string; created_at: string }
 
+const AGENT_IMAGES: Record<string, string> = {
+  data_scientist: '/agents/cortex.png',
+  smtp_specialist: '/agents/bastion.png',
+  email_marketer: '/agents/muse.png',
+  supervisor: '/agents/overseer.png',
+  verification_engineer: '/agents/litmus.png',
+};
+
+function AgentAvatar({ agent, size = 32 }: { agent: Agent; size?: number }) {
+  const src = AGENT_IMAGES[agent.slug];
+  if (src) return <img src={src} alt={agent.name} style={{ width: size, height: size, borderRadius: size > 28 ? 12 : 8, objectFit: 'cover', border: `2px solid ${agent.accent_color}40` }} />;
+  return <span style={{ fontSize: size * 0.7 }}>{agent.avatar_emoji}</span>;
+}
+
 const TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'lead-scoring', label: 'Lead Scoring', icon: Sparkles },
@@ -195,8 +209,8 @@ function AgentsPanel() {
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = `0 10px 30px ${a.accent_color}18`; }}
               onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
             >
-              <div style={{ background: `linear-gradient(135deg, ${a.accent_color} 0%, ${a.accent_color}cc 100%)`, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: 32 }}>{a.avatar_emoji}</span>
+              <div style={{ background: `linear-gradient(135deg, ${a.accent_color} 0%, ${a.accent_color}cc 100%)`, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 12, position: 'relative', overflow: 'hidden', minHeight: 80 }}>
+                <img src={AGENT_IMAGES[a.slug] || ''} alt={a.name} style={{ width: 60, height: 60, borderRadius: 14, objectFit: 'cover', border: '2px solid rgba(255,255,255,0.3)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }} />
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>{a.name}</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', fontWeight: 500 }}>{a.role}</div>
@@ -224,7 +238,7 @@ function AgentsPanel() {
         {/* Agent header */}
         <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => { setSelectedAgent(null); setActiveConv(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, padding: 0 }}>←</button>
-          <span style={{ fontSize: 20 }}>{selectedAgent.avatar_emoji}</span>
+          <AgentAvatar agent={selectedAgent} size={28} />
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{selectedAgent.name}</div>
             <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{selectedAgent.role}</div>
@@ -263,7 +277,7 @@ function AgentsPanel() {
         {!activeConv ? (
           // Welcome state
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: 12, padding: 40 }}>
-            <span style={{ fontSize: 48 }}>{selectedAgent.avatar_emoji}</span>
+            <AgentAvatar agent={selectedAgent} size={80} />
             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>{selectedAgent.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-tertiary)', maxWidth: 400, textAlign: 'center', lineHeight: 1.6 }}>{selectedAgent.greeting}</div>
             <button onClick={createConversation} style={{ marginTop: 8, padding: '10px 20px', borderRadius: 10, border: 'none', cursor: 'pointer', background: `linear-gradient(135deg, ${color} 0%, ${color}cc 100%)`, color: '#fff', fontSize: 12, fontWeight: 700, boxShadow: `0 4px 14px ${color}30` }}>
@@ -277,7 +291,7 @@ function AgentsPanel() {
               {loadingMsgs && <div style={{ textAlign: 'center', padding: 20 }}><Loader2 size={18} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-tertiary)' }} /></div>}
               {messages.map(m => (
                 <div key={m.id} style={{ display: 'flex', gap: 10, maxWidth: '85%', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
-                  {m.role !== 'user' && <span style={{ fontSize: 20, flexShrink: 0, marginTop: 2 }}>{selectedAgent.avatar_emoji}</span>}
+                  {m.role !== 'user' && <AgentAvatar agent={selectedAgent} size={24} />}
                   <div style={{
                     padding: '12px 16px', borderRadius: 14,
                     background: m.role === 'user' ? color : 'var(--bg-card)',
@@ -300,7 +314,7 @@ function AgentsPanel() {
               ))}
               {sending && (
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                  <span style={{ fontSize: 20 }}>{selectedAgent.avatar_emoji}</span>
+                  <AgentAvatar agent={selectedAgent} size={24} />
                   <div style={{ padding: '12px 16px', borderRadius: 14, background: 'var(--bg-card)', border: '1px solid var(--border)', borderBottomLeftRadius: 4 }}>
                     <div style={{ display: 'flex', gap: 4 }}>
                       {[0, 1, 2].map(i => <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: color, animation: `bounce 1.4s infinite ${i * 0.16}s` }} />)}
