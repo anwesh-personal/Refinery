@@ -13,6 +13,7 @@ import { getServerHealth, getDashboardStats } from './handlers/system.js';
 import { listSegments, createSegment, getSegmentCount } from './handlers/segments.js';
 import { generateEmailCopy } from './handlers/content.js';
 import { listS3Sources, startIngestion } from './handlers/ingestion.js';
+import { analysisTools } from './analysis/index.js';
 
 // ─── Tool Definitions ───────────────────────────────────
 
@@ -251,6 +252,11 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
     handler: startIngestion,
   },
 };
+
+// ── Auto-register analysis tools ──
+for (const tool of analysisTools) {
+  TOOL_REGISTRY[tool.name] = tool;
+}
 
 // ─── Helper: Get tools available to a specific agent ───
 
