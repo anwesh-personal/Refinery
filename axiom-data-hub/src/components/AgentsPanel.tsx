@@ -277,87 +277,88 @@ export default function AgentsPanel() {
               borderRadius: 18, overflow: 'hidden', background: 'var(--bg-card)',
               border: '1px solid var(--border)', cursor: 'pointer',
               transition: 'transform 0.15s, box-shadow 0.15s',
+              display: 'flex', flexDirection: 'row', minHeight: 320,
             }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = 'var(--shadow-lg)'; }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = `0 12px 40px ${a.accent_color}30`; }}
               onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
             >
-              {/* Header */}
-              <div style={{ background: `linear-gradient(135deg, ${a.accent_color} 0%, ${a.accent_color}cc 100%)`, padding: '20px 22px', display: 'flex', alignItems: 'center', gap: 14 }}>
+              {/* Left: Full-height avatar */}
+              <div style={{
+                width: 160, minWidth: 160, position: 'relative', overflow: 'hidden', flexShrink: 0,
+              }}>
                 <img src={getAgentImage(a)} alt={a.name} style={{
-                  width: 64, height: 64, borderRadius: 16, objectFit: 'cover',
-                  border: '3px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                  width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center',
+                  display: 'block',
                 }} />
+                {/* Gradient fade into content */}
+                <div style={{
+                  position: 'absolute', top: 0, right: 0, bottom: 0, width: 40,
+                  background: 'linear-gradient(to right, transparent, var(--bg-card))',
+                }} />
+                {/* Accent bar at bottom */}
+                <div style={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0, height: 3,
+                  background: a.accent_color,
+                }} />
+              </div>
+
+              {/* Right: Content */}
+              <div style={{ flex: 1, padding: '18px 20px 18px 10px', display: 'flex', flexDirection: 'column', gap: 10, overflow: 'hidden' }}>
+                {/* Name + Role */}
                 <div>
-                  <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--accent-contrast, #fff)' }}>{a.name}</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>{a.role}</div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: 'var(--text-primary)', lineHeight: 1.2 }}>{a.name}</div>
+                  <div style={{ fontSize: 10, color: a.accent_color, fontWeight: 600, marginTop: 2 }}>{a.role}</div>
                   {meta && (
                     <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
                       {meta.pages.map(p => (
                         <span key={p} style={{
                           fontSize: 8, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
-                          background: 'rgba(255,255,255,0.15)', color: 'var(--accent-contrast, #fff)',
+                          background: `${a.accent_color}18`, color: a.accent_color,
+                          border: `1px solid ${a.accent_color}30`,
                         }}>📍 {p}</span>
                       ))}
                     </div>
                   )}
                 </div>
-              </div>
 
-              {/* Body */}
-              <div style={{ padding: '18px 22px' }}>
-                <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7, margin: '0 0 14px' }}>
+                {/* Description */}
+                <p style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
                   {meta?.description || a.greeting}
                 </p>
 
                 {/* What it sees */}
                 {meta && (
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
-                      🔍 What it sees (auto-injected)
+                  <div>
+                    <div style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                      🔍 Data access
                     </div>
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      {meta.dataAccess.map(d => (
+                    <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                      {meta.dataAccess.slice(0, 4).map(d => (
                         <span key={d} style={{
-                          padding: '3px 8px', borderRadius: 5, fontSize: 9, fontWeight: 600,
+                          padding: '2px 6px', borderRadius: 4, fontSize: 8, fontWeight: 600,
                           background: 'var(--bg-app)', border: '1px solid var(--border)', color: 'var(--text-secondary)',
                         }}>{d}</span>
                       ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Example Questions */}
-                {meta && (
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
-                      💬 Example questions
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {meta.examples.map((q, i) => (
-                        <div key={i} style={{
-                          padding: '6px 10px', borderRadius: 8, fontSize: 11, color: 'var(--text-primary)',
-                          background: 'var(--bg-hover)', border: '1px solid var(--border)',
-                          fontStyle: 'italic',
-                        }}>"{q}"</div>
-                      ))}
+                      {meta.dataAccess.length > 4 && (
+                        <span style={{ padding: '2px 6px', borderRadius: 4, fontSize: 8, fontWeight: 600, color: 'var(--text-tertiary)' }}>+{meta.dataAccess.length - 4}</span>
+                      )}
                     </div>
                   </div>
                 )}
 
                 {/* Capabilities */}
-                <div>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
-                    ⚡ Capabilities
-                  </div>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {a.capabilities.map(c => (
+                <div style={{ marginTop: 'auto' }}>
+                  <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                    {a.capabilities.slice(0, 3).map(c => (
                       <span key={c} style={{
-                        padding: '3px 8px', borderRadius: 4, fontSize: 8, fontWeight: 700,
+                        padding: '2px 7px', borderRadius: 4, fontSize: 7, fontWeight: 700,
                         textTransform: 'uppercase',
                         background: 'var(--accent-muted)', color: 'var(--accent)',
-                        border: '1px solid var(--accent-muted)',
                       }}>{c.replace(/_/g, ' ')}</span>
                     ))}
+                    {a.capabilities.length > 3 && (
+                      <span style={{ padding: '2px 7px', borderRadius: 4, fontSize: 7, fontWeight: 700, color: 'var(--text-tertiary)' }}>+{a.capabilities.length - 3}</span>
+                    )}
                   </div>
                 </div>
               </div>
