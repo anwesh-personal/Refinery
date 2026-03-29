@@ -1,5 +1,6 @@
 import { query } from '../../../db/clickhouse.js';
 import type { ToolDefinition, ToolContext, ToolResult } from '../types.js';
+import { validateTableName } from '../../context/schema-registry.js';
 
 // ═══════════════════════════════════════════════════════════
 // find_duplicates — Duplicate detection within a dataset
@@ -39,6 +40,8 @@ const findDuplicates: ToolDefinition = {
       const sourceFile = args.source_file || null;
       const matchCol = args.match_column || 'email';
       const showExamples = args.show_examples || 10;
+
+      await validateTableName(table);
 
       const where = sourceFile
         ? `WHERE source_file = '${sourceFile.replace(/'/g, "''")}' AND ${matchCol} != '' AND ${matchCol} IS NOT NULL`

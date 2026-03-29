@@ -1,5 +1,6 @@
 import { query } from '../../../db/clickhouse.js';
 import type { ToolDefinition, ToolContext, ToolResult } from '../types.js';
+import { validateTableName, getTableSchema } from '../../context/schema-registry.js';
 
 // ═══════════════════════════════════════════════════════════
 // compare_lists — Cross-list overlap and difference analysis
@@ -38,6 +39,10 @@ const compareLists: ToolDefinition = {
     try {
       const { table, source_a, source_b } = args;
       const matchKeys: string[] = args.match_keys || ['email'];
+
+      // Validate table name (prevents SQL injection)
+      await validateTableName(table);
+
       const escA = source_a.replace(/'/g, "''");
       const escB = source_b.replace(/'/g, "''");
 
@@ -90,8 +95,10 @@ const compareLists: ToolDefinition = {
         }
       }
 
-      // 3. Domain overlap (top shared domains)
-      const domainOverlap = await query<{ d: string; in_a: string; in_b: string }>(`
+      // 3. Domain overlap (top shared domains) — only if domain column exists
+      const schema = await getTableSchema(table);
+      const hasDomainCol = schema?.columns.some(c => c.name === 'domain');
+      const domainOverlap = hasDomainCol ? await query<{ d: string; in_a: string; in_b: string }>(`
         SELECT
           domain as d,
           countIf(source_file = '${escA}') as in_a,
@@ -102,7 +109,7 @@ const compareLists: ToolDefinition = {
         HAVING in_a > 0 AND in_b > 0
         ORDER BY (in_a + in_b) DESC
         LIMIT 15
-      `).catch(() => []);
+      `).catch(() => []) : [];
 
       results.sharedDomains = domainOverlap.map(r => ({
         domain: r.d,

@@ -1,5 +1,5 @@
 import { query } from '../../db/clickhouse.js';
-import { getTableSchema } from './schema-registry.js';
+import { getTableSchema, validateTableName } from './schema-registry.js';
 
 // ═══════════════════════════════════════════════════════════
 // Context Builder — Auto-generates rich context for agent injection
@@ -29,6 +29,8 @@ export async function buildIngestionContext(
 ): Promise<{ context: IngestionContext; promptText: string }> {
   const esc = sourceFile.replace(/'/g, "''");
   const where = `WHERE source_file = '${esc}'`;
+
+  await validateTableName(table);
 
   // Row count
   const countR = await query<{ cnt: string }>(`SELECT count() as cnt FROM ${table} ${where}`);
@@ -88,11 +90,12 @@ export async function buildIngestionContext(
     }
   }
 
-  // Sample rows (5)
-  const keyCols = columns.filter(c =>
-    ['email', 'first_name', 'last_name', 'company', 'domain', 'title', 'industry', 'city', 'state'].includes(c)
-  ).slice(0, 8);
-  const sampleCols = keyCols.length > 0 ? keyCols.join(', ') : '*';
+  // Sample rows (5) — use first 8 string-type columns dynamically
+  const stringCols = (schema?.columns || [])
+    .filter(c => c.type.includes('String') || c.type.includes('Nullable(String)'))
+    .map(c => c.name)
+    .slice(0, 8);
+  const sampleCols = stringCols.length > 0 ? stringCols.join(', ') : '*';
   const samples = await query<Record<string, any>>(
     `SELECT ${sampleCols} FROM ${table} ${where} LIMIT 5`
   );

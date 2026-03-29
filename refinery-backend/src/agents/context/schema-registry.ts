@@ -67,22 +67,57 @@ async function discoverClickHouseSchema(): Promise<Record<string, TableMeta>> {
 async function discoverSupabaseSchema(): Promise<Record<string, { columns: ColumnMeta[] }>> {
   const tables: Record<string, { columns: ColumnMeta[] }> = {};
 
-  // Use raw SQL via RPC since information_schema isn't queryable via .from()
-  const { data, error } = await supabaseAdmin.rpc('get_public_columns' as any);
+  // Query information_schema via PostgREST — no RPC needed
+  // We query the profiles table to check connectivity, then list known app tables
+  try {
+    const appTables = [
+      'ai_agents', 'ai_agent_conversations', 'ai_agent_messages', 'ai_agent_kb',
+      'ai_providers', 'ai_usage_log', 'ai_boardroom_meetings', 'ai_boardroom_reports',
+      'profiles', 'user_roles', 'squads', 'squad_members',
+      'list_segments', 'target_lists', 'server_configs', 'verification_jobs',
+      's3_sources', 'ingestion_jobs',
+    ];
 
-  // Fallback: if the RPC doesn't exist, return empty (we'll create it later)
-  if (error || !data) {
-    console.warn('[SchemaRegistry] Supabase schema discovery skipped:', error?.message || 'no data');
-    return tables;
-  }
-
-  for (const row of data as any[]) {
-    const tn = row.table_name;
-    if (!tables[tn]) tables[tn] = { columns: [] };
-    tables[tn].columns.push({ name: row.column_name, type: row.data_type, comment: '' });
+    for (const tn of appTables) {
+      const { data, error } = await supabaseAdmin.from(tn).select('*').limit(0);
+      if (!error && data !== null) {
+        // We can't get column types from PostgREST directly, but we confirm the table exists
+        tables[tn] = { columns: [] };
+      }
+    }
+  } catch (e: any) {
+    console.warn('[SchemaRegistry] Supabase discovery error:', e.message);
   }
 
   return tables;
+}
+
+// ── Table name validation (prevents SQL injection) ──
+let validTableNames: Set<string> | null = null;
+let tableNamesTimestamp = 0;
+
+async function refreshValidTableNames(): Promise<Set<string>> {
+  if (validTableNames && (Date.now() - tableNamesTimestamp) < CACHE_TTL_MS) {
+    return validTableNames;
+  }
+  const rows = await query<{ name: string }>(
+    `SELECT name FROM system.tables WHERE database = currentDatabase()`
+  );
+  validTableNames = new Set(rows.map(r => r.name));
+  tableNamesTimestamp = Date.now();
+  return validTableNames;
+}
+
+/** Validate that a table name exists in ClickHouse. Throws if invalid. */
+export async function validateTableName(table: string): Promise<void> {
+  // Only allow alphanumeric + underscore
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table)) {
+    throw new Error(`Invalid table name: "${table}"`);
+  }
+  const valid = await refreshValidTableNames();
+  if (!valid.has(table)) {
+    throw new Error(`Table "${table}" does not exist in ClickHouse`);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -135,18 +170,12 @@ export async function getPromptContext(): Promise<string> {
     lines.push(`- **${t.name}**${rowStr}: ${cols}`);
   }
 
-  // Supabase tables (filter to relevant ones)
+  // Supabase tables (already filtered to app tables during discovery)
   const sbEntries = Object.entries(schema.supabase);
   if (sbEntries.length > 0) {
     lines.push('\n### Supabase (Application State)');
-    const relevantPrefixes = ['ai_', 's3_', 'user', 'squad', 'segment', 'config'];
-    const sbTables = sbEntries
-      .filter(([name]) => relevantPrefixes.some(p => name.startsWith(p)))
-      .sort(([a], [b]) => a.localeCompare(b));
-
-    for (const [name, meta] of sbTables) {
-      const cols = meta.columns.map(c => c.name).join(', ');
-      lines.push(`- **${name}**: ${cols}`);
+    for (const [name] of sbEntries.sort(([a], [b]) => a.localeCompare(b))) {
+      lines.push(`- **${name}**`);
     }
   }
 

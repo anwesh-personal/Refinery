@@ -1,5 +1,6 @@
 import { query } from '../../../db/clickhouse.js';
 import type { ToolDefinition, ToolContext, ToolResult } from '../types.js';
+import { validateTableName } from '../../context/schema-registry.js';
 
 // ═══════════════════════════════════════════════════════════
 // profile_columns — Deep column-level profiling for data quality
@@ -40,6 +41,8 @@ const profileColumns: ToolDefinition = {
       const sourceFile = args.source_file || null;
       const topN = args.top_n || 10;
       const where = sourceFile ? `WHERE source_file = '${sourceFile.replace(/'/g, "''")}'` : '';
+
+      await validateTableName(table);
 
       // Get columns to profile
       let columns: string[] = args.columns || [];

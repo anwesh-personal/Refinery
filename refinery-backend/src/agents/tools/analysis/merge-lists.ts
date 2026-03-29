@@ -1,5 +1,6 @@
 import { query, command } from '../../../db/clickhouse.js';
 import type { ToolDefinition, ToolContext, ToolResult } from '../types.js';
+import { validateTableName, getTableSchema } from '../../context/schema-registry.js';
 
 // ═══════════════════════════════════════════════════════════
 // merge_lists — Merge two lists with configurable dedup strategy
@@ -53,6 +54,17 @@ const mergeLists: ToolDefinition = {
       const strategy = args.strategy || 'prefer_filled';
       const preview = args.preview !== false; // default true
       const outputTag = args.output_tag || `merged_${Date.now()}`;
+
+      await validateTableName(table);
+
+      // Idempotency: check if output_tag already exists
+      const existingCheck = await query<{ cnt: string }>(
+        `SELECT count() as cnt FROM ${table} WHERE source_file = '${outputTag.replace(/'/g, "''")}'`
+      );
+      if (parseInt(existingCheck[0]?.cnt || '0') > 0) {
+        return { success: false, error: `Output tag "${outputTag}" already exists (${existingCheck[0].cnt} rows). Use a different output_tag.` };
+      }
+
       const escA = source_a.replace(/'/g, "''");
       const escB = source_b.replace(/'/g, "''");
 
@@ -108,14 +120,25 @@ const mergeLists: ToolDefinition = {
       }
 
       // 3. Execute merge — insert deduplicated records with new source_file tag
-      // Strategy determines ORDER BY for LIMIT BY (which record "wins")
+      // Strategy determines ORDER BY for ROW_NUMBER (which record "wins")
+      const schema = await getTableSchema(table);
+      const allCols = schema?.columns.map(c => c.name) || [];
+
       let orderBy: string;
       switch (strategy) {
         case 'prefer_a': orderBy = `source_file = '${escA}' DESC`; break;
         case 'prefer_b': orderBy = `source_file = '${escB}' DESC`; break;
         case 'prefer_newest': orderBy = 'created_at DESC'; break;
         case 'prefer_filled':
-        default: orderBy = 'length(toString(*)) DESC'; break;
+        default: {
+          // Count non-empty fields per row
+          const nonEmptyExprs = allCols
+            .filter(c => c !== 'source_file' && c !== 'created_at')
+            .map(c => `if(${c} != '' AND ${c} IS NOT NULL, 1, 0)`)
+            .join(' + ');
+          orderBy = nonEmptyExprs ? `(${nonEmptyExprs}) DESC` : 'created_at DESC';
+          break;
+        }
       }
 
       // Get all columns from the table

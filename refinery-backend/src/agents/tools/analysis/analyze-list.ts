@@ -1,6 +1,6 @@
 import { query } from '../../../db/clickhouse.js';
 import type { ToolDefinition, ToolContext, ToolResult } from '../types.js';
-import { getTableSchema } from '../../context/schema-registry.js';
+import { getTableSchema, validateTableName } from '../../context/schema-registry.js';
 
 // ═══════════════════════════════════════════════════════════
 // analyze_list — Comprehensive statistical analysis of any table/list
@@ -35,6 +35,9 @@ const analyzeList: ToolDefinition = {
       const table = args.table;
       const sourceFile = args.source_file || null;
       const sampleLimit = args.limit_sample || 5;
+
+      // Validate table name (prevents SQL injection)
+      await validateTableName(table);
 
       // Validate table exists
       const schema = await getTableSchema(table);
