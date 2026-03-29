@@ -3,15 +3,8 @@ import { apiCall } from '../lib/api';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import { Send, Loader2, Users, Trash2 } from 'lucide-react';
 
-/* ── Agent metadata ── */
-const AGENTS: Record<string, { name: string; role: string; color: string; img: string }> = {
-  data_scientist:         { name: 'Cipher',   role: 'Data Intelligence',     color: '#3b82f6', img: '/agents/cipher.jpg' },
-  smtp_specialist:        { name: 'Sentinel', role: 'Email Infrastructure',  color: '#22c55e', img: '/agents/sentinel.jpg' },
-  seo_strategist:         { name: 'Oracle',   role: 'SEO & Market Intel',    color: '#ef4444', img: '/agents/oracle.jpg' },
-  supervisor:             { name: 'Crucible', role: 'Operations Manager',    color: '#a855f7', img: '/agents/crucible.jpg' },
-  verification_engineer:  { name: 'Argus',    role: 'Verification Engineer', color: '#eab308', img: '/agents/argus.jpg' },
-};
-const AGENT_SLUGS = Object.keys(AGENTS);
+/* ── Agent metadata type ── */
+interface AgentMeta { name: string; role: string; color: string; img: string; }
 const IMG_V = '?v=20260329e';
 
 /* ── Types ── */
@@ -20,6 +13,9 @@ interface Report { id: string; meeting_id: string; agent_slug: string; agent_nam
 interface ChatMsg { id: string; type: 'user' | 'agent' | 'system' | 'typing'; slug?: string; content: string; ts: string; }
 
 export default function BoardroomPage() {
+  const [AGENTS, setAgents] = useState<Record<string, AgentMeta>>({});
+  const AGENT_SLUGS = Object.keys(AGENTS);
+
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
@@ -33,6 +29,24 @@ export default function BoardroomPage() {
 
   // scroll to bottom on new messages
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMsgs]);
+
+  // ── Load agents from API (no hardcoding) ──
+  useEffect(() => {
+    apiCall<{ agents: Array<{ slug: string; name: string; role: string; accent_color: string; avatar_emoji: string }> }>('/api/ai/agents')
+      .then(d => {
+        const map: Record<string, AgentMeta> = {};
+        for (const a of (d.agents || [])) {
+          map[a.slug] = {
+            name: a.name,
+            role: a.role || a.slug,
+            color: a.accent_color || '#6366f1',
+            img: `/agents/${a.name.toLowerCase()}.jpg`,
+          };
+        }
+        setAgents(map);
+      })
+      .catch(() => {});
+  }, []);
 
   // load meeting history
   useEffect(() => {
