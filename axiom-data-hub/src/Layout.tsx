@@ -6,7 +6,7 @@ import type { PermissionKey } from './auth/AuthContext';
 import {
   LayoutDashboard, CloudDownload, Database, Filter, ShieldCheck,
   Send, ListOrdered, Server, ScrollText, Users, Settings2,
-  Moon, Sun, LogOut, Menu, X, ChevronRight, Beaker, Palette, Check, PlayCircle, Trash2, Radio
+  Moon, Sun, LogOut, Menu, X, ChevronRight, Beaker, Palette, Check, PlayCircle, Trash2, Radio, Brain
 } from 'lucide-react';
 
 interface LayoutProps { children: ReactNode; }
@@ -45,6 +45,7 @@ const NAV = [
       { name: 'Team', icon: Users, path: '/team', requires: 'canManageUsers' as PermissionKey },
       { name: 'Logs', icon: ScrollText, path: '/logs', requires: 'canViewLogs' as PermissionKey },
       { name: 'Settings', icon: Settings2, path: '/settings', requires: 'canViewDashboard' as PermissionKey },
+      { name: 'AI Settings', icon: Brain, path: '/ai-settings', requires: 'canViewConfig' as PermissionKey },
     ],
   },
 ];
