@@ -119,3 +119,24 @@ export default function MarkdownRenderer({ content }: Props) {
     </ReactMarkdown>
   );
 }
+
+/** CSS string for injection via <style> tags in legacy components */
+export const MARKDOWN_STYLES = `
+  .md-render h1, .md-render h2, .md-render h3 { color: var(--text-primary); }
+  .md-render h1 { font-size: 18px; font-weight: 800; margin: 16px 0 8px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .md-render h2 { font-size: 15px; font-weight: 700; margin: 14px 0 6px; }
+  .md-render h3 { font-size: 13px; font-weight: 700; margin: 12px 0 4px; }
+  .md-render p { font-size: 13px; line-height: 1.7; margin: 6px 0; color: var(--text-primary); }
+  .md-render ul, .md-render ol { margin: 6px 0; padding-left: 20px; }
+  .md-render li { font-size: 13px; line-height: 1.7; color: var(--text-primary); margin-bottom: 3px; }
+  .md-render code { padding: 2px 6px; border-radius: 5px; background: var(--bg-hover); border: 1px solid var(--border); font-size: 12px; font-family: 'JetBrains Mono', 'Fira Code', monospace; color: var(--accent); }
+  .md-render pre { margin: 10px 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-sidebar); padding: 14px 16px; font-size: 12px; line-height: 1.6; }
+  .md-render pre code { padding: 0; border: none; background: transparent; color: var(--text-primary); }
+  .md-render table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 10px 0; }
+  .md-render th { padding: 8px 12px; text-align: left; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-tertiary); background: var(--bg-hover); border-bottom: 1px solid var(--border); }
+  .md-render td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text-primary); }
+  .md-render blockquote { margin: 8px 0; padding: 8px 14px; border-left: 3px solid var(--accent); background: var(--bg-hover); border-radius: 0 8px 8px 0; }
+  .md-render hr { border: none; height: 1px; background: var(--border); margin: 12px 0; }
+  .md-render a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .md-render strong { font-weight: 700; color: var(--text-primary); }
+`;
