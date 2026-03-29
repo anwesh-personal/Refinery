@@ -6,6 +6,7 @@ import { apiCall } from '../lib/api';
 import FilterBuilder, { filterGroupToSQL, sqlToFilterGroup } from '../components/FilterBuilder';
 import type { FilterGroup } from '../components/FilterBuilder';
 import SegmentCard from '../components/SegmentCard';
+import AgentCard from '../components/AgentCard';
 import type { Segment } from '../components/SegmentCard';
 
 interface PreviewResult {
@@ -498,6 +499,11 @@ export default function SegmentsPage() {
           </div>
         </div>
       )}
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 36 }}>
+        <AgentCard slug="data_scientist" contextLabel="Segmentation Strategy" context={{ segmentCount: segments.length, totalLeads, activeSegments }} />
+      </div>
     </>
   );
 }

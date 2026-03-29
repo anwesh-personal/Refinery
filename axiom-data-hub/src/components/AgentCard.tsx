@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { Send, Loader2, ChevronDown, ChevronUp, Sparkles, Copy, Check, Download } from 'lucide-react';
 import { apiCall } from '../lib/api';
+import MarkdownRenderer, { MARKDOWN_STYLES } from './MarkdownRenderer';
 
 /**
  * AgentCard — Tall, theme-aware, embeddable AI agent card.
@@ -46,6 +47,7 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -103,6 +105,22 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
     } finally { setSending(false); inputRef.current?.focus(); }
   };
 
+  const copyMessage = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 1500);
+  };
+
+  const exportConversation = () => {
+    if (!agent || messages.length === 0) return;
+    const text = messages.map(m => `[${m.role.toUpperCase()}] ${m.content}`).join('\n\n---\n\n');
+    const blob = new Blob([`# ${agent.name} — ${contextLabel || 'Conversation'}\n\n${text}`], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${agent.slug}-conversation-${Date.now()}.md`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (loading || !agent) return null;
 
   const color = agent.accent_color;
@@ -143,6 +161,15 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
       {/* Expanded Content */}
       {expanded && (
         <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {/* Toolbar */}
+          {messages.length > 0 && (
+            <div style={{ padding: '6px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+              <button onClick={exportConversation} style={{ padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-tertiary)', fontSize: 9, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}>
+                <Download size={10} /> Export .md
+              </button>
+            </div>
+          )}
+
           {/* Quick Prompts */}
           {messages.length === 0 && (
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
@@ -165,23 +192,37 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
           {/* Messages */}
           <div style={{ maxHeight: 360, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             {messages.map(m => (
-              <div key={m.id} style={{ display: 'flex', gap: 8, maxWidth: '90%', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
-                {m.role !== 'user' && img && <img src={img} alt="" style={{ width: 20, height: 20, borderRadius: 5, objectFit: 'cover', flexShrink: 0, marginTop: 2 }} />}
+              <div key={m.id} style={{ display: 'flex', gap: 8, maxWidth: m.role === 'user' ? '80%' : '95%', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
+                {m.role !== 'user' && img && <img src={img} alt="" style={{ width: 22, height: 22, borderRadius: 6, objectFit: 'cover', flexShrink: 0, marginTop: 2 }} />}
                 <div style={{
-                  padding: '10px 14px', borderRadius: 12,
+                  padding: m.role === 'user' ? '10px 14px' : '12px 16px', borderRadius: 12,
                   background: m.role === 'user' ? color : 'var(--bg-app)',
                   color: m.role === 'user' ? '#fff' : 'var(--text-primary)',
                   border: m.role === 'user' ? 'none' : '1px solid var(--border)',
                   fontSize: 12, lineHeight: 1.65, wordBreak: 'break-word',
                   borderBottomRightRadius: m.role === 'user' ? 3 : 12,
                   borderBottomLeftRadius: m.role === 'user' ? 12 : 3,
+                  position: 'relative',
                 }}>
-                  <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
-                  {m.role === 'assistant' && m.latency_ms > 0 && (
-                    <div style={{ fontSize: 8, color: 'var(--text-tertiary)', marginTop: 5, display: 'flex', gap: 6 }}>
-                      <span>⚡{m.latency_ms}ms</span>
-                      {m.tokens_used > 0 && <span>📊 {m.tokens_used} tok</span>}
-                      {m.model_used && <span>🤖 {m.model_used}</span>}
+                  {m.role === 'user' ? (
+                    <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                  ) : (
+                    <MarkdownRenderer content={m.content} />
+                  )}
+                  {m.role === 'assistant' && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 8, color: 'var(--text-tertiary)', display: 'flex', gap: 6 }}>
+                        {m.latency_ms > 0 && <span>⚡{m.latency_ms}ms</span>}
+                        {m.tokens_used > 0 && <span>📊 {m.tokens_used} tok</span>}
+                        {m.model_used && <span>🤖 {m.model_used}</span>}
+                      </div>
+                      <button onClick={(e) => { e.stopPropagation(); copyMessage(m.id, m.content); }} style={{
+                        background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
+                        color: copiedId === m.id ? 'var(--green)' : 'var(--text-tertiary)', fontSize: 10,
+                        display: 'flex', alignItems: 'center', gap: 2,
+                      }}>
+                        {copiedId === m.id ? <><Check size={10} /> Copied</> : <><Copy size={10} /> Copy</>}
+                      </button>
                     </div>
                   )}
                 </div>
@@ -232,6 +273,7 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes agentBounce { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-5px); } }
+        ${MARKDOWN_STYLES}
       `}</style>
     </div>
   );

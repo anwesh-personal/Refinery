@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiCall } from '../lib/api';
 import { useToast } from '../components/Toast';
 import CampaignBuilderModal from '../components/CampaignBuilderModal';
+import AgentCard from '../components/AgentCard';
 
 /* ── Types ── */
 interface QueueJob {
@@ -597,6 +598,12 @@ export default function QueuePage() {
         onClose={() => setCampaignModalOpen(false)}
         onCreated={() => fetchData(true)}
       />
+
+      {/* AI Agents */}
+      <div style={{ marginTop: 36, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <AgentCard slug="email_marketer" contextLabel="Campaign Strategy — Mail Queue" context={{ queueStats: stats, jobCount: jobs.length }} />
+        <AgentCard slug="smtp_specialist" contextLabel="Infrastructure Health — Mail Queue" context={{ queueStats: stats, jobCount: jobs.length }} />
+      </div>
     </>
   );
 }

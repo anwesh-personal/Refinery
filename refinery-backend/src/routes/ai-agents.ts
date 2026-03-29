@@ -329,33 +329,89 @@ async function resolveAgentProvider(agent: any): Promise<{ serviceSlug: string }
 // Context Gatherer — feeds agents with KB + system data
 // ═══════════════════════════════════════════════════════════
 
-async function gatherContext(agentId: string, _capabilities: string[]): Promise<string> {
+async function gatherContext(agentId: string, capabilities: string[]): Promise<string> {
   const parts: string[] = [];
 
-  // KB entries
+  // ── Platform Architecture (always injected) ──
+  parts.push(`=== PLATFORM: REFINERY NEXUS ===
+You are an AI agent inside Refinery Nexus — a full-stack email marketing infrastructure platform.
+
+PIPELINE FLOW:
+1. INGESTION: Raw CSV/Parquet data pulled from S3/MinIO → column-mapped → inserted into ClickHouse (universal_person table)
+2. MERGE: Duplicate records consolidated using configurable merge keys (email, name+company) → golden records
+3. SEGMENTS: Filtered subsets of universal_person based on industry, location, job title, etc → materialized views
+4. VERIFICATION: Email validity checked via SMTP probing (EHLO/MAIL FROM/RCPT TO) → valid/risky/invalid/unknown
+5. TARGETS: Verified segments exported as clean mailing lists → CSV download or push to queue
+6. QUEUE: Target lists dispatched via MTA satellites (Postfix/PowerMTA) with IP warmup scheduling
+
+DATA STORES:
+- ClickHouse: Analytics DB with universal_person (millions of leads, 50+ columns)
+- Supabase/PostgreSQL: Auth, configs, AI memory, team management
+- S3/MinIO: Raw data files, exports
+
+INFRASTRUCTURE:
+- MTA Swarm: 50-satellite constellation for email dispatch
+- Verification Engine: Verify550 API + built-in SMTP prober
+- AI Nexus: This system — 5 specialist agents + provider management
+`);
+
+  // ── Knowledge Base entries ──
   try {
     const { data: kb } = await supabaseAdmin.from('ai_agent_knowledge')
       .select('title, content, category').eq('agent_id', agentId).eq('enabled', true)
       .order('priority', { ascending: false });
     if (kb && kb.length > 0) {
-      parts.push('=== KNOWLEDGE BASE ===');
+      parts.push('=== YOUR KNOWLEDGE BASE ===');
       kb.forEach(k => parts.push(`[${k.category.toUpperCase()}] ${k.title}:\n${k.content}`));
       parts.push('');
     }
   } catch {}
 
+  // ── Live System Data ──
+
   // Verification jobs
   try {
     const { data: jobs } = await supabaseAdmin.from('verification_jobs')
-      .select('id, status, total_processed, safe, uncertain, risky, unknown, created_at')
+      .select('id, status, file_name, total_emails, total_processed, safe, uncertain, risky, unknown, created_at, completed_at')
       .order('created_at', { ascending: false }).limit(5);
     if (jobs && jobs.length > 0) {
-      parts.push('RECENT VERIFICATION JOBS:');
-      jobs.forEach(j => parts.push(`  Job ${j.id.slice(0, 8)}: ${j.status} | ${j.total_processed} processed | safe=${j.safe} uncertain=${j.uncertain} risky=${j.risky} unknown=${j.unknown} | ${new Date(j.created_at).toLocaleDateString()}`));
-    } else {
-      parts.push('No verification jobs found.');
+      parts.push('=== RECENT VERIFICATION JOBS ===');
+      jobs.forEach(j => parts.push(`  ${j.file_name || j.id.slice(0, 8)}: ${j.status} | ${j.total_processed}/${j.total_emails} processed | safe=${j.safe} risky=${j.risky} uncertain=${j.uncertain} unknown=${j.unknown} | ${new Date(j.created_at).toLocaleDateString()}`));
     }
-  } catch { parts.push('Could not load verification jobs.'); }
+  } catch {}
+
+  // Segments
+  try {
+    const { data: segs } = await supabaseAdmin.from('list_segments')
+      .select('name, niche, total_count, verified_count, created_at')
+      .order('created_at', { ascending: false }).limit(10);
+    if (segs && segs.length > 0) {
+      parts.push('\n=== SEGMENTS ===');
+      segs.forEach(s => parts.push(`  "${s.name}" (${s.niche || 'general'}): ${s.total_count} leads, ${s.verified_count || 0} verified`));
+    }
+  } catch {}
+
+  // Target lists
+  try {
+    const { data: tgts } = await supabaseAdmin.from('target_lists')
+      .select('name, status, total_emails, created_at')
+      .order('created_at', { ascending: false }).limit(5);
+    if (tgts && tgts.length > 0) {
+      parts.push('\n=== TARGET LISTS ===');
+      tgts.forEach(t => parts.push(`  "${t.name}": ${t.status} | ${t.total_emails} emails | ${new Date(t.created_at).toLocaleDateString()}`));
+    }
+  } catch {}
+
+  // Server configs
+  try {
+    const { data: servers } = await supabaseAdmin.from('server_configs')
+      .select('name, type, host, port, status')
+      .limit(10);
+    if (servers && servers.length > 0) {
+      parts.push('\n=== SERVER INFRASTRUCTURE ===');
+      servers.forEach(s => parts.push(`  ${s.name}: ${s.type} @ ${s.host}:${s.port} [${s.status || 'unknown'}]`));
+    }
+  } catch {}
 
   // AI usage
   try {
@@ -367,18 +423,28 @@ async function gatherContext(agentId: string, _capabilities: string[]): Promise<
       const t = usage.reduce((s, u) => s + (u.tokens_used || 0), 0);
       const l = Math.round(usage.reduce((s, u) => s + (u.latency_ms || 0), 0) / n);
       const e = usage.filter(u => !u.success).length;
-      parts.push(`\nAI USAGE (last ${n} calls): ${t} tokens | ${l}ms avg | ${e} errors`);
+      parts.push(`\nAI USAGE (last ${n} calls): ${t} tokens | ${l}ms avg latency | ${e} errors`);
     }
   } catch {}
 
-  // Providers
+  // Active providers
   try {
     const { data: p } = await supabaseAdmin.from('ai_providers')
       .select('label, provider_type, selected_model').eq('enabled', true);
     if (p && p.length > 0) {
-      parts.push(`\nACTIVE PROVIDERS: ${p.map(x => `${x.label} (${x.provider_type}/${x.selected_model})`).join(', ')}`);
+      parts.push(`ACTIVE AI PROVIDERS: ${p.map(x => `${x.label} (${x.provider_type}/${x.selected_model})`).join(', ')}`);
     }
   } catch {}
+
+  // ── Anti-hallucination rules ──
+  parts.push(`
+=== IMPORTANT RULES ===
+- NEVER make up data. If you don't have specific numbers, say "I don't have that data in my current context."
+- ALWAYS base your analysis on the SYSTEM CONTEXT provided above.
+- If the user asks about something not in your context, tell them which page to check.
+- When recommending actions, be specific about which page/feature in Refinery Nexus to use.
+- You are an expert in your domain. Be confident but honest about limitations.
+- Use the data above to give precise, actionable insights — not generic advice.`);
 
   return parts.join('\n') || 'No system data available.';
 }

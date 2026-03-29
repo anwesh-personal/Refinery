@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiCall } from '../lib/api';
 import {
   Send, Loader2, MessageSquare, Plus, Trash2, Pin, X,
-  Save, BookOpen, Sliders, MessageCircle, FileText
+  Save, BookOpen, Sliders, MessageCircle, FileText, Copy, Check
 } from 'lucide-react';
+import MarkdownRenderer, { MARKDOWN_STYLES } from './MarkdownRenderer';
 
 // ── Types ──
 interface Agent {
@@ -84,6 +85,10 @@ export default function AgentsPanel() {
   const [editProviderId, setEditProviderId] = useState<string>('');
   const [editModelId, setEditModelId] = useState<string>('');
   const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const [editName, setEditName] = useState('');
+  const [editRole, setEditRole] = useState('');
+  const [editAccentColor, setEditAccentColor] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [newKBTitle, setNewKBTitle] = useState('');
   const [newKBContent, setNewKBContent] = useState('');
   const [newKBCategory, setNewKBCategory] = useState('general');
@@ -118,6 +123,9 @@ export default function AgentsPanel() {
         setEditMaxTokens(full.max_tokens || 4096);
         setEditProviderId(full.provider_id || '');
         setEditModelId(full.model_id || '');
+        setEditName(full.name || '');
+        setEditRole(full.role || '');
+        setEditAccentColor(full.accent_color || '#8b5cf6');
       }
     } catch {}
     // Fetch providers for override selector
@@ -146,6 +154,7 @@ export default function AgentsPanel() {
           max_tokens: editMaxTokens,
           provider_id: editProviderId || null,
           model_id: editModelId || '',
+          name: editName, role: editRole, accent_color: editAccentColor,
         },
       });
       // Refresh
@@ -484,6 +493,30 @@ export default function AgentsPanel() {
                 {/* CONFIG TAB */}
                 {modalTab === 'config' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {/* Identity */}
+                    <div style={{ padding: 16, background: 'var(--bg-app)', borderRadius: 12, border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 10 }}>Identity</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div>
+                          <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>Name</label>
+                          <input value={editName} onChange={e => setEditName(e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12, boxSizing: 'border-box' }} />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>Role</label>
+                          <input value={editRole} onChange={e => setEditRole(e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12, boxSizing: 'border-box' }} />
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 10 }}>
+                        <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>Accent Color</label>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <input type="color" value={editAccentColor} onChange={e => setEditAccentColor(e.target.value)} style={{ width: 36, height: 36, border: 'none', borderRadius: 8, cursor: 'pointer', background: 'transparent' }} />
+                          <input value={editAccentColor} onChange={e => setEditAccentColor(e.target.value)} style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 11, fontFamily: 'monospace', boxSizing: 'border-box' }} />
+                          <div style={{ width: 80, height: 36, borderRadius: 8, background: `linear-gradient(135deg, ${editAccentColor} 0%, ${editAccentColor}cc 100%)` }} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Generation Params */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                       <div>
                         <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 6, display: 'block' }}>Temperature ({editTemp})</label>
@@ -620,10 +653,10 @@ export default function AgentsPanel() {
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
               {loadingMsgs && <div style={{ textAlign: 'center', padding: 20 }}><Loader2 size={18} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-tertiary)' }} /></div>}
               {messages.map(m => (
-                <div key={m.id} style={{ display: 'flex', gap: 10, maxWidth: '85%', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
+                <div key={m.id} style={{ display: 'flex', gap: 10, maxWidth: m.role === 'user' ? '80%' : '95%', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
                   {m.role !== 'user' && <img src={AGENT_IMAGES[selectedAgent.slug]} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover', flexShrink: 0, marginTop: 2 }} />}
                   <div style={{
-                    padding: '12px 16px', borderRadius: 14,
+                    padding: m.role === 'user' ? '12px 16px' : '14px 18px', borderRadius: 14,
                     background: m.role === 'user' ? color : 'var(--bg-card)',
                     color: m.role === 'user' ? '#fff' : 'var(--text-primary)',
                     border: m.role === 'user' ? 'none' : '1px solid var(--border)',
@@ -631,12 +664,25 @@ export default function AgentsPanel() {
                     borderBottomRightRadius: m.role === 'user' ? 4 : 14,
                     borderBottomLeftRadius: m.role === 'user' ? 14 : 4,
                   }}>
-                    <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
-                    {m.role === 'assistant' && m.latency_ms > 0 && (
-                      <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 6, display: 'flex', gap: 8 }}>
-                        <span>⚡{m.latency_ms}ms</span>
-                        {m.tokens_used > 0 && <span>📊 {m.tokens_used} tokens</span>}
-                        {m.model_used && <span>🤖 {m.model_used}</span>}
+                    {m.role === 'user' ? (
+                      <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                    ) : (
+                      <MarkdownRenderer content={m.content} />
+                    )}
+                    {m.role === 'assistant' && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, paddingTop: 6, borderTop: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: 9, color: 'var(--text-tertiary)', display: 'flex', gap: 8 }}>
+                          {m.latency_ms > 0 && <span>⚡{m.latency_ms}ms</span>}
+                          {m.tokens_used > 0 && <span>📊 {m.tokens_used} tokens</span>}
+                          {m.model_used && <span>🤖 {m.model_used}</span>}
+                        </div>
+                        <button onClick={() => { navigator.clipboard.writeText(m.content); setCopiedId(m.id); setTimeout(() => setCopiedId(null), 1500); }} style={{
+                          background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px',
+                          color: copiedId === m.id ? 'var(--green)' : 'var(--text-tertiary)', fontSize: 10,
+                          display: 'flex', alignItems: 'center', gap: 3,
+                        }}>
+                          {copiedId === m.id ? <><Check size={10} /> Copied</> : <><Copy size={10} /> Copy</>}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -675,7 +721,8 @@ export default function AgentsPanel() {
       </div>
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes bounce { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+        @keyframes bounce { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-5px); } }
+        ${MARKDOWN_STYLES}
       `}</style>
     </div>
   );

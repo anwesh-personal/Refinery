@@ -5,6 +5,7 @@ import { useToast } from '../components/Toast';
 import MTAProviderModal from '../components/MTAProviderModal';
 import MTADomainPanel from '../components/MTADomainPanel';
 import DeliveryServerPanel from '../components/DeliveryServerPanel';
+import AgentCard from '../components/AgentCard';
 import {
   Radio, Plus, Trash2, Loader2, CheckCircle, XCircle, Zap,
   RefreshCw, ChevronDown, ChevronRight, Star, Globe, Shield,
@@ -405,6 +406,11 @@ export default function MTAConfigPage() {
         onSave={handleSave}
         initial={editProvider || undefined}
       />
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 8 }}>
+        <AgentCard slug="smtp_specialist" contextLabel="MTA & Infrastructure Health" context={{ providerCount: providers.length, domainCount: totalDomains, healthyDomains }} />
+      </div>
     </>
   );
 }
