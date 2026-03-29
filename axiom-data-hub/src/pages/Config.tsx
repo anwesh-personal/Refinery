@@ -68,11 +68,16 @@ export default function ConfigPage() {
   const [newConfigValue, setNewConfigValue] = useState('');
 
   // Known config keys with human-readable labels and descriptions
-  const KNOWN_CONFIGS: { key: string; label: string; description: string; type: 'number' | 'string' }[] = [
+  const KNOWN_CONFIGS: { key: string; label: string; description: string; type: 'number' | 'string' | 'secret' }[] = [
+    // ── Pipeline Settings ──
     { key: 'pipeline.max_emails_per_job', label: 'Pipeline Max Emails', description: 'Maximum emails per Pipeline Studio job', type: 'number' },
     { key: 'pipeline.smtp_concurrency', label: 'Pipeline SMTP Concurrency', description: 'Concurrent SMTP connections during verification', type: 'number' },
     { key: 'segment.export_limit', label: 'Segment Export Limit', description: 'Max leads returned when exporting a segment', type: 'number' },
-    { key: 'clickhouse.max_query_size', label: 'ClickHouse Max Query Size', description: 'Max bytes for a single ClickHouse query string (default 512MB = 536870912). Increase if pipeline jobs fail on large result sets.', type: 'number' },
+    { key: 'clickhouse.max_query_size', label: 'ClickHouse Max Query Size', description: 'Max bytes for a single ClickHouse query string (default 512MB)', type: 'number' },
+    // ── Third-Party Integrations ──
+    { key: 'semrush_api_key', label: 'SEMRush API Key', description: 'API key for SEMRush keyword research, domain analytics, and competitor analysis (used by Oracle agent)', type: 'secret' },
+    { key: 'mailwizz_api_url', label: 'MailWizz API URL', description: 'Base URL for your MailWizz installation API (e.g. https://your-mailwizz.com/api)', type: 'string' },
+    { key: 'mailwizz_api_key', label: 'MailWizz API Key', description: 'Public API key for MailWizz subscriber list push', type: 'secret' },
   ];
 
   const fetchSysConfig = async () => {
@@ -102,7 +107,10 @@ export default function ConfigPage() {
     try {
       const entries = Object.entries(sysConfigDraft)
         .filter(([k, v]) => v !== sysConfig[k]) // only changed values
-        .map(([key, value]) => ({ key, value }));
+        .map(([key, value]) => {
+          const knownCfg = KNOWN_CONFIGS.find(kc => kc.key === key);
+          return { key, value, isSecret: knownCfg?.type === 'secret' || false };
+        });
       if (entries.length === 0) {
         setSysConfigMsg({ type: 'ok', text: 'No changes to save.' });
         setSysConfigSaving(false);
@@ -522,11 +530,12 @@ export default function ConfigPage() {
                 </div>
                 <Can do="canEditConfig">
                   <input
-                    type={kc.type === 'number' ? 'number' : 'text'}
+                    type={kc.type === 'number' ? 'number' : kc.type === 'secret' ? 'password' : 'text'}
                     value={sysConfigDraft[kc.key] ?? ''}
                     onChange={e => setSysConfigDraft(prev => ({ ...prev, [kc.key]: e.target.value }))}
+                    placeholder={kc.type === 'secret' ? '••••••••' : ''}
                     style={{
-                      width: 160, padding: '10px 14px', borderRadius: 8,
+                      width: kc.type === 'secret' ? 220 : 160, padding: '10px 14px', borderRadius: 8,
                       border: (sysConfigDraft[kc.key] ?? '') !== (sysConfig[kc.key] ?? '') ? '2px solid var(--accent)' : '1px solid var(--border)',
                       background: 'var(--bg-input)', color: 'var(--text-primary)',
                       fontSize: 14, fontFamily: "'JetBrains Mono', monospace", textAlign: 'right',
