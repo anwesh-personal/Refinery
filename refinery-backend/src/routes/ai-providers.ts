@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { requireSuperadmin } from '../middleware/auth.js';
+import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
 import { supabaseAdmin } from '../services/supabaseAdmin.js';
 import { getRequestUser } from '../types/auth.js';
 
 const router = Router();
+router.use(requireAuth);
 router.use(requireSuperadmin);
 
 // ═══════════════════════════════════════════════════════════
