@@ -73,17 +73,17 @@ const MOCK_GAP = {
 };
 
 const INTENT_COLORS: Record<string, string> = {
-  Commercial: '#e91e63', Transactional: '#9c27b0', Informational: '#2196f3', Navigational: '#4caf50',
+  Commercial: 'var(--red)', Transactional: 'var(--purple)', Informational: 'var(--blue)', Navigational: 'var(--green)',
 };
 
 // ── Tool Tabs ──
 type ToolTab = 'keyword' | 'domain' | 'ranking' | 'crossref' | 'competitor';
 const TOOL_TABS: { key: ToolTab; label: string; icon: any; desc: string; color: string }[] = [
-  { key: 'keyword', label: 'Keyword Research', icon: Search, desc: 'Volume, difficulty, CPC, intent, SERP features', color: '#e91e63' },
-  { key: 'domain', label: 'Domain Analytics', icon: Globe, desc: 'Authority, traffic, top keywords, competitors', color: '#9c27b0' },
-  { key: 'ranking', label: 'SERP Analysis', icon: BarChart3, desc: 'Top ranking pages for any keyword', color: '#2196f3' },
-  { key: 'crossref', label: 'Cross-Reference', icon: Database, desc: 'Check domains against our ClickHouse data', color: '#4caf50' },
-  { key: 'competitor', label: 'Keyword Gap', icon: GitCompare, desc: 'Find keywords competitors rank for that you don\'t', color: '#ff9800' },
+  { key: 'keyword', label: 'Keyword Research', icon: Search, desc: 'Volume, difficulty, CPC, intent, SERP features', color: 'var(--red)' },
+  { key: 'domain', label: 'Domain Analytics', icon: Globe, desc: 'Authority, traffic, top keywords, competitors', color: 'var(--purple)' },
+  { key: 'ranking', label: 'SERP Analysis', icon: BarChart3, desc: 'Top ranking pages for any keyword', color: 'var(--blue)' },
+  { key: 'crossref', label: 'Cross-Reference', icon: Database, desc: 'Check domains against our ClickHouse data', color: 'var(--green)' },
+  { key: 'competitor', label: 'Keyword Gap', icon: GitCompare, desc: 'Find keywords competitors rank for that you don\'t', color: 'var(--yellow)' },
 ];
 
 export default function SEOIntelligencePage() {
@@ -179,16 +179,16 @@ export default function SEOIntelligencePage() {
     } finally { setPipelineRunning(false); }
   };
 
-  const tabColor = TOOL_TABS.find(t => t.key === activeTab)?.color || '#e91e63';
+  const tabColor = TOOL_TABS.find(t => t.key === activeTab)?.color || 'var(--red)';
 
   return (
     <>
       {/* Hero */}
       <div style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-sidebar) 100%)', borderRadius: 20, border: '1px solid var(--border)', padding: '28px 32px', marginBottom: 24, position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: '#e91e63', opacity: 0.04 }} />
-        <div style={{ position: 'absolute', bottom: -40, left: '50%', width: 200, height: 200, borderRadius: '50%', background: '#9c27b0', opacity: 0.03 }} />
+        <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'var(--red)', opacity: 0.04 }} />
+        <div style={{ position: 'absolute', bottom: -40, left: '50%', width: 200, height: 200, borderRadius: '50%', background: 'var(--purple)', opacity: 0.03 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #e91e63 0%, #9c27b0 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Search size={18} style={{ color: '#fff' }} /></div>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--red) 0%, var(--purple) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Search size={18} style={{ color: 'var(--accent-contrast)' }} /></div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>SEO Intelligence</h1>
         </div>
         <p style={{ fontSize: 12, color: 'var(--text-tertiary)', maxWidth: 700, lineHeight: 1.6 }}>
@@ -200,7 +200,7 @@ export default function SEOIntelligencePage() {
       {/* ═══ Tommy's Keyword Pipeline ═══ */}
       <div style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', padding: 20, marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, #e91e63 0%, #ff5722 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Layers size={14} style={{ color: '#fff' }} /></div>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, var(--red) 0%, var(--red) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Layers size={14} style={{ color: 'var(--accent-contrast)' }} /></div>
           <div>
             <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>Keyword → Domain Pipeline</div>
             <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>Tommy's workflow: seed keyword → sub-keywords → ranking domains → cross-reference with our data</div>
@@ -216,7 +216,7 @@ export default function SEOIntelligencePage() {
           />
           <button onClick={runPipeline} disabled={pipelineRunning} style={{
             padding: '10px 20px', borderRadius: 10, border: 'none', cursor: 'pointer',
-            background: 'linear-gradient(135deg, #e91e63 0%, #9c27b0 100%)', color: '#fff',
+            background: 'linear-gradient(135deg, var(--red) 0%, var(--purple) 100%)', color: 'var(--accent-contrast)',
             fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5,
             opacity: pipelineRunning ? 0.5 : 1, whiteSpace: 'nowrap',
           }}>
@@ -231,8 +231,8 @@ export default function SEOIntelligencePage() {
             {['Research', 'Domains', 'Cross-Ref', 'Report'].map((s, i) => (
               <div key={s} style={{
                 flex: 1, padding: '6px 0', borderRadius: 6, textAlign: 'center',
-                background: i + 1 <= pipelineStep ? 'linear-gradient(135deg, #e91e63 0%, #9c27b0 100%)' : 'var(--bg-app)',
-                color: i + 1 <= pipelineStep ? '#fff' : 'var(--text-tertiary)',
+                background: i + 1 <= pipelineStep ? 'linear-gradient(135deg, var(--red) 0%, var(--purple) 100%)' : 'var(--bg-app)',
+                color: i + 1 <= pipelineStep ? 'var(--accent-contrast)' : 'var(--text-tertiary)',
                 fontSize: 9, fontWeight: 700, transition: 'all 0.3s',
               }}>{i + 1}. {s}</div>
             ))}
@@ -278,7 +278,7 @@ export default function SEOIntelligencePage() {
             <button onClick={() => execute('seo/keywords', { keyword: kwInput }).then(r => { if (r) setKwStatus(r.status || null); })} disabled={loading || !kwInput.trim()} style={{
               padding: '12px 20px', borderRadius: 12, border: 'none', cursor: 'pointer',
               background: `linear-gradient(135deg, ${tabColor} 0%, color-mix(in srgb, ${tabColor} 70%, #000) 100%)`,
-              color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: loading ? 0.5 : 1,
+              color: 'var(--accent-contrast)', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: loading ? 0.5 : 1,
             }}>{loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Search size={14} />} Research</button>
           </div>
 
@@ -292,11 +292,11 @@ export default function SEOIntelligencePage() {
           {/* ── Keyword Overview Cards ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
             {[
-              { label: 'Volume', value: MOCK_KEYWORD.volume.toLocaleString(), sub: '/mo', color: '#e91e63' },
-              { label: 'Keyword Difficulty', value: `${MOCK_KEYWORD.difficulty}%`, sub: 'Hard', color: MOCK_KEYWORD.difficulty > 60 ? '#ef4444' : MOCK_KEYWORD.difficulty > 30 ? '#f59e0b' : '#22c55e' },
-              { label: 'CPC', value: `$${MOCK_KEYWORD.cpc.toFixed(2)}`, sub: 'avg', color: '#9c27b0' },
-              { label: 'Competition', value: MOCK_KEYWORD.competition.toFixed(2), sub: 'High', color: '#ff9800' },
-              { label: 'Intent', value: MOCK_KEYWORD.intent, sub: '', color: INTENT_COLORS[MOCK_KEYWORD.intent] || '#666' },
+              { label: 'Volume', value: MOCK_KEYWORD.volume.toLocaleString(), sub: '/mo', color: 'var(--red)' },
+              { label: 'Keyword Difficulty', value: `${MOCK_KEYWORD.difficulty}%`, sub: 'Hard', color: MOCK_KEYWORD.difficulty > 60 ? 'var(--red)' : MOCK_KEYWORD.difficulty > 30 ? 'var(--yellow)' : 'var(--green)' },
+              { label: 'CPC', value: `$${MOCK_KEYWORD.cpc.toFixed(2)}`, sub: 'avg', color: 'var(--purple)' },
+              { label: 'Competition', value: MOCK_KEYWORD.competition.toFixed(2), sub: 'High', color: 'var(--yellow)' },
+              { label: 'Intent', value: MOCK_KEYWORD.intent, sub: '', color: INTENT_COLORS[MOCK_KEYWORD.intent] || 'var(--text-tertiary)' },
             ].map((c, i) => (
               <div key={i} style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', padding: 16, position: 'relative', overflow: 'hidden' }}>
                 <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: 3, background: c.color }} />
@@ -314,7 +314,7 @@ export default function SEOIntelligencePage() {
               {MOCK_KEYWORD.trend.map((v, i) => {
                 const max = Math.max(...MOCK_KEYWORD.trend);
                 const h = (v / max) * 100;
-                return <div key={i} style={{ flex: 1, height: `${h}%`, borderRadius: '4px 4px 0 0', background: `linear-gradient(180deg, #e91e63 0%, color-mix(in srgb, #e91e63 40%, transparent) 100%)`, transition: 'height 0.5s', position: 'relative' }}>
+                return <div key={i} style={{ flex: 1, height: `${h}%`, borderRadius: '4px 4px 0 0', background: `linear-gradient(180deg, var(--red) 0%, color-mix(in srgb, var(--red) 40%, transparent) 100%)`, transition: 'height 0.5s', position: 'relative' }}>
                   <div style={{ position: 'absolute', bottom: -16, left: '50%', transform: 'translateX(-50%)', fontSize: 7, color: 'var(--text-tertiary)' }}>{['J','F','M','A','M','J','J','A','S','O','N','D'][i]}</div>
                 </div>;
               })}
@@ -325,7 +325,7 @@ export default function SEOIntelligencePage() {
           <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', alignSelf: 'center', marginRight: 4 }}>SERP Features:</span>
             {MOCK_KEYWORD.serpFeatures.map(f => (
-              <span key={f} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 10, fontWeight: 600, background: 'color-mix(in srgb, #e91e63 8%, var(--bg-card))', color: '#e91e63', border: '1px solid color-mix(in srgb, #e91e63 20%, var(--border))' }}>{f}</span>
+              <span key={f} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 10, fontWeight: 600, background: 'color-mix(in srgb, var(--red) 8%, var(--bg-card))', color: 'var(--red)', border: '1px solid color-mix(in srgb, var(--red) 20%, var(--border))' }}>{f}</span>
             ))}
           </div>
 
@@ -345,11 +345,11 @@ export default function SEOIntelligencePage() {
                   {MOCK_KEYWORD.related.map((r, i) => (
                     <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>{r.kw}</td>
-                      <td style={{ padding: '10px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: `color-mix(in srgb, ${INTENT_COLORS[r.intent] || '#666'} 12%, transparent)`, color: INTENT_COLORS[r.intent] || '#666' }}>{r.intent}</span></td>
+                      <td style={{ padding: '10px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: `color-mix(in srgb, ${INTENT_COLORS[r.intent] || 'var(--text-tertiary)'} 12%, transparent)`, color: INTENT_COLORS[r.intent] || 'var(--text-tertiary)' }}>{r.intent}</span></td>
                       <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 600 }}>{r.vol.toLocaleString()}</td>
-                      <td style={{ padding: '10px 12px' }}><span style={{ color: r.kd > 60 ? '#ef4444' : r.kd > 30 ? '#f59e0b' : '#22c55e', fontWeight: 700 }}>{r.kd}</span></td>
+                      <td style={{ padding: '10px 12px' }}><span style={{ color: r.kd > 60 ? 'var(--red)' : r.kd > 30 ? 'var(--yellow)' : 'var(--green)', fontWeight: 700 }}>{r.kd}</span></td>
                       <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>${r.cpc.toFixed(2)}</td>
-                      <td style={{ padding: '10px 12px' }}><span style={{ color: r.trend > 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{r.trend > 0 ? '↗' : '↘'} {Math.abs(r.trend)}%</span></td>
+                      <td style={{ padding: '10px 12px' }}><span style={{ color: r.trend > 0 ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>{r.trend > 0 ? '↗' : '↘'} {Math.abs(r.trend)}%</span></td>
                     </tr>
                   ))}
                 </tbody>
@@ -370,7 +370,7 @@ export default function SEOIntelligencePage() {
               style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }} />
             <button onClick={() => execute('seo/domain', { domain: domInput }).then(r => { if (r) setDomStatus(r.status || null); })} disabled={loading || !domInput.trim()} style={{
               padding: '12px 20px', borderRadius: 12, border: 'none', cursor: 'pointer',
-              background: 'linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%)', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: loading ? 0.5 : 1,
+              background: 'linear-gradient(135deg, var(--purple) 0%, var(--purple) 100%)', color: 'var(--accent-contrast)', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: loading ? 0.5 : 1,
             }}>{loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Globe size={14} />} Analyze</button>
           </div>
 
@@ -384,20 +384,20 @@ export default function SEOIntelligencePage() {
           {/* Authority Score Gauge + Stats */}
           <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 14, marginBottom: 16 }}>
             <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', padding: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ width: 100, height: 100, borderRadius: '50%', border: '6px solid color-mix(in srgb, #9c27b0 20%, var(--border))', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: `conic-gradient(#9c27b0 ${MOCK_DOMAIN.authority}%, color-mix(in srgb, #9c27b0 10%, var(--bg-app)) 0)` }}>
+              <div style={{ width: 100, height: 100, borderRadius: '50%', border: '6px solid color-mix(in srgb, var(--purple) 20%, var(--border))', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: `conic-gradient(var(--purple) ${MOCK_DOMAIN.authority}%, color-mix(in srgb, var(--purple) 10%, var(--bg-app)) 0)` }}>
                 <div style={{ width: 76, height: 76, borderRadius: '50%', background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-                  <div style={{ fontSize: 28, fontWeight: 900, color: '#9c27b0' }}>{MOCK_DOMAIN.authority}</div>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--purple)' }}>{MOCK_DOMAIN.authority}</div>
                   <div style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Authority</div>
                 </div>
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
               {[
-                { label: 'Organic Traffic', value: (MOCK_DOMAIN.organicTraffic / 1000).toFixed(1) + 'K', color: '#4caf50' },
-                { label: 'Paid Traffic', value: (MOCK_DOMAIN.paidTraffic / 1000).toFixed(1) + 'K', color: '#2196f3' },
-                { label: 'Organic Keywords', value: (MOCK_DOMAIN.organicKeywords / 1000).toFixed(1) + 'K', color: '#e91e63' },
-                { label: 'Backlinks', value: (MOCK_DOMAIN.backlinks / 1000).toFixed(0) + 'K', color: '#ff9800' },
-                { label: 'Referring Domains', value: (MOCK_DOMAIN.referringDomains / 1000).toFixed(1) + 'K', color: '#9c27b0' },
+                { label: 'Organic Traffic', value: (MOCK_DOMAIN.organicTraffic / 1000).toFixed(1) + 'K', color: 'var(--green)' },
+                { label: 'Paid Traffic', value: (MOCK_DOMAIN.paidTraffic / 1000).toFixed(1) + 'K', color: 'var(--blue)' },
+                { label: 'Organic Keywords', value: (MOCK_DOMAIN.organicKeywords / 1000).toFixed(1) + 'K', color: 'var(--red)' },
+                { label: 'Backlinks', value: (MOCK_DOMAIN.backlinks / 1000).toFixed(0) + 'K', color: 'var(--yellow)' },
+                { label: 'Referring Domains', value: (MOCK_DOMAIN.referringDomains / 1000).toFixed(1) + 'K', color: 'var(--purple)' },
                 { label: 'Domain', value: MOCK_DOMAIN.domain, color: 'var(--text-primary)' },
               ].map((s, i) => (
                 <div key={i} style={{ background: 'var(--bg-app)', borderRadius: 10, padding: 12 }}>
@@ -418,7 +418,7 @@ export default function SEOIntelligencePage() {
               <tbody>{MOCK_DOMAIN.topKeywords.map((k, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>{k.kw}</td>
-                  <td style={{ padding: '10px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 800, background: k.pos <= 3 ? 'color-mix(in srgb, #4caf50 12%, transparent)' : 'color-mix(in srgb, #ff9800 12%, transparent)', color: k.pos <= 3 ? '#4caf50' : '#ff9800' }}>#{k.pos}</span></td>
+                  <td style={{ padding: '10px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 800, background: k.pos <= 3 ? 'color-mix(in srgb, var(--green) 12%, transparent)' : 'color-mix(in srgb, var(--yellow) 12%, transparent)', color: k.pos <= 3 ? 'var(--green)' : 'var(--yellow)' }}>#{k.pos}</span></td>
                   <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>{k.vol.toLocaleString()}</td>
                   <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 600 }}>{k.traffic.toLocaleString()}</td>
                 </tr>
@@ -432,12 +432,12 @@ export default function SEOIntelligencePage() {
             {MOCK_DOMAIN.competitors.map((c, i) => (
               <div key={i} style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Globe size={12} style={{ color: '#9c27b0' }} />
+                  <Globe size={12} style={{ color: 'var(--purple)' }} />
                   <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{c.domain}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 12, fontSize: 10, color: 'var(--text-tertiary)' }}>
                   <span>🔑 {c.commonKw.toLocaleString()} common</span>
-                  <span>📊 Authority: <strong style={{ color: '#9c27b0' }}>{c.authority}</strong></span>
+                  <span>📊 Authority: <strong style={{ color: 'var(--purple)' }}>{c.authority}</strong></span>
                 </div>
               </div>
             ))}
@@ -455,7 +455,7 @@ export default function SEOIntelligencePage() {
               style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }} />
             <button onClick={() => execute('seo/ranking', { keyword: rankKw }).then(r => { if (r) setRankStatus(r.status || null); })} disabled={loading || !rankKw.trim()} style={{
               padding: '12px 20px', borderRadius: 12, border: 'none', cursor: 'pointer',
-              background: 'linear-gradient(135deg, #2196f3 0%, #1565c0 100%)', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: loading ? 0.5 : 1,
+              background: 'linear-gradient(135deg, var(--blue) 0%, var(--blue) 100%)', color: 'var(--accent-contrast)', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: loading ? 0.5 : 1,
             }}>{loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <BarChart3 size={14} />} Analyze SERP</button>
           </div>
 
@@ -474,14 +474,14 @@ export default function SEOIntelligencePage() {
             </div>
             {MOCK_SERP.map((r, i) => (
               <div key={i} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: r.pos <= 3 ? 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)' : r.pos <= 5 ? 'linear-gradient(135deg, #2196f3 0%, #1565c0 100%)' : 'var(--bg-app)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, color: r.pos <= 5 ? '#fff' : 'var(--text-tertiary)', flexShrink: 0 }}>#{r.pos}</div>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: r.pos <= 3 ? 'linear-gradient(135deg, var(--green) 0%, var(--green) 100%)' : r.pos <= 5 ? 'linear-gradient(135deg, var(--blue) 0%, var(--blue) 100%)' : 'var(--bg-app)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, color: r.pos <= 5 ? 'var(--accent-contrast)' : 'var(--text-tertiary)', flexShrink: 0 }}>#{r.pos}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.title}</div>
-                  <div style={{ fontSize: 10, color: '#4caf50', marginTop: 2 }}>{r.domain}{r.url}</div>
+                  <div style={{ fontSize: 10, color: 'var(--green)', marginTop: 2 }}>{r.domain}{r.url}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 16, flexShrink: 0, fontSize: 10, color: 'var(--text-tertiary)' }}>
-                  <div><div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Authority</div><span style={{ fontWeight: 700, color: '#9c27b0' }}>{r.authority}</span></div>
-                  <div><div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Traffic</div><span style={{ fontWeight: 700, color: '#2196f3' }}>{r.traffic.toLocaleString()}</span></div>
+                  <div><div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Authority</div><span style={{ fontWeight: 700, color: 'var(--purple)' }}>{r.authority}</span></div>
+                  <div><div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Traffic</div><span style={{ fontWeight: 700, color: 'var(--blue)' }}>{r.traffic.toLocaleString()}</span></div>
                 </div>
               </div>
             ))}
@@ -493,10 +493,10 @@ export default function SEOIntelligencePage() {
       {/* ═══ CROSS-REFERENCE (WORKS NOW!) ═══ */}
       {activeTab === 'crossref' && (
         <div>
-          <div style={{ background: 'color-mix(in srgb, #4caf50 6%, var(--bg-card))', borderRadius: 14, border: '1px solid color-mix(in srgb, #4caf50 20%, var(--border))', padding: 16, marginBottom: 16 }}>
+          <div style={{ background: 'color-mix(in srgb, var(--green) 6%, var(--bg-card))', borderRadius: 14, border: '1px solid color-mix(in srgb, var(--green) 20%, var(--border))', padding: 16, marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-              <Database size={14} style={{ color: '#4caf50' }} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: '#4caf50' }}>Live — Queries ClickHouse directly</span>
+              <Database size={14} style={{ color: 'var(--green)' }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--green)' }}>Live — Queries ClickHouse directly</span>
             </div>
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
               Paste domains (one per line, comma, or semicolon separated). This checks your <code>universal_person</code> table for matching leads — lead count, verification status, companies, and job titles.
@@ -512,7 +512,7 @@ export default function SEOIntelligencePage() {
               <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{crInput.split(/[\n,;]+/).filter(d => d.trim()).length} domains</span>
               <button onClick={runCrossRef} disabled={loading || !crInput.trim()} style={{
                 padding: '10px 20px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                background: `linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)`, color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: loading ? 0.5 : 1,
+                background: `linear-gradient(135deg, var(--green) 0%, var(--green) 100%)`, color: 'var(--accent-contrast)', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: loading ? 0.5 : 1,
               }}>{loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Database size={14} />} Cross-Reference</button>
             </div>
           </div>
@@ -523,7 +523,7 @@ export default function SEOIntelligencePage() {
               {/* Summary */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
                 <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)', padding: 16, textAlign: 'center' }}>
-                  <div style={{ fontSize: 28, fontWeight: 900, color: '#4caf50' }}>{crResults.found_in_database}</div>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--green)' }}>{crResults.found_in_database}</div>
                   <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Found in DB</div>
                 </div>
                 <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)', padding: 16, textAlign: 'center' }}>
@@ -549,7 +549,7 @@ export default function SEOIntelligencePage() {
                           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2 }}>{m.domain}</div>
                           <div style={{ display: 'flex', gap: 8, fontSize: 10, color: 'var(--text-tertiary)', flexWrap: 'wrap' }}>
                             <span><strong>{m.lead_count}</strong> leads</span>
-                            <span style={{ color: '#4caf50' }}>✅ {m.verified_safe} safe</span>
+                            <span style={{ color: 'var(--green)' }}>✅ {m.verified_safe} safe</span>
                             {m.verified_risky > 0 && <span style={{ color: 'var(--yellow)' }}>⚠️ {m.verified_risky} risky</span>}
                             <span>🏢 {m.unique_companies} companies</span>
                           </div>
@@ -597,7 +597,7 @@ export default function SEOIntelligencePage() {
           </div>
           <button onClick={() => execute('seo/competitor', { domain: compDomain, competitor_domain: compTarget }).then(r => { if (r) setCompStatus(r.status || null); })} disabled={loading || !compDomain.trim()} style={{
             padding: '12px 20px', borderRadius: 12, border: 'none', cursor: 'pointer', width: '100%',
-            background: 'linear-gradient(135deg, #ff9800 0%, #ef6c00 100%)', color: '#fff', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: loading ? 0.5 : 1, marginBottom: 16,
+            background: 'linear-gradient(135deg, var(--yellow) 0%, var(--yellow) 100%)', color: 'var(--accent-contrast)', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: loading ? 0.5 : 1, marginBottom: 16,
           }}>{loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <GitCompare size={14} />} Analyze Gap</button>
 
           {compStatus === 'semrush_not_configured' && (
@@ -610,15 +610,15 @@ export default function SEOIntelligencePage() {
           {/* Gap Summary */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
             <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)', padding: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: 28, fontWeight: 900, color: '#4caf50' }}>{MOCK_GAP.shared}</div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--green)' }}>{MOCK_GAP.shared}</div>
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Shared Keywords</div>
             </div>
             <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)', padding: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: 28, fontWeight: 900, color: '#2196f3' }}>{MOCK_GAP.yourUnique}</div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--blue)' }}>{MOCK_GAP.yourUnique}</div>
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Your Unique</div>
             </div>
             <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)', padding: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: 28, fontWeight: 900, color: '#ef4444' }}>{(MOCK_GAP.theirUnique / 1000).toFixed(1)}K</div>
+              <div style={{ fontSize: 28, fontWeight: 900, color: 'var(--red)' }}>{(MOCK_GAP.theirUnique / 1000).toFixed(1)}K</div>
               <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Their Unique (Gap)</div>
             </div>
           </div>
@@ -634,8 +634,8 @@ export default function SEOIntelligencePage() {
                 <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>{g.kw}</td>
                   <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>{g.vol.toLocaleString()}</td>
-                  <td style={{ padding: '10px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 800, background: 'color-mix(in srgb, #4caf50 12%, transparent)', color: '#4caf50' }}>#{g.theirPos}</span></td>
-                  <td style={{ padding: '10px 12px' }}>{g.yourPos ? <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 800, background: 'color-mix(in srgb, #ff9800 12%, transparent)', color: '#ff9800' }}>#{g.yourPos}</span> : <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: 'color-mix(in srgb, #ef4444 12%, transparent)', color: '#ef4444' }}>Not ranking</span>}</td>
+                  <td style={{ padding: '10px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 800, background: 'color-mix(in srgb, var(--green) 12%, transparent)', color: 'var(--green)' }}>#{g.theirPos}</span></td>
+                  <td style={{ padding: '10px 12px' }}>{g.yourPos ? <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 800, background: 'color-mix(in srgb, var(--yellow) 12%, transparent)', color: 'var(--yellow)' }}>#{g.yourPos}</span> : <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: 'color-mix(in srgb, var(--red) 12%, transparent)', color: 'var(--red)' }}>Not ranking</span>}</td>
                 </tr>
               ))}</tbody>
             </table>
@@ -644,7 +644,7 @@ export default function SEOIntelligencePage() {
         </div>
       )}
 
-      {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420, background: toast.type === 'error' ? 'var(--red)' : toast.type === 'warning' ? 'var(--yellow)' : 'var(--accent)', color: toast.type === 'warning' ? '#000' : 'var(--accent-contrast)', fontSize: 12, fontWeight: 600, boxShadow: 'var(--shadow-lg)', animation: 'slideUp 0.25s ease-out', cursor: 'pointer' }} onClick={() => setToast(null)}>{toast.type === 'error' ? '❌' : toast.type === 'warning' ? '⚠️' : 'ℹ️'} {toast.message}</div>}
+      {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420, background: toast.type === 'error' ? 'var(--red)' : toast.type === 'warning' ? 'var(--yellow)' : 'var(--accent)', color: toast.type === 'warning' ? 'var(--text-primary)' : 'var(--accent-contrast)', fontSize: 12, fontWeight: 600, boxShadow: 'var(--shadow-lg)', animation: 'slideUp 0.25s ease-out', cursor: 'pointer' }} onClick={() => setToast(null)}>{toast.type === 'error' ? '❌' : toast.type === 'warning' ? '⚠️' : 'ℹ️'} {toast.message}</div>}
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}`}</style>
 
       {/* Oracle Agent */}
