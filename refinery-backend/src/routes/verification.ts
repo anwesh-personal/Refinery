@@ -3,7 +3,7 @@ import { z } from 'zod';
 import * as verifyService from '../services/verification.js';
 import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
 import { getRequestUser } from '../types/auth.js';
-import { query as chq, streamCSV } from '../db/clickhouse.js';
+import { query as chQuery, command as chCommand, streamCSV } from '../db/clickhouse.js';
 
 const router = Router();
 
@@ -188,7 +188,7 @@ router.get('/batches/:id/export', requireSuperadmin, async (req, res) => {
     }
 
     // Get batch to find segment + validate status
-    const [batch] = await chq<{ segment_id: string; status: string }>(
+    const [batch] = await chQuery<{ segment_id: string; status: string }>(
       `SELECT segment_id, status FROM verification_batches WHERE id = '${batchId}' LIMIT 1`
     );
     if (!batch) return res.status(404).json({ error: 'Batch not found' });
@@ -197,7 +197,7 @@ router.get('/batches/:id/export', requireSuperadmin, async (req, res) => {
     }
 
     // Get ALL non-internal columns + verification columns
-    const colRows = await chq<{ name: string }>(`
+    const colRows = await chQuery<{ name: string }>(`
       SELECT name FROM system.columns
       WHERE database = currentDatabase() AND table = 'universal_person'
       ORDER BY position
@@ -249,7 +249,6 @@ router.get('/batches/:id/export', requireSuperadmin, async (req, res) => {
 });
 
 import { triggerReverify } from '../services/reverify-scheduler.js';
-import { query as chQuery, command as chCommand } from '../db/clickhouse.js';
 
 // GET /api/verification/reverify-config/:id
 // Get auto re-verification settings for a segment

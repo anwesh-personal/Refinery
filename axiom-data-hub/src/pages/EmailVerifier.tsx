@@ -174,13 +174,13 @@ export default function EmailVerifierPage() {
   const [pushingToDB, setPushingToDB] = useState(false);
   const [pushResult, setPushResult] = useState<{ matched: number; totalProcessed: number; updated: Record<string, number> } | null>(null);
 
-  // Ingest modal
-  const [ingestJobId, setIngestJobId] = useState<string | null>(null);
-  const [ingestClassifications, setIngestClassifications] = useState<Record<string, boolean>>({ safe: true, uncertain: true, risky: false, reject: false });
-  const [ingestMaxRisk, setIngestMaxRisk] = useState<number>(100);
-  const [ingestMode, setIngestMode] = useState<'unverified_only' | 'overwrite'>('unverified_only');
-  const [ingestDryRunResult, setIngestDryRunResult] = useState<any>(null);
-  const [ingestLoading, setIngestLoading] = useState(false);
+  // Vault modal (Save to Vault)
+  const [vaultJobId, setVaultJobId] = useState<string | null>(null);
+  const [vaultClassifications, setVaultClassifications] = useState<Record<string, boolean>>({ safe: true, uncertain: true, risky: false, reject: false });
+  const [vaultMaxRisk, setVaultMaxRisk] = useState<number>(100);
+  const [vaultCustomName, setVaultCustomName] = useState('');
+  const [vaultSaving, setVaultSaving] = useState(false);
+  const [vaultResult, setVaultResult] = useState<any>(null);
 
   // Download modal
   const [downloadJobId, setDownloadJobId] = useState<string | null>(null);
@@ -891,13 +891,13 @@ export default function EmailVerifierPage() {
                   {loadedJobId ? (
                     <>
                       <Button
-                        onClick={() => { setIngestJobId(loadedJobId); setIngestDryRunResult(null); }}
+                        onClick={() => { setVaultJobId(loadedJobId); setVaultResult(null); setVaultCustomName(''); }}
                         disabled={!result.results || result.results.length === 0}
                         icon={<Database size={14} />}
                         variant="secondary"
                         style={{ background: 'var(--green)', color: '#fff', border: 'none' }}
                       >
-                        Ingest to DB
+                        Save to Vault
                       </Button>
                       <Button
                         onClick={() => { setDownloadJobId(loadedJobId); }}
@@ -1269,10 +1269,10 @@ export default function EmailVerifierPage() {
                         padding: '6px 14px', borderRadius: 8, border: '1px solid var(--green)',
                         background: 'var(--green-muted)', color: 'var(--green)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                       }}>Download CSV</button>
-                      <button onClick={() => { setIngestJobId(job.id); setIngestDryRunResult(null); }} style={{
+                      <button onClick={() => { setVaultJobId(job.id); setVaultResult(null); setVaultCustomName(''); }} style={{
                         padding: '6px 14px', borderRadius: 8, border: '1px solid var(--blue)',
                         background: 'var(--blue-muted)', color: 'var(--blue)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      }}>Ingest to DB</button>
+                      }}>Save to Vault</button>
                     </div>
                   )}
                   {isProcessing && !isActive && (
@@ -1324,157 +1324,157 @@ export default function EmailVerifierPage() {
         </div>
       )}
 
-      {/* ── Ingestion Modal ── */}
-      {ingestJobId && (
+      {/* ── Save to Vault Modal ── */}
+      {vaultJobId && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 9999,
           background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={(e) => { if (e.target === e.currentTarget) { setIngestJobId(null); } }}>
+        }} onClick={(e) => { if (e.target === e.currentTarget) { setVaultJobId(null); } }}>
           <div style={{
             width: 520, maxHeight: '90vh', overflow: 'auto',
             background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)',
             boxShadow: '0 25px 50px rgba(0,0,0,0.4)', padding: 28,
           }}>
             <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-              Ingest to Verification Engine
+              🔐 Save to Verified Leads Vault
             </h3>
             <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 20 }}>
-              Push verified results into <code>universal_person._verification_status</code>
+              Save verified results as separate CSV files per classification to the Verified Leads vault.
+              Each selected category becomes its own file.
             </p>
+
+            {/* Custom File Name */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                File Name
+              </label>
+              <input
+                type="text"
+                value={vaultCustomName}
+                onChange={e => setVaultCustomName(e.target.value)}
+                placeholder="e.g. Q1_Healthcare_Leads"
+                style={{
+                  width: '100%', padding: '10px 14px', borderRadius: 10,
+                  border: '1px solid var(--border)', background: 'var(--bg-input)',
+                  color: 'var(--text-primary)', fontSize: 13, fontWeight: 500,
+                  outline: 'none', transition: 'border-color 0.2s',
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
+                onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+              />
+              <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 6 }}>
+                Files will be named: <span style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>
+                  {(vaultCustomName.trim() || 'MyLeads').replace(/[^a-zA-Z0-9._\- ]/g, '_').replace(/\s+/g, '_')}_safe_2026-03-29.csv
+                </span> etc.
+              </div>
+            </div>
 
             {/* Classification Filters */}
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Classifications to Ingest
+                Classifications to Save
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {(['safe', 'uncertain', 'risky', 'reject'] as const).map(cls => {
                   const colors: Record<string, string> = { safe: 'var(--green)', uncertain: 'var(--yellow)', risky: 'var(--orange, #f59e0b)', reject: 'var(--red)' };
-                  const labels: Record<string, string> = { safe: 'Safe → valid', uncertain: 'Uncertain → risky', risky: 'Risky → risky', reject: 'Rejected → invalid' };
+                  const icons: Record<string, string> = { safe: '✅', uncertain: '🔶', risky: '⚠️', reject: '❌' };
                   return (
                     <label key={cls} style={{
                       display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                      borderRadius: 10, border: `1px solid ${ingestClassifications[cls] ? colors[cls] : 'var(--border)'}`,
-                      background: ingestClassifications[cls] ? `${colors[cls]}15` : 'var(--bg-app)',
+                      borderRadius: 10, border: `1px solid ${vaultClassifications[cls] ? colors[cls] : 'var(--border)'}`,
+                      background: vaultClassifications[cls] ? `${colors[cls]}15` : 'var(--bg-app)',
                       cursor: 'pointer', transition: 'all 0.15s ease',
                     }}>
-                      <input type="checkbox" checked={ingestClassifications[cls]} onChange={() => setIngestClassifications(prev => ({ ...prev, [cls]: !prev[cls] }))}
+                      <input type="checkbox" checked={vaultClassifications[cls]} onChange={() => setVaultClassifications(prev => ({ ...prev, [cls]: !prev[cls] }))}
                         style={{ accentColor: colors[cls], width: 16, height: 16 }} />
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{cls.charAt(0).toUpperCase() + cls.slice(1)}</div>
-                        <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{labels[cls]}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{icons[cls]} {cls.charAt(0).toUpperCase() + cls.slice(1)}</div>
+                        <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>Saves as separate file</div>
                       </div>
                     </label>
                   );
                 })}
               </div>
+              <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+                <button onClick={() => setVaultClassifications({ safe: true, uncertain: true, risky: true, reject: true })} style={{
+                  padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-app)',
+                  color: 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer',
+                }}>Select All</button>
+                <button onClick={() => setVaultClassifications({ safe: false, uncertain: false, risky: false, reject: false })} style={{
+                  padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-app)',
+                  color: 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer',
+                }}>Clear All</button>
+              </div>
             </div>
 
             {/* Risk Score Threshold */}
-            <div style={{ marginBottom: 20 }}>
+            <div style={{ marginBottom: 24 }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Max Risk Score: <span style={{ color: 'var(--accent)', fontWeight: 800 }}>{ingestMaxRisk}</span>
+                Max Risk Score: <span style={{ color: 'var(--accent)', fontWeight: 800 }}>{vaultMaxRisk}</span>
               </label>
-              <input type="range" min={0} max={100} value={ingestMaxRisk} onChange={e => setIngestMaxRisk(Number(e.target.value))}
+              <input type="range" min={0} max={100} value={vaultMaxRisk} onChange={e => setVaultMaxRisk(Number(e.target.value))}
                 style={{ width: '100%', accentColor: 'var(--accent)' }} />
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>
                 <span>0 (strictest)</span><span>50</span><span>100 (all)</span>
               </div>
             </div>
 
-            {/* Overwrite Mode */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                Update Mode
-              </label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {([['unverified_only', 'Only unverified', 'Skip records that already have a verification status'], ['overwrite', 'Overwrite all', 'Update all matching records regardless of existing status']] as const).map(([val, label, desc]) => (
-                  <label key={val} style={{
-                    flex: 1, padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
-                    border: ingestMode === val ? '1px solid var(--accent)' : '1px solid var(--border)',
-                    background: ingestMode === val ? 'var(--accent-muted)' : 'var(--bg-app)',
-                  }}>
-                    <input type="radio" name="ingestMode" checked={ingestMode === val} onChange={() => setIngestMode(val as any)}
-                      style={{ display: 'none' }} />
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{label}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>{desc}</div>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Dry Run Result */}
-            {ingestDryRunResult && (
+            {/* Save Result */}
+            {vaultResult && (
               <div style={{
                 padding: 16, borderRadius: 12, marginBottom: 16,
-                background: ingestDryRunResult.dryRun ? 'var(--blue-muted)' : 'var(--green-muted)',
-                border: `1px solid ${ingestDryRunResult.dryRun ? 'var(--blue)' : 'var(--green)'}`,
+                background: 'var(--green-muted)', border: '1px solid var(--green)',
               }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
-                  {ingestDryRunResult.dryRun ? '🔍 Dry Run Preview' : '✅ Ingestion Complete'}
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  ✅ Saved to Vault
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-                  Total in job: <strong>{ingestDryRunResult.totalInJob?.toLocaleString()}</strong><br />
-                  After filters: <strong>{ingestDryRunResult.totalAfterFilters?.toLocaleString()}</strong><br />
-                  Matched in DB: <strong>{ingestDryRunResult.totalMatchedInDB?.toLocaleString()}</strong><br />
-                  {ingestDryRunResult.skippedAlreadyVerified > 0 && (<>Already verified (skipped): <strong>{ingestDryRunResult.skippedAlreadyVerified?.toLocaleString()}</strong><br /></>)}
-                  Will update → Valid: <strong style={{ color: 'var(--green)' }}>{ingestDryRunResult.updated?.valid || 0}</strong>,
-                  Risky: <strong style={{ color: 'var(--yellow)' }}>{ingestDryRunResult.updated?.risky || 0}</strong>,
-                  Invalid: <strong style={{ color: 'var(--red)' }}>{ingestDryRunResult.updated?.invalid || 0}</strong>
+                  <strong>{vaultResult.totalSaved?.toLocaleString()}</strong> leads saved as <strong>{vaultResult.files?.length}</strong> file(s):
+                </div>
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {(vaultResult.files || []).map((f: any) => (
+                    <div key={f.fileName} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '6px 12px', borderRadius: 8, background: 'var(--bg-app)', fontSize: 12,
+                    }}>
+                      <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 500 }}>{f.fileName}</span>
+                      <span style={{ color: 'var(--text-tertiary)' }}>{f.count.toLocaleString()} leads · {(f.sizeBytes / 1024).toFixed(1)}KB</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
             {/* Action Buttons */}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setIngestJobId(null)} style={{
+              <button onClick={() => setVaultJobId(null)} style={{
                 padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)',
                 background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              }}>Cancel</button>
+              }}>{vaultResult ? 'Done' : 'Cancel'}</button>
 
-              <button disabled={ingestLoading || !Object.values(ingestClassifications).some(Boolean)} onClick={async () => {
-                setIngestLoading(true);
-                try {
-                  const resp = await apiCall<any>(`/api/verify/jobs/${ingestJobId}/ingest`, {
-                    method: 'POST',
-                    body: {
-                      classifications: Object.entries(ingestClassifications).filter(([, v]) => v).map(([k]) => k),
-                      maxRiskScore: ingestMaxRisk,
-                      mode: ingestMode,
-                      dryRun: true,
-                    },
-                  });
-                  setIngestDryRunResult(resp);
-                } catch (err: any) { showToast('error', `Preview failed: ${err.message}`); }
-                finally { setIngestLoading(false); }
-              }} style={{
-                padding: '10px 20px', borderRadius: 10, border: '1px solid var(--blue)',
-                background: 'var(--blue-muted)', color: 'var(--blue)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                opacity: ingestLoading ? 0.6 : 1,
-              }}>{ingestLoading ? 'Previewing...' : '🔍 Preview (Dry Run)'}</button>
-
-              <button disabled={ingestLoading || !ingestDryRunResult || !Object.values(ingestClassifications).some(Boolean)} onClick={async () => {
-                setIngestLoading(true);
-                try {
-                  const resp = await apiCall<any>(`/api/verify/jobs/${ingestJobId}/ingest`, {
-                    method: 'POST',
-                    body: {
-                      classifications: Object.entries(ingestClassifications).filter(([, v]) => v).map(([k]) => k),
-                      maxRiskScore: ingestMaxRisk,
-                      mode: ingestMode,
-                      dryRun: false,
-                    },
-                  });
-                  setIngestDryRunResult(resp);
-                  showToast('info', `Ingested ${resp.totalMatchedInDB} records`);
-                } catch (err: any) { showToast('error', `Ingest failed: ${err.message}`); }
-                finally { setIngestLoading(false); }
-              }} style={{
-                padding: '10px 20px', borderRadius: 10, border: 'none',
-                background: 'var(--accent)', color: 'var(--accent-contrast, #fff)', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                opacity: (ingestLoading || !ingestDryRunResult) ? 0.4 : 1,
-              }}>⚡ Commit Ingestion</button>
+              {!vaultResult && (
+                <button disabled={vaultSaving || !vaultCustomName.trim() || !Object.values(vaultClassifications).some(Boolean)} onClick={async () => {
+                  setVaultSaving(true);
+                  try {
+                    const resp = await apiCall<any>(`/api/verify/jobs/${vaultJobId}/save-to-vault`, {
+                      method: 'POST',
+                      body: {
+                        customName: vaultCustomName.trim(),
+                        classifications: Object.entries(vaultClassifications).filter(([, v]) => v).map(([k]) => k),
+                        maxRiskScore: vaultMaxRisk,
+                      },
+                    });
+                    setVaultResult(resp);
+                    showToast('info', `Saved ${resp.totalSaved} leads to Verified Leads vault`);
+                  } catch (err: any) { showToast('error', `Save failed: ${err.message}`); }
+                  finally { setVaultSaving(false); }
+                }} style={{
+                  padding: '10px 20px', borderRadius: 10, border: 'none',
+                  background: 'var(--green)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                  opacity: (vaultSaving || !vaultCustomName.trim() || !Object.values(vaultClassifications).some(Boolean)) ? 0.4 : 1,
+                }}>{vaultSaving ? '🔄 Saving...' : '🔐 Save to Vault'}</button>
+              )}
             </div>
           </div>
         </div>
@@ -1563,6 +1563,35 @@ export default function EmailVerifierPage() {
                   }}>{preset.label}</button>
                 ))}
               </div>
+            </div>
+
+            {/* Download Mode */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Download Separately
+              </label>
+              <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+                Download each checked classification as its own CSV file.
+              </p>
+              <button disabled={!Object.values(downloadClassifications).some(Boolean)} onClick={async () => {
+                const selected = Object.entries(downloadClassifications).filter(([, v]) => v).map(([k]) => k);
+                for (const cls of selected) {
+                  try {
+                    const blob = await apiCall<Blob>(`/api/verify/jobs/${downloadJobId}/download?classifications=${cls}${downloadMaxRisk < 100 ? `&maxRiskScore=${downloadMaxRisk}` : ''}`, { responseType: 'blob' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `verification-${downloadJobId}-${cls}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    await new Promise(r => setTimeout(r, 300));
+                  } catch (e: any) { alert(`Download failed for ${cls}: ${e.message}`); }
+                }
+              }} style={{
+                padding: '8px 14px', borderRadius: 8, border: '1px solid var(--accent)',
+                background: 'var(--accent-muted)', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                opacity: !Object.values(downloadClassifications).some(Boolean) ? 0.4 : 1,
+              }}>📂 Download Each Category Separately</button>
             </div>
 
             {/* Action Buttons */}

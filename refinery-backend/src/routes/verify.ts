@@ -592,8 +592,234 @@ router.post('/jobs/:id/ingest', requireSuperadmin, async (req, res) => {
   }
 });
 
-// ─── POST /api/verify/jobs/:id/retry ───
-// Retry a failed or cancelled job using stored source emails and config.
+// ─── POST /api/verify/jobs/:id/save-to-vault ───
+// Save verified results as separate CSV files per classification to MinIO 'verified-leads' bucket.
+// Each checked classification becomes its own file: e.g. MyLeads_safe_2026-03-29.csv
+// Body: { customName: string, classifications: string[], maxRiskScore?: number }
+
+import { S3Client, CreateBucketCommand, HeadBucketCommand, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
+import { env } from '../config/env.js';
+import { Readable } from 'stream';
+
+function getStorageClient(): S3Client {
+  return new S3Client({
+    region: 'us-east-1',
+    endpoint: env.objectStorage.endpoint,
+    credentials: {
+      accessKeyId: env.objectStorage.accessKey,
+      secretAccessKey: env.objectStorage.secretKey,
+    },
+    forcePathStyle: true,
+  });
+}
+
+const VERIFIED_BUCKET = 'verified-leads';
+
+/** Build a CSV row from a pipeline result */
+function resultToCsvRow(r: any): string {
+  const cols = [
+    `"${(r.email || '').replace(/"/g, '""')}"`,
+    r.classification || '',
+    r.riskScore ?? '',
+    `"${(r.originalEmail || r.email || '').replace(/"/g, '""')}"`,
+    r.checks?.syntax ? (r.checks.syntax.passed ? 'pass' : 'fail') : '',
+    r.checks?.typoFixed ? (r.checks.typoFixed.corrected ? 'yes' : 'no') : '',
+    r.checks?.disposable == null ? '' : (r.checks.disposable ? 'yes' : 'no'),
+    r.checks?.roleBased?.detected ? r.checks.roleBased.prefix : '',
+    r.checks?.freeProvider?.detected ? r.checks.freeProvider.category : '',
+    r.checks?.mxValid?.valid != null ? (r.checks.mxValid.valid ? 'yes' : 'no') : '',
+    r.checks?.catchAll != null ? (r.checks.catchAll ? 'yes' : 'no') : '',
+    r.checks?.domainAuth ? (r.checks.domainAuth.spf ? 'yes' : 'no') : '',
+    r.checks?.domainAuth ? (r.checks.domainAuth.dmarc ? 'yes' : 'no') : '',
+    r.checks?.dnsbl ? (r.checks.dnsbl.listed ? r.checks.dnsbl.listings.join(';') : 'clean') : '',
+    r.checks?.domainAge ? (r.checks.domainAge.ageDays >= 0 ? r.checks.domainAge.ageDays : '') : '',
+    r.checks?.smtpResult ? r.checks.smtpResult.status : '',
+    r.checks?.smtpResult ? `"${(r.checks.smtpResult.response || '').replace(/"/g, '""')}"` : '',
+    r.checks?.smtpResult ? (r.checks.smtpResult.starttls ? 'yes' : 'no') : '',
+  ];
+  return cols.join(',');
+}
+
+const CSV_HEADERS = 'email,classification,risk_score,original_email,syntax,typo_fixed,disposable,role_based,free_provider,mx_valid,catch_all,spf,dmarc,dnsbl,domain_age_days,smtp_status,smtp_response,starttls';
+
+async function ensureBucket(client: S3Client): Promise<void> {
+  try {
+    await client.send(new HeadBucketCommand({ Bucket: VERIFIED_BUCKET }));
+  } catch {
+    await client.send(new CreateBucketCommand({ Bucket: VERIFIED_BUCKET }));
+  }
+}
+
+router.post('/jobs/:id/save-to-vault', requireSuperadmin, async (req, res) => {
+  try {
+    const [job] = await chQuery<any>(`
+      SELECT id, results_json, status, total_emails
+      FROM pipeline_jobs
+      WHERE id = '${req.params.id}'
+      LIMIT 1
+    `);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (job.status !== 'complete') return res.status(400).json({ error: 'Job not complete yet' });
+    if (!job.results_json) return res.status(404).json({ error: 'No results stored' });
+
+    let allResults: any[];
+    try { allResults = JSON.parse(job.results_json); } catch { return res.status(500).json({ error: 'Corrupt results data' }); }
+
+    const { customName, classifications, maxRiskScore } = req.body || {};
+    if (!customName || typeof customName !== 'string' || customName.trim().length === 0) {
+      return res.status(400).json({ error: 'customName is required' });
+    }
+    if (!Array.isArray(classifications) || classifications.length === 0) {
+      return res.status(400).json({ error: 'Select at least one classification' });
+    }
+
+    const maxRisk = typeof maxRiskScore === 'number' ? maxRiskScore : Infinity;
+    const safeName = customName.trim().replace(/[^a-zA-Z0-9._\- ]/g, '_').replace(/\s+/g, '_');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
+    const client = getStorageClient();
+    await ensureBucket(client);
+
+    const user = getRequestUser(req);
+    const savedFiles: Array<{ classification: string; fileName: string; count: number; sizeBytes: number }> = [];
+
+    // Create one file PER classification
+    for (const cls of classifications) {
+      const rows = allResults.filter((r: any) =>
+        r.classification === cls && (r.riskScore ?? 0) <= maxRisk
+      );
+
+      if (rows.length === 0) continue;
+
+      const csvContent = [CSV_HEADERS, ...rows.map(resultToCsvRow)].join('\n');
+      const fileName = `${safeName}_${cls}_${timestamp}.csv`;
+      const sizeBytes = Buffer.byteLength(csvContent, 'utf-8');
+
+      const upload = new Upload({
+        client,
+        params: {
+          Bucket: VERIFIED_BUCKET,
+          Key: fileName,
+          Body: Readable.from(Buffer.from(csvContent, 'utf-8')),
+          ContentType: 'text/csv',
+        },
+      });
+      await upload.done();
+
+      savedFiles.push({ classification: cls, fileName, count: rows.length, sizeBytes });
+    }
+
+    if (savedFiles.length === 0) {
+      return res.status(400).json({ error: 'No results match the selected filters — nothing to save' });
+    }
+
+    const totalSaved = savedFiles.reduce((sum, f) => sum + f.count, 0);
+    console.log(`[Vault] ${user.name} saved ${savedFiles.length} file(s) → ${VERIFIED_BUCKET} (${totalSaved} total leads, classifications: ${savedFiles.map(f => f.classification).join(',')})`);
+
+    res.json({
+      success: true,
+      files: savedFiles,
+      totalSaved,
+      totalInJob: allResults.length,
+      bucket: VERIFIED_BUCKET,
+    });
+  } catch (e: any) {
+    console.error('[Vault] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── GET /api/verify/verified-leads ───
+// List all files in the verified-leads MinIO bucket.
+
+router.get('/verified-leads', requireSuperadmin, async (_req, res) => {
+  try {
+    const client = getStorageClient();
+    await ensureBucket(client);
+
+    const files: Array<{ key: string; size: number; modified: string }> = [];
+    let continuationToken: string | undefined;
+
+    do {
+      const resp = await client.send(new ListObjectsV2Command({
+        Bucket: VERIFIED_BUCKET,
+        MaxKeys: 1000,
+        ...(continuationToken ? { ContinuationToken: continuationToken } : {}),
+      }));
+
+      for (const obj of resp.Contents || []) {
+        if (obj.Key) {
+          files.push({
+            key: obj.Key,
+            size: obj.Size || 0,
+            modified: obj.LastModified?.toISOString() || '',
+          });
+        }
+      }
+
+      continuationToken = resp.IsTruncated ? resp.NextContinuationToken : undefined;
+    } while (continuationToken);
+
+    // Sort newest first
+    files.sort((a, b) => b.modified.localeCompare(a.modified));
+
+    res.json({ bucket: VERIFIED_BUCKET, files });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── GET /api/verify/verified-leads/download?key=xxx ───
+// Download a file from the verified-leads bucket.
+
+router.get('/verified-leads/download', requireSuperadmin, async (req, res) => {
+  try {
+    const key = req.query.key as string;
+    if (!key) return res.status(400).json({ error: 'key query param is required' });
+
+    const client = getStorageClient();
+    const getResp = await client.send(new GetObjectCommand({
+      Bucket: VERIFIED_BUCKET,
+      Key: key,
+    }));
+
+    const safeName = key.replace(/[^a-zA-Z0-9._-]/g, '_');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    if (getResp.ContentLength) res.setHeader('Content-Length', String(getResp.ContentLength));
+
+    const body = getResp.Body as Readable;
+    body.pipe(res);
+  } catch (e: any) {
+    if (!res.headersSent) {
+      res.status(e.name === 'NoSuchKey' ? 404 : 500).json({ error: e.message });
+    }
+  }
+});
+
+// ─── DELETE /api/verify/verified-leads?key=xxx ───
+// Delete a file from the verified-leads bucket.
+
+router.delete('/verified-leads', requireSuperadmin, async (req, res) => {
+  try {
+    const key = req.query.key as string;
+    if (!key) return res.status(400).json({ error: 'key query param is required' });
+
+    const client = getStorageClient();
+    await client.send(new DeleteObjectCommand({
+      Bucket: VERIFIED_BUCKET,
+      Key: key,
+    }));
+
+    const user = getRequestUser(req);
+    console.log(`[Vault] ${user.name} deleted "${key}" from ${VERIFIED_BUCKET}`);
+    res.json({ deleted: true, key });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 
 router.post('/jobs/:id/retry', requireSuperadmin, async (req, res) => {
   try {

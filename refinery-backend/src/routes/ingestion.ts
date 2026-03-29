@@ -341,7 +341,7 @@ router.get('/:id/export', async (req, res) => {
   }
 });
 
-// ——————————————————// Helper: determine if a ClickHouse type is string-like
+// ────────────────── Helper: determine if a ClickHouse type is string-like
 function isStringType(chType: string): boolean {
   const t = chType.replace(/^Nullable\(/, '').replace(/\)$/, '').replace(/^LowCardinality\(/, '').replace(/\)$/, '');
   return t.startsWith('String') || t.startsWith('FixedString') || t === 'UUID';
