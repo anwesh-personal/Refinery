@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiCall } from '../lib/api';
 import {
   CheckCircle, XCircle, RefreshCw, ChevronDown, GripVertical,
-  Zap, TestTube, Loader2, Eye, EyeOff, AlertTriangle, Plus, Trash2
+  Zap, TestTube, Loader2, Eye, EyeOff, AlertTriangle, Plus, Trash2, Sparkles, Settings, ArrowRight
 } from 'lucide-react';
 
 // ─── Types ───
@@ -42,6 +42,14 @@ const TYPE_ICONS: Record<string, string> = {
 const TYPE_COLORS: Record<string, string> = {
   anthropic: '#d97757', gemini: '#4285f4', openai: '#10a37f', mistral: '#ff7000', private_vps: '#8b5cf6', ollama: '#a0a0a0',
 };
+const TYPE_GRADIENTS: Record<string, string> = {
+  anthropic: 'linear-gradient(135deg, #d97757 0%, #b85d3a 100%)',
+  gemini: 'linear-gradient(135deg, #4285f4 0%, #1a5bc4 100%)',
+  openai: 'linear-gradient(135deg, #10a37f 0%, #0a7a5e 100%)',
+  mistral: 'linear-gradient(135deg, #ff7000 0%, #cc5a00 100%)',
+  private_vps: 'linear-gradient(135deg, #8b5cf6 0%, #6d3ad4 100%)',
+  ollama: 'linear-gradient(135deg, #666 0%, #444 100%)',
+};
 const TYPE_LABELS: Record<string, string> = {
   anthropic: 'Anthropic', gemini: 'Google Gemini', openai: 'OpenAI', mistral: 'Mistral', private_vps: 'Private VPS', ollama: 'Ollama',
 };
@@ -70,7 +78,7 @@ export default function AISettingsPage() {
   const [newEndpoint, setNewEndpoint] = useState('');
   const [adding, setAdding] = useState(false);
 
-  // Per-provider UI state (keyed by provider id)
+  // Per-provider UI state
   const [editingKeys, setEditingKeys] = useState<Record<string, string>>({});
   const [showKey, setShowKey] = useState<Record<string, boolean>>({});
   const [validating, setValidating] = useState<Record<string, boolean>>({});
@@ -78,6 +86,7 @@ export default function AISettingsPage() {
   const [fetchingModels, setFetchingModels] = useState<Record<string, boolean>>({});
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [testResult, setTestResult] = useState<Record<string, { success: boolean; response?: string; error?: string; latencyMs: number }>>({});
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
 
   // Drag state
   const dragItem = useRef<number | null>(null);
@@ -184,8 +193,6 @@ export default function AISettingsPage() {
     } finally { setTesting(prev => ({ ...prev, [id]: false })); }
   };
 
-  // ─── Service Assignment ───
-
   const assignService = async (slug: string, providerId: string | null, modelId: string) => {
     try {
       await apiCall('/api/ai/services/' + slug, { method: 'PUT', body: { provider_id: providerId, model_id: modelId } });
@@ -195,7 +202,6 @@ export default function AISettingsPage() {
   };
 
   // ─── Drag & Drop ───
-
   const handleDragStart = (idx: number) => { dragItem.current = idx; };
   const handleDragEnter = (idx: number) => { dragOverItem.current = idx; };
   const handleDragEnd = async () => {
@@ -203,55 +209,100 @@ export default function AISettingsPage() {
     const reordered = [...providers];
     const [dragged] = reordered.splice(dragItem.current, 1);
     reordered.splice(dragOverItem.current, 0, dragged);
-    dragItem.current = null;
-    dragOverItem.current = null;
+    dragItem.current = null; dragOverItem.current = null;
     setProviders(reordered);
-
     try {
       await apiCall('/api/ai/priority', { method: 'PUT', body: { order: reordered.map((p, i) => ({ id: p.id, priority: i })) } });
-      showToast('info', 'Priority order saved');
     } catch (e: any) { showToast('error', e.message); }
   };
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
-        <Loader2 size={32} style={{ color: 'var(--accent)', animation: 'spin 1s linear infinite' }} />
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '60vh', gap: 16 }}>
+        <div style={{ width: 48, height: 48, borderRadius: 16, background: 'var(--accent-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Sparkles size={24} style={{ color: 'var(--accent)', animation: 'pulse 2s ease-in-out infinite' }} />
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text-tertiary)', fontWeight: 500 }}>Loading AI Providers...</div>
       </div>
     );
   }
 
+  const enabledCount = providers.filter(p => p.enabled).length;
+  const validatedCount = providers.filter(p => p.validated).length;
+
   return (
     <>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 4 }}>🤖 AI Settings</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>
-            Configure AI providers. Each saved key is an independent provider instance. Drag to set fallback priority.
-          </p>
+      {/* ── Hero Header ── */}
+      <div style={{
+        background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-sidebar) 100%)',
+        borderRadius: 20, border: '1px solid var(--border)', padding: '28px 32px',
+        marginBottom: 24, position: 'relative', overflow: 'hidden',
+      }}>
+        <div style={{ position: 'absolute', top: -40, right: -40, width: 200, height: 200, borderRadius: '50%', background: 'var(--accent)', opacity: 0.04 }} />
+        <div style={{ position: 'absolute', bottom: -60, right: 80, width: 160, height: 160, borderRadius: '50%', background: 'var(--accent)', opacity: 0.03 }} />
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--accent-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Sparkles size={18} style={{ color: 'var(--accent)' }} />
+                </div>
+                <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>AI Configuration</h1>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--text-tertiary)', maxWidth: 500, lineHeight: 1.6, marginTop: 4 }}>
+                Each saved key is an independent provider instance. Drag to set fallback priority. Assign providers per feature.
+              </p>
+            </div>
+            <button onClick={() => setShowAddForm(!showAddForm)} style={{
+              padding: '10px 20px', borderRadius: 10, border: 'none', cursor: 'pointer',
+              background: 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 700,
+              display: 'flex', alignItems: 'center', gap: 6, transition: 'transform 0.15s, box-shadow 0.15s',
+              boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.2)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(0,0,0,0.15)'; }}
+            >
+              <Plus size={15} /> Add Provider
+            </button>
+          </div>
+
+          {/* Stats strip */}
+          <div style={{ display: 'flex', gap: 20, marginTop: 18 }}>
+            {[
+              { label: 'Total', value: providers.length, color: 'var(--text-primary)' },
+              { label: 'Enabled', value: enabledCount, color: 'var(--green)' },
+              { label: 'Validated', value: validatedCount, color: 'var(--accent)' },
+              { label: 'Services', value: services.filter(s => s.provider_id).length + '/' + services.length, color: 'var(--yellow)' },
+            ].map(s => (
+              <div key={s.label} style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ fontSize: 20, fontWeight: 800, color: s.color }}>{s.value}</span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{s.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
-        <button onClick={() => setShowAddForm(!showAddForm)} style={{
-          padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff',
-          fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-        }}>
-          <Plus size={14} /> Add Provider
-        </button>
       </div>
 
-      {/* Add Provider Form */}
+      {/* ── Add Provider Panel ── */}
       {showAddForm && (
         <div style={{
-          background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--accent)',
-          padding: 20, marginBottom: 24,
+          background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--accent)',
+          padding: 24, marginBottom: 24, boxShadow: '0 0 30px rgba(var(--accent-rgb, 0,0,0), 0.08)',
+          animation: 'slideDown 0.2s ease-out',
         }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 14 }}>Add New Provider Instance</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <Plus size={16} style={{ color: 'var(--accent)' }} />
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>New Provider Instance</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
             <div>
               <label style={labelStyle}>Provider Type</label>
-              <select value={newType} onChange={e => setNewType(e.target.value)} style={inputStyle}>
-                {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{TYPE_ICONS[k]} {v}</option>)}
-              </select>
+              <div style={{ position: 'relative' }}>
+                <select value={newType} onChange={e => setNewType(e.target.value)} style={{ ...inputStyle, appearance: 'none', paddingRight: 28, cursor: 'pointer' }}>
+                  {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{TYPE_ICONS[k]} {v}</option>)}
+                </select>
+                <ChevronDown size={12} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-tertiary)' }} />
+              </div>
             </div>
             <div>
               <label style={labelStyle}>Label</label>
@@ -270,28 +321,32 @@ export default function AISettingsPage() {
               </div>
             )}
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-            <button onClick={addProvider} disabled={adding} style={{
-              padding: '8px 20px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff',
-              fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: adding ? 0.5 : 1,
-            }}>{adding ? 'Adding...' : 'Create Provider'}</button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+            <button onClick={addProvider} disabled={adding || !newLabel.trim()} style={{
+              padding: '9px 22px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: '#fff',
+              fontSize: 12, fontWeight: 700, cursor: 'pointer', opacity: (adding || !newLabel.trim()) ? 0.5 : 1,
+            }}>{adding ? 'Creating...' : 'Create Provider'}</button>
             <button onClick={() => setShowAddForm(false)} style={{
-              padding: '8px 20px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent',
-              color: 'var(--text-secondary)', fontSize: 12, cursor: 'pointer',
+              padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent',
+              color: 'var(--text-secondary)', fontSize: 12, fontWeight: 500, cursor: 'pointer',
             }}>Cancel</button>
           </div>
         </div>
       )}
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'var(--bg-card)', borderRadius: 10, padding: 3, border: '1px solid var(--border)', width: 'fit-content' }}>
-        {(['providers', 'services'] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)} style={{
-            padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer',
-            background: tab === t ? 'var(--accent)' : 'transparent',
-            color: tab === t ? '#fff' : 'var(--text-secondary)',
-            fontSize: 12, fontWeight: 600, textTransform: 'capitalize',
-          }}>{t === 'providers' ? `Providers (${providers.length})` : `Service Assignments (${services.length})`}</button>
+      {/* ── Tabs ── */}
+      <div style={{ display: 'flex', gap: 2, marginBottom: 20, background: 'var(--bg-card)', borderRadius: 12, padding: 4, border: '1px solid var(--border)', width: 'fit-content' }}>
+        {([
+          { key: 'providers' as const, label: `Providers (${providers.length})`, icon: <Sparkles size={13} /> },
+          { key: 'services' as const, label: `Service Assignments`, icon: <Settings size={13} /> },
+        ]).map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)} style={{
+            padding: '8px 18px', borderRadius: 9, border: 'none', cursor: 'pointer',
+            background: tab === t.key ? 'var(--accent)' : 'transparent',
+            color: tab === t.key ? '#fff' : 'var(--text-tertiary)',
+            fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+            transition: 'all 0.15s ease',
+          }}>{t.icon} {t.label}</button>
         ))}
       </div>
 
@@ -302,24 +357,25 @@ export default function AISettingsPage() {
           {providers.length > 0 && (
             <div style={{
               background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)',
-              padding: 16, marginBottom: 20,
+              padding: '14px 18px', marginBottom: 20,
             }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
-                ⚡ Fallback Priority — Drag to reorder
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <GripVertical size={11} /> Fallback Priority — Drag to reorder
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {providers.map((p, idx) => (
                   <div key={p.id} draggable onDragStart={() => handleDragStart(idx)} onDragEnter={() => handleDragEnter(idx)}
                     onDragEnd={handleDragEnd} onDragOver={e => e.preventDefault()}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 8, cursor: 'grab',
-                      border: `1px solid ${p.enabled ? TYPE_COLORS[p.provider_type] + '80' : 'var(--border)'}`,
+                      display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, cursor: 'grab',
                       background: p.enabled ? `${TYPE_COLORS[p.provider_type]}12` : 'var(--bg-app)',
-                      opacity: p.enabled ? 1 : 0.35, transition: 'all 0.15s', userSelect: 'none', fontSize: 11,
+                      border: `1px solid ${p.enabled ? TYPE_COLORS[p.provider_type] + '40' : 'var(--border)'}`,
+                      opacity: p.enabled ? 1 : 0.3, transition: 'all 0.15s', userSelect: 'none',
                     }}>
-                    <GripVertical size={12} style={{ color: 'var(--text-tertiary)' }} />
-                    <span>{TYPE_ICONS[p.provider_type]}</span>
-                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{idx + 1}. {p.label}</span>
+                    <GripVertical size={10} style={{ color: 'var(--text-tertiary)' }} />
+                    <span style={{ fontSize: 13 }}>{TYPE_ICONS[p.provider_type]}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>{idx + 1}.</span>
+                    <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-secondary)', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.label}</span>
                     {p.enabled && p.validated && <CheckCircle size={10} style={{ color: 'var(--green)' }} />}
                     {p.enabled && !p.validated && <AlertTriangle size={10} style={{ color: 'var(--yellow)' }} />}
                   </div>
@@ -328,189 +384,209 @@ export default function AISettingsPage() {
             </div>
           )}
 
-          {/* Provider Cards */}
+          {/* Provider Cards — Grid */}
           {providers.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-tertiary)', fontSize: 14 }}>
-              No providers configured. Click "Add Provider" to get started.
+            <div style={{
+              textAlign: 'center', padding: '60px 20px', background: 'var(--bg-card)', borderRadius: 20,
+              border: '1px dashed var(--border)',
+            }}>
+              <Sparkles size={32} style={{ color: 'var(--text-tertiary)', marginBottom: 12, opacity: 0.4 }} />
+              <div style={{ fontSize: 14, color: 'var(--text-tertiary)', fontWeight: 500 }}>No providers configured</div>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', opacity: 0.6, marginTop: 4 }}>Click "Add Provider" to get started</div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 16 }}>
               {providers.map(p => {
                 const color = TYPE_COLORS[p.provider_type];
+                const gradient = TYPE_GRADIENTS[p.provider_type];
                 const needsKey = TYPES_NEED_KEY.includes(p.provider_type);
                 const needsEndpoint = TYPES_NEED_ENDPOINT.includes(p.provider_type);
                 const vr = validationResult[p.id];
                 const tr = testResult[p.id];
                 const models = p.cached_models || [];
+                const expanded = expandedCards[p.id] ?? true;
 
                 return (
                   <div key={p.id} style={{
-                    background: 'var(--bg-card)', borderRadius: 14,
-                    border: `1px solid ${p.enabled ? color + '50' : 'var(--border)'}`,
-                    overflow: 'hidden', transition: 'border-color 0.2s',
-                  }}>
-                    {/* Header */}
+                    borderRadius: 16, overflow: 'hidden', transition: 'transform 0.2s, box-shadow 0.2s',
+                    border: `1px solid ${p.enabled ? color + '40' : 'var(--border)'}`,
+                    background: 'var(--bg-card)',
+                    boxShadow: p.enabled ? `0 4px 20px ${color}10` : 'none',
+                  }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 30px ${color}18`; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = p.enabled ? `0 4px 20px ${color}10` : 'none'; }}
+                  >
+                    {/* Gradient Header */}
                     <div style={{
+                      background: gradient, padding: '14px 18px',
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                      padding: '14px 18px', borderBottom: '1px solid var(--border)',
-                      background: p.enabled ? `${color}06` : 'transparent',
+                      opacity: p.enabled ? 1 : 0.5, transition: 'opacity 0.2s',
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ fontSize: 22 }}>{TYPE_ICONS[p.provider_type]}</span>
+                        <span style={{ fontSize: 22, filter: 'brightness(1.2)' }}>{TYPE_ICONS[p.provider_type]}</span>
                         <div>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{p.label}</div>
-                          <div style={{ fontSize: 10, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                            <span style={{ background: `${color}20`, color, padding: '1px 6px', borderRadius: 4, fontWeight: 600, fontSize: 9 }}>
-                              {TYPE_LABELS[p.provider_type]}
-                            </span>
-                            {p.api_key_set && <><span style={{ color: 'var(--green)' }}>●</span> Key set</>}
-                            {p.validated && <><span style={{ margin: '0 1px' }}>·</span><span style={{ color: 'var(--green)' }}>Validated</span></>}
-                            {p.selected_model && <><span style={{ margin: '0 1px' }}>·</span>{p.selected_model}</>}
+                          <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{p.label}</div>
+                          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {TYPE_LABELS[p.provider_type]}
+                            {p.validated && <><span style={{ margin: '0 2px' }}>·</span><CheckCircle size={9} style={{ color: '#90EE90' }} /> Verified</>}
+                            {p.selected_model && <><span style={{ margin: '0 2px' }}>·</span>{p.selected_model}</>}
                           </div>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <label style={{ position: 'relative', display: 'inline-block', width: 40, height: 22, cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {/* Toggle */}
+                        <label style={{ position: 'relative', display: 'inline-block', width: 38, height: 20, cursor: 'pointer' }}>
                           <input type="checkbox" checked={p.enabled} onChange={e => toggleProvider(p.id, e.target.checked)}
                             style={{ opacity: 0, width: 0, height: 0 }} />
                           <span style={{
-                            position: 'absolute', inset: 0, borderRadius: 11, background: p.enabled ? color : 'var(--bg-app)',
-                            border: '1px solid var(--border)', transition: 'all 0.2s',
+                            position: 'absolute', inset: 0, borderRadius: 10,
+                            background: p.enabled ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)',
+                            transition: 'all 0.2s',
                           }}>
                             <span style={{
                               position: 'absolute', top: 2, left: p.enabled ? 20 : 2, width: 16, height: 16,
-                              borderRadius: '50%', background: p.enabled ? '#fff' : 'var(--text-tertiary)', transition: 'left 0.2s',
+                              borderRadius: '50%', background: '#fff', transition: 'left 0.2s',
+                              boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
                             }} />
                           </span>
                         </label>
-                        <button onClick={() => deleteProvider(p.id, p.label)} title="Delete" style={{
-                          padding: 6, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent',
-                          color: 'var(--text-tertiary)', cursor: 'pointer',
-                        }} onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.borderColor = 'var(--red)'; }}
-                          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-tertiary)'; e.currentTarget.style.borderColor = 'var(--border)'; }}>
-                          <Trash2 size={13} />
+                        {/* Expand/collapse */}
+                        <button onClick={() => setExpandedCards(prev => ({ ...prev, [p.id]: !expanded }))} style={{
+                          background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, padding: 4, cursor: 'pointer', color: '#fff',
+                          transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s',
+                        }}>
+                          <ChevronDown size={14} />
+                        </button>
+                        {/* Delete */}
+                        <button onClick={() => deleteProvider(p.id, p.label)} style={{
+                          background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 6, padding: 4, cursor: 'pointer', color: 'rgba(255,255,255,0.6)',
+                        }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,80,80,0.3)'; e.currentTarget.style.color = '#fff'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
+                        >
+                          <Trash2 size={12} />
                         </button>
                       </div>
                     </div>
 
-                    {/* Body */}
-                    <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                      {/* API Key */}
-                      {needsKey && (
-                        <div>
-                          <label style={labelStyle}>API Key</label>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <div style={{ flex: 1, position: 'relative' }}>
-                              <input type={showKey[p.id] ? 'text' : 'password'}
-                                value={editingKeys[p.id] || ''} placeholder={p.api_key_set ? p.api_key_masked : 'Enter API key...'}
-                                onChange={e => setEditingKeys(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                style={{ ...inputStyle, fontFamily: 'monospace', paddingRight: 32 }} />
-                              <button onClick={() => setShowKey(prev => ({ ...prev, [p.id]: !prev[p.id] }))} style={eyeBtnStyle}>
-                                {showKey[p.id] ? <EyeOff size={13} /> : <Eye size={13} />}
+                    {/* Body — collapsible */}
+                    {expanded && (
+                      <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        {/* API Key */}
+                        {needsKey && (
+                          <div>
+                            <label style={labelStyle}>API Key</label>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <div style={{ flex: 1, position: 'relative' }}>
+                                <input type={showKey[p.id] ? 'text' : 'password'} value={editingKeys[p.id] || ''}
+                                  placeholder={p.api_key_set ? p.api_key_masked : 'Paste your API key here...'}
+                                  onChange={e => setEditingKeys(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                  style={{ ...inputStyle, fontFamily: 'monospace', fontSize: 11, paddingRight: 30 }} />
+                                <button onClick={() => setShowKey(prev => ({ ...prev, [p.id]: !prev[p.id] }))} style={{
+                                  position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+                                  background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: 2,
+                                }}>
+                                  {showKey[p.id] ? <EyeOff size={12} /> : <Eye size={12} />}
+                                </button>
+                              </div>
+                              <button onClick={() => saveKey(p.id)} disabled={!editingKeys[p.id]} style={{
+                                ...miniBtn, background: editingKeys[p.id] ? color : 'var(--bg-app)',
+                                color: editingKeys[p.id] ? '#fff' : 'var(--text-tertiary)', border: `1px solid ${editingKeys[p.id] ? color : 'var(--border)'}`,
+                              }}>Save</button>
+                              <button onClick={() => validateKeyAction(p.id)} disabled={validating[p.id]} style={{
+                                ...miniBtn, background: `${color}10`, color, border: `1px solid ${color}30`,
+                                display: 'flex', alignItems: 'center', gap: 3,
+                              }}>
+                                {validating[p.id] ? <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} /> : <Zap size={10} />}
+                                Validate
                               </button>
                             </div>
-                            <button onClick={() => saveKey(p.id)} disabled={!editingKeys[p.id]} style={{
-                              ...btnStyle, background: editingKeys[p.id] ? color : 'var(--bg-app)',
-                              color: editingKeys[p.id] ? '#fff' : 'var(--text-tertiary)', opacity: editingKeys[p.id] ? 1 : 0.5,
-                            }}>Save</button>
-                            <button onClick={() => validateKeyAction(p.id)} disabled={validating[p.id]} style={{
-                              ...btnStyle, border: `1px solid ${color}50`, background: `${color}10`, color,
-                              display: 'flex', alignItems: 'center', gap: 4,
-                            }}>
-                              {validating[p.id] ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Zap size={11} />}
-                              Validate
-                            </button>
-                          </div>
-                          {vr && (
-                            <div style={{ marginTop: 5, fontSize: 11, fontWeight: 500, color: vr.valid ? 'var(--green)' : 'var(--red)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {vr.valid ? <CheckCircle size={11} /> : <XCircle size={11} />} {vr.message}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Endpoint */}
-                      {needsEndpoint && (
-                        <div>
-                          <label style={labelStyle}>Endpoint URL</label>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <input type="text" value={p.endpoint} placeholder="http://localhost:11434"
-                              onChange={e => {
-                                const val = e.target.value;
-                                setProviders(prev => prev.map(pr => pr.id === p.id ? { ...pr, endpoint: val } : pr));
-                              }}
-                              onBlur={e => apiCall('/api/ai/providers/' + p.id, { method: 'PUT', body: { endpoint: e.target.value } }).catch(() => {})}
-                              style={{ ...inputStyle, fontFamily: 'monospace', flex: 1 }} />
-                            <button onClick={() => validateKeyAction(p.id)} disabled={validating[p.id]} style={{
-                              ...btnStyle, border: `1px solid ${color}50`, background: `${color}10`, color,
-                              display: 'flex', alignItems: 'center', gap: 4,
-                            }}>
-                              {validating[p.id] ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> : <Zap size={11} />}
-                              Test Connection
-                            </button>
-                          </div>
-                          {vr && (
-                            <div style={{ marginTop: 5, fontSize: 11, fontWeight: 500, color: vr.valid ? 'var(--green)' : 'var(--red)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                              {vr.valid ? <CheckCircle size={11} /> : <XCircle size={11} />} {vr.message}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Model Selection */}
-                      <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                          <label style={{ ...labelStyle, marginBottom: 0 }}>Model</label>
-                          <button onClick={() => fetchModelsAction(p.id)} disabled={fetchingModels[p.id]} style={{
-                            padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-app)',
-                            color: 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', gap: 3,
-                          }}>
-                            {fetchingModels[p.id] ? <Loader2 size={9} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={9} />}
-                            Fetch Models {models.length > 0 && `(${models.length})`}
-                          </button>
-                        </div>
-                        <div style={{ position: 'relative' }}>
-                          <select value={p.selected_model} onChange={e => selectModel(p.id, e.target.value)} style={{
-                            ...inputStyle, appearance: 'none', cursor: 'pointer', paddingRight: 28,
-                          }}>
-                            <option value="">{models.length > 0 ? 'Select a model...' : 'Click "Fetch Models" first'}</option>
-                            {models.map(m => <option key={m} value={m}>{m}</option>)}
-                            {p.selected_model && !models.includes(p.selected_model) && (
-                              <option value={p.selected_model}>{p.selected_model} (current)</option>
+                            {vr && (
+                              <div style={{ marginTop: 5, fontSize: 10, fontWeight: 600, color: vr.valid ? 'var(--green)' : 'var(--red)', display: 'flex', alignItems: 'center', gap: 3 }}>
+                                {vr.valid ? <CheckCircle size={10} /> : <XCircle size={10} />} {vr.message}
+                              </div>
                             )}
-                          </select>
-                          <ChevronDown size={13} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }} />
-                        </div>
-                      </div>
-
-                      {/* Test Button */}
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <button onClick={() => testProviderAction(p.id)} disabled={testing[p.id] || !p.selected_model} style={{
-                          ...btnStyle, background: p.selected_model ? color : 'var(--bg-app)', border: 'none',
-                          color: p.selected_model ? '#fff' : 'var(--text-tertiary)',
-                          display: 'flex', alignItems: 'center', gap: 5, opacity: (!p.selected_model || testing[p.id]) ? 0.5 : 1,
-                        }}>
-                          {testing[p.id] ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <TestTube size={13} />}
-                          Test AI Response
-                        </button>
-                        {tr && (
-                          <div style={{
-                            flex: 1, padding: '7px 12px', borderRadius: 8, fontSize: 11,
-                            background: tr.success ? 'var(--green-muted)' : 'var(--red-muted)',
-                            border: `1px solid ${tr.success ? 'var(--green)' : 'var(--red)'}`,
-                            color: tr.success ? 'var(--green)' : 'var(--red)',
-                          }}>
-                            <div style={{ fontWeight: 600, marginBottom: 2 }}>
-                              {tr.success ? `✅ ${tr.latencyMs}ms` : '❌ Failed'}
-                            </div>
-                            <div style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'monospace', wordBreak: 'break-word' }}>
-                              {tr.success ? tr.response : tr.error}
-                            </div>
                           </div>
                         )}
+
+                        {/* Endpoint */}
+                        {needsEndpoint && (
+                          <div>
+                            <label style={labelStyle}>Endpoint URL</label>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <input type="text" value={p.endpoint} placeholder="http://localhost:11434"
+                                onChange={e => { const v = e.target.value; setProviders(prev => prev.map(pr => pr.id === p.id ? { ...pr, endpoint: v } : pr)); }}
+                                onBlur={e => apiCall('/api/ai/providers/' + p.id, { method: 'PUT', body: { endpoint: e.target.value } }).catch(() => {})}
+                                style={{ ...inputStyle, fontFamily: 'monospace', fontSize: 11, flex: 1 }} />
+                              <button onClick={() => validateKeyAction(p.id)} disabled={validating[p.id]} style={{
+                                ...miniBtn, background: `${color}10`, color, border: `1px solid ${color}30`,
+                                display: 'flex', alignItems: 'center', gap: 3,
+                              }}>
+                                {validating[p.id] ? <Loader2 size={10} style={{ animation: 'spin 1s linear infinite' }} /> : <Zap size={10} />}
+                                Test
+                              </button>
+                            </div>
+                            {vr && (
+                              <div style={{ marginTop: 5, fontSize: 10, fontWeight: 600, color: vr.valid ? 'var(--green)' : 'var(--red)', display: 'flex', alignItems: 'center', gap: 3 }}>
+                                {vr.valid ? <CheckCircle size={10} /> : <XCircle size={10} />} {vr.message}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Model */}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                            <label style={{ ...labelStyle, marginBottom: 0 }}>Model</label>
+                            <button onClick={() => fetchModelsAction(p.id)} disabled={fetchingModels[p.id]} style={{
+                              padding: '2px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-app)',
+                              color: 'var(--text-tertiary)', fontSize: 9, fontWeight: 600, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: 3,
+                            }}>
+                              {fetchingModels[p.id] ? <Loader2 size={8} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={8} />}
+                              Fetch {models.length > 0 ? `(${models.length})` : ''}
+                            </button>
+                          </div>
+                          <div style={{ position: 'relative' }}>
+                            <select value={p.selected_model} onChange={e => selectModel(p.id, e.target.value)} style={{ ...inputStyle, appearance: 'none', paddingRight: 28, cursor: 'pointer', fontSize: 11 }}>
+                              <option value="">{models.length > 0 ? 'Select a model...' : 'Fetch models first'}</option>
+                              {models.map(m => <option key={m} value={m}>{m}</option>)}
+                              {p.selected_model && !models.includes(p.selected_model) && <option value={p.selected_model}>{p.selected_model} (current)</option>}
+                            </select>
+                            <ChevronDown size={12} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }} />
+                          </div>
+                        </div>
+
+                        {/* Test */}
+                        <div>
+                          <button onClick={() => testProviderAction(p.id)} disabled={testing[p.id] || !p.selected_model} style={{
+                            padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                            background: p.selected_model ? gradient : 'var(--bg-app)', color: p.selected_model ? '#fff' : 'var(--text-tertiary)',
+                            fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5,
+                            opacity: (!p.selected_model || testing[p.id]) ? 0.4 : 1, width: '100%', justifyContent: 'center',
+                            boxShadow: p.selected_model ? `0 3px 12px ${color}25` : 'none',
+                            transition: 'all 0.15s',
+                          }}>
+                            {testing[p.id] ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <TestTube size={13} />}
+                            Test AI Response
+                          </button>
+                          {tr && (
+                            <div style={{
+                              marginTop: 8, padding: '10px 14px', borderRadius: 10, fontSize: 11,
+                              background: tr.success ? 'var(--green-muted)' : 'var(--red-muted)',
+                              border: `1px solid ${tr.success ? 'var(--green)30' : 'var(--red)30'}`,
+                            }}>
+                              <div style={{ fontWeight: 700, color: tr.success ? 'var(--green)' : 'var(--red)', marginBottom: 3 }}>
+                                {tr.success ? `✅ Response in ${tr.latencyMs}ms` : '❌ Failed'}
+                              </div>
+                              <div style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'monospace', wordBreak: 'break-word', lineHeight: 1.5 }}>
+                                {tr.success ? tr.response : tr.error}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 );
               })}
@@ -521,59 +597,80 @@ export default function AISettingsPage() {
 
       {/* ════════ SERVICES TAB ════════ */}
       {tab === 'services' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 14 }}>
           {services.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-tertiary)', fontSize: 14 }}>
-              No services configured. Run the migration to seed service definitions.
+            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 60, color: 'var(--text-tertiary)', fontSize: 14, background: 'var(--bg-card)', borderRadius: 16, border: '1px dashed var(--border)' }}>
+              Run the migration to seed service definitions.
             </div>
           ) : services.map(svc => {
             const enabledProviders = providers.filter(p => p.enabled && p.validated && p.selected_model);
+            const assigned = !!svc.provider_id;
             return (
               <div key={svc.id} style={{
-                background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)',
-                padding: 16, display: 'flex', flexDirection: 'column', gap: 10,
+                background: 'var(--bg-card)', borderRadius: 14, border: `1px solid ${assigned ? 'var(--green)30' : 'var(--border)'}`,
+                overflow: 'hidden', transition: 'border-color 0.2s',
               }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{svc.service_name}</div>
-                <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>{svc.service_slug}</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  {/* Primary */}
+                <div style={{
+                  padding: '12px 16px', borderBottom: '1px solid var(--border)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  background: assigned ? 'rgba(16,163,127,0.04)' : 'transparent',
+                }}>
                   <div>
-                    <label style={labelStyle}>Primary Provider + Model</label>
-                    <select value={svc.provider_id ? `${svc.provider_id}::${svc.model_id}` : ''} onChange={e => {
-                      const [pid, mid] = e.target.value.split('::');
-                      assignService(svc.service_slug, pid || null, mid || '');
-                    }} style={inputStyle}>
-                      <option value="">Not assigned</option>
-                      {enabledProviders.map(p => (
-                        (p.cached_models || []).length > 0
-                          ? (p.cached_models).map(m => <option key={`${p.id}::${m}`} value={`${p.id}::${m}`}>{TYPE_ICONS[p.provider_type]} {p.label} → {m}</option>)
-                          : <option key={`${p.id}::${p.selected_model}`} value={`${p.id}::${p.selected_model}`}>{TYPE_ICONS[p.provider_type]} {p.label} → {p.selected_model}</option>
-                      ))}
-                    </select>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{svc.service_name}</div>
+                    <div style={{ fontSize: 9, color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>{svc.service_slug}</div>
                   </div>
-                  {/* Fallback */}
-                  <div>
-                    <label style={labelStyle}>Fallback Provider + Model</label>
-                    <select value={svc.fallback_provider_id ? `${svc.fallback_provider_id}::${svc.fallback_model_id}` : ''} onChange={e => {
-                      const [pid, mid] = e.target.value.split('::');
-                      apiCall('/api/ai/services/' + svc.service_slug, { method: 'PUT', body: { fallback_provider_id: pid || null, fallback_model_id: mid || '' } })
-                        .then(() => fetchAll()).catch(err => showToast('error', err.message));
-                    }} style={inputStyle}>
-                      <option value="">No fallback</option>
-                      {enabledProviders.map(p => (
-                        (p.cached_models || []).length > 0
-                          ? (p.cached_models).map(m => <option key={`${p.id}::${m}`} value={`${p.id}::${m}`}>{TYPE_ICONS[p.provider_type]} {p.label} → {m}</option>)
-                          : <option key={`${p.id}::${p.selected_model}`} value={`${p.id}::${p.selected_model}`}>{TYPE_ICONS[p.provider_type]} {p.label} → {p.selected_model}</option>
-                      ))}
-                    </select>
+                  <div style={{
+                    padding: '3px 8px', borderRadius: 6, fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
+                    background: assigned ? 'var(--green-muted)' : 'var(--bg-app)',
+                    color: assigned ? 'var(--green)' : 'var(--text-tertiary)',
+                    border: `1px solid ${assigned ? 'var(--green)' : 'var(--border)'}`,
+                  }}>
+                    {assigned ? 'Assigned' : 'Not Set'}
                   </div>
                 </div>
-                {svc.provider && (
-                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
-                    Active: {TYPE_ICONS[svc.provider.provider_type]} {svc.provider.label} → {svc.model_id}
-                    {svc.fallback && <> | Fallback: {TYPE_ICONS[svc.fallback.provider_type]} {svc.fallback.label} → {svc.fallback_model_id}</>}
+                <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div>
+                    <label style={labelStyle}>Primary Provider + Model</label>
+                    <div style={{ position: 'relative' }}>
+                      <select value={svc.provider_id ? `${svc.provider_id}::${svc.model_id}` : ''} onChange={e => {
+                        const [pid, mid] = e.target.value.split('::');
+                        assignService(svc.service_slug, pid || null, mid || '');
+                      }} style={{ ...inputStyle, appearance: 'none', paddingRight: 28, cursor: 'pointer', fontSize: 11 }}>
+                        <option value="">Not assigned</option>
+                        {enabledProviders.map(p =>
+                          (p.cached_models?.length > 0 ? p.cached_models : [p.selected_model]).map(m =>
+                            <option key={`${p.id}::${m}`} value={`${p.id}::${m}`}>{TYPE_ICONS[p.provider_type]} {p.label} → {m}</option>
+                          )
+                        )}
+                      </select>
+                      <ChevronDown size={12} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-tertiary)' }} />
+                    </div>
                   </div>
-                )}
+                  <div>
+                    <label style={labelStyle}>Fallback</label>
+                    <div style={{ position: 'relative' }}>
+                      <select value={svc.fallback_provider_id ? `${svc.fallback_provider_id}::${svc.fallback_model_id}` : ''} onChange={e => {
+                        const [pid, mid] = e.target.value.split('::');
+                        apiCall('/api/ai/services/' + svc.service_slug, { method: 'PUT', body: { fallback_provider_id: pid || null, fallback_model_id: mid || '' } })
+                          .then(() => fetchAll()).catch(err => showToast('error', err.message));
+                      }} style={{ ...inputStyle, appearance: 'none', paddingRight: 28, cursor: 'pointer', fontSize: 11 }}>
+                        <option value="">No fallback</option>
+                        {enabledProviders.map(p =>
+                          (p.cached_models?.length > 0 ? p.cached_models : [p.selected_model]).map(m =>
+                            <option key={`${p.id}::${m}`} value={`${p.id}::${m}`}>{TYPE_ICONS[p.provider_type]} {p.label} → {m}</option>
+                          )
+                        )}
+                      </select>
+                      <ChevronDown size={12} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-tertiary)' }} />
+                    </div>
+                  </div>
+                  {svc.provider && (
+                    <div style={{ fontSize: 10, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <ArrowRight size={9} /> {TYPE_ICONS[svc.provider.provider_type]} {svc.provider.label} → {svc.model_id}
+                      {svc.fallback && <> · Fallback: {TYPE_ICONS[svc.fallback.provider_type]} {svc.fallback.label}</>}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -584,38 +681,37 @@ export default function AISettingsPage() {
       {toast && (
         <div style={{
           position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
-          padding: '12px 20px', borderRadius: 10, maxWidth: 400,
+          padding: '14px 22px', borderRadius: 12, maxWidth: 420,
           background: toast.type === 'error' ? 'var(--red)' : toast.type === 'warning' ? 'var(--yellow)' : 'var(--accent)',
-          color: '#fff', fontSize: 12, fontWeight: 600, boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+          color: '#fff', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+          animation: 'slideUp 0.25s ease-out',
+          cursor: 'pointer', backdropFilter: 'blur(8px)',
         }} onClick={() => setToast(null)}>
           {toast.type === 'error' ? '❌' : toast.type === 'warning' ? '⚠️' : 'ℹ️'} {toast.message}
         </div>
       )}
 
-      {/* Spin keyframe */}
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
     </>
   );
 }
 
 // ─── Shared Styles ───
-
 const labelStyle: React.CSSProperties = {
-  fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase',
-  letterSpacing: 0.5, display: 'block', marginBottom: 4,
+  fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase',
+  letterSpacing: 0.8, display: 'block', marginBottom: 4,
 };
-
 const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)',
+  width: '100%', padding: '8px 11px', borderRadius: 8, border: '1px solid var(--border)',
   background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12,
+  transition: 'border-color 0.15s',
 };
-
-const btnStyle: React.CSSProperties = {
-  padding: '7px 12px', borderRadius: 7, border: '1px solid var(--border)',
-  fontSize: 11, fontWeight: 600, cursor: 'pointer',
-};
-
-const eyeBtnStyle: React.CSSProperties = {
-  position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-  background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: 2,
+const miniBtn: React.CSSProperties = {
+  padding: '6px 11px', borderRadius: 7, fontSize: 10, fontWeight: 600, cursor: 'pointer',
+  whiteSpace: 'nowrap',
 };
