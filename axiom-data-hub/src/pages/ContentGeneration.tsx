@@ -62,7 +62,7 @@ export default function ContentGenerationPage() {
     <>
       {/* Hero */}
       <div style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-sidebar) 100%)', borderRadius: 20, border: '1px solid var(--border)', padding: '28px 32px', marginBottom: 24, position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: '#e91e63', opacity: 0.04 }} />
+        <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'var(--red)', opacity: 0.04 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #e91e63 0%, #ad1457 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PenTool size={18} style={{ color: 'var(--accent-contrast, #fff)' }} /></div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Content Generation</h1>
@@ -76,15 +76,15 @@ export default function ContentGenerationPage() {
         <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', padding: 16 }}>
           <label style={labelStyle}>Content Type</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-            {TYPES.map(t => <button key={t} onClick={() => setConfig(p => ({ ...p, contentType: t }))} style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.contentType === t ? '#e91e63' : 'var(--border)'}`, background: config.contentType === t ? '#e91e63' : 'transparent', color: config.contentType === t ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{t.replace(/_/g, ' ')}</button>)}
+            {TYPES.map(t => <button key={t} onClick={() => setConfig(p => ({ ...p, contentType: t }))} style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.contentType === t ? 'var(--red)' : 'var(--border)'}`, background: config.contentType === t ? 'var(--red)' : 'transparent', color: config.contentType === t ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{t.replace(/_/g, ' ')}</button>)}
           </div>
           <label style={labelStyle}>Tone</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-            {TONES.map(t => <button key={t} onClick={() => setConfig(p => ({ ...p, tone: t }))} style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.tone === t ? '#e91e63' : 'var(--border)'}`, background: config.tone === t ? '#e91e63' : 'transparent', color: config.tone === t ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{t}</button>)}
+            {TONES.map(t => <button key={t} onClick={() => setConfig(p => ({ ...p, tone: t }))} style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.tone === t ? 'var(--red)' : 'var(--border)'}`, background: config.tone === t ? 'var(--red)' : 'transparent', color: config.tone === t ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{t}</button>)}
           </div>
           <label style={labelStyle}>Length</label>
           <div style={{ display: 'flex', gap: 4 }}>
-            {LENGTHS.map(l => <button key={l} onClick={() => setConfig(p => ({ ...p, length: l }))} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10, fontWeight: 600, border: `1px solid ${config.length === l ? '#e91e63' : 'var(--border)'}`, background: config.length === l ? '#e91e63' : 'transparent', color: config.length === l ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{l}</button>)}
+            {LENGTHS.map(l => <button key={l} onClick={() => setConfig(p => ({ ...p, length: l }))} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10, fontWeight: 600, border: `1px solid ${config.length === l ? 'var(--red)' : 'var(--border)'}`, background: config.length === l ? 'var(--red)' : 'transparent', color: config.length === l ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{l}</button>)}
           </div>
         </div>
 
@@ -124,7 +124,7 @@ export default function ContentGenerationPage() {
           </div>
           {[{ k: 'includePS', l: 'P.S. Line' }, { k: 'includePersonalization', l: 'Personalization {{tokens}}' }, { k: 'avoidSpamTriggers', l: 'Avoid Spam Triggers' }].map(o => (
             <label key={o.k} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 10, color: 'var(--text-secondary)', marginBottom: 4 }}>
-              <input type="checkbox" checked={(config.generation as any)[o.k]} onChange={e => setConfig(p => ({ ...p, generation: { ...p.generation, [o.k]: e.target.checked } }))} style={{ accentColor: '#e91e63' }} />{o.l}
+              <input type="checkbox" checked={(config.generation as any)[o.k]} onChange={e => setConfig(p => ({ ...p, generation: { ...p.generation, [o.k]: e.target.checked } }))} style={{ accentColor: 'var(--red)' }} />{o.l}
             </label>
           ))}
         </div>
@@ -133,7 +133,7 @@ export default function ContentGenerationPage() {
           <label style={labelStyle}>Company</label><input value={config.brand.companyName} onChange={e => setConfig(p => ({ ...p, brand: { ...p.brand, companyName: e.target.value } }))} style={{ ...inputStyle, marginBottom: 8 }} />
           <label style={labelStyle}>Sender Name</label><input value={config.brand.senderName} onChange={e => setConfig(p => ({ ...p, brand: { ...p.brand, senderName: e.target.value } }))} style={{ ...inputStyle, marginBottom: 8 }} />
           <label style={labelStyle}>Signature</label>
-          <div style={{ display: 'flex', gap: 4 }}>{SIG_STYLES.map(s => <button key={s} onClick={() => setConfig(p => ({ ...p, brand: { ...p.brand, signatureStyle: s } }))} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.brand.signatureStyle === s ? '#e91e63' : 'var(--border)'}`, background: config.brand.signatureStyle === s ? '#e91e63' : 'transparent', color: config.brand.signatureStyle === s ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{s}</button>)}</div>
+          <div style={{ display: 'flex', gap: 4 }}>{SIG_STYLES.map(s => <button key={s} onClick={() => setConfig(p => ({ ...p, brand: { ...p.brand, signatureStyle: s } }))} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.brand.signatureStyle === s ? 'var(--red)' : 'var(--border)'}`, background: config.brand.signatureStyle === s ? 'var(--red)' : 'transparent', color: config.brand.signatureStyle === s ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{s}</button>)}</div>
         </div>
         <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', padding: 16 }}>
           <label style={labelStyle}>Custom Instructions</label>
@@ -149,7 +149,7 @@ export default function ContentGenerationPage() {
         <>
           <div style={{ display: 'flex', gap: 2, marginBottom: 16, background: 'var(--bg-card)', borderRadius: 10, padding: 3, border: '1px solid var(--border)', width: 'fit-content' }}>
             {[{ k: 'subjects', l: `Subject Lines (${result.subjectLines?.length || 0})` }, { k: 'emails', l: `Emails (${result.emailVariations?.length || 0})` }, { k: 'followups', l: `Follow-ups (${result.followUps?.length || 0})` }, { k: 'spam', l: 'Spam Analysis' }].map(t => (
-              <button key={t.k} onClick={() => setActiveTab(t.k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: activeTab === t.k ? '#e91e63' : 'transparent', color: activeTab === t.k ? '#fff' : 'var(--text-tertiary)', fontSize: 11, fontWeight: 600 }}>{t.l}</button>
+              <button key={t.k} onClick={() => setActiveTab(t.k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: activeTab === t.k ? 'var(--red)' : 'transparent', color: activeTab === t.k ? '#fff' : 'var(--text-tertiary)', fontSize: 11, fontWeight: 600 }}>{t.l}</button>
             ))}
           </div>
 
@@ -161,7 +161,7 @@ export default function ContentGenerationPage() {
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3 }}>{s.text}</div>
                     <div style={{ display: 'flex', gap: 8, fontSize: 10, color: 'var(--text-tertiary)' }}>
-                      <span style={{ padding: '1px 6px', borderRadius: 4, background: '#e91e6315', color: '#e91e63', fontWeight: 600 }}>{s.type}</span>
+                      <span style={{ padding: '1px 6px', borderRadius: 4, background: '#e91e6315', color: 'var(--red)', fontWeight: 600 }}>{s.type}</span>
                       <span>📈 {s.estimatedOpenRate}</span>
                     </div>
                   </div>
@@ -177,14 +177,14 @@ export default function ContentGenerationPage() {
               {(result.emailVariations || []).map((e, i) => (
                 <div key={i} style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
                   <div style={{ background: 'linear-gradient(135deg, #e91e6310 0%, #ad145710 100%)', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
-                    <div><div style={{ fontSize: 11, fontWeight: 700, color: '#e91e63' }}>Variation {i + 1}</div><div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{e.subjectLine}</div></div>
+                    <div><div style={{ fontSize: 11, fontWeight: 700, color: 'var(--red)' }}>Variation {i + 1}</div><div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{e.subjectLine}</div></div>
                     <button onClick={() => copyText(`Subject: ${e.subjectLine}\n\n${e.body}${e.psLine ? '\n\nP.S. ' + e.psLine : ''}`, `email-${i}`)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-app)', cursor: 'pointer', fontSize: 10, fontWeight: 600, color: copied === `email-${i}` ? 'var(--green)' : 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 3 }}>{copied === `email-${i}` ? <Check size={10} /> : <Copy size={10} />} Copy</button>
                   </div>
                   <div style={{ padding: 16 }}>
                     <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 6 }}>Preheader: {e.preheader}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7, whiteSpace: 'pre-wrap', marginBottom: 10 }}>{e.body}</div>
                     <div style={{ display: 'flex', gap: 12 }}>
-                      <span style={{ fontSize: 10, color: '#e91e63', fontWeight: 600 }}><Mail size={10} style={{ verticalAlign: 'middle' }} /> CTA: {e.callToAction}</span>
+                      <span style={{ fontSize: 10, color: 'var(--red)', fontWeight: 600 }}><Mail size={10} style={{ verticalAlign: 'middle' }} /> CTA: {e.callToAction}</span>
                       {e.psLine && <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>P.S. {e.psLine}</span>}
                     </div>
                   </div>
@@ -199,7 +199,7 @@ export default function ContentGenerationPage() {
               {(result.followUps || []).map((f, i) => (
                 <div key={i} style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
                   <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div><span style={{ fontSize: 9, fontWeight: 700, color: '#e91e63', textTransform: 'uppercase' }}>Day +{f.dayDelay}</span><div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{f.subjectLine}</div></div>
+                    <div><span style={{ fontSize: 9, fontWeight: 700, color: 'var(--red)', textTransform: 'uppercase' }}>Day +{f.dayDelay}</span><div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{f.subjectLine}</div></div>
                     <span style={{ fontSize: 9, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>{f.purpose}</span>
                   </div>
                   <div style={{ padding: 16, fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{f.body}</div>

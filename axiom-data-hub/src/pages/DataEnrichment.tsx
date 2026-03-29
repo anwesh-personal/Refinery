@@ -159,7 +159,7 @@ export default function DataEnrichmentPage() {
                         {l.enrichments.role && <Tag icon={<Briefcase size={8} />} text={l.enrichments.role} color="var(--yellow)" />}
                         {l.enrichments.seniority && <Tag text={l.enrichments.seniority} color="var(--yellow)" />}
                         {l.enrichments.department && <Tag icon={<Users size={8} />} text={l.enrichments.department} color="var(--blue)" />}
-                        {l.enrichments.buyerPersona && <Tag text={l.enrichments.buyerPersona} color="#e91e63" />}
+                        {l.enrichments.buyerPersona && <Tag text={l.enrichments.buyerPersona} color="var(--red)" />}
                       </div>
                       {l.enrichments.techStack && l.enrichments.techStack.length > 0 && (
                         <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>Tech: {l.enrichments.techStack.join(', ')}</div>

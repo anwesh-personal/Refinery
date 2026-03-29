@@ -155,7 +155,7 @@ export default function CampaignOptimizerPage() {
               </div>
               <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', padding: 18 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 5 }}><Clock size={14} /> Best Hours ({result.sendSchedule.timezone})</div>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{(result.sendSchedule.optimalHours || []).map(h => <span key={h.hour} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: `${HOUR_COLORS[h.quality] || '#888'}15`, color: HOUR_COLORS[h.quality] || '#888', border: `1px solid ${HOUR_COLORS[h.quality] || '#888'}30` }}>{h.hour} ({h.quality})</span>)}</div>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{(result.sendSchedule.optimalHours || []).map(h => <span key={h.hour} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: `${HOUR_COLORS[h.quality] || 'var(--text-tertiary)'}15`, color: HOUR_COLORS[h.quality] || 'var(--text-tertiary)', border: `1px solid ${HOUR_COLORS[h.quality] || 'var(--text-tertiary)'}30` }}>{h.hour} ({h.quality})</span>)}</div>
               </div>
               {result.sendSchedule.avoidTimes?.length > 0 && (
                 <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid #ef444425', padding: 18 }}>

@@ -22,7 +22,7 @@ const FEATURES = [
   { slug: 'list_segmentation', name: 'List Segmentation', desc: 'Intelligent lead grouping with per-segment campaign strategy', icon: Layers, color: 'var(--purple)', gradient: 'linear-gradient(135deg, #8b5cf6 0%, #6d3ad4 100%)', path: '/list-segmentation' },
   { slug: 'bounce_analysis', name: 'Bounce Analysis', desc: 'Pre-send deliverability prediction and domain health scoring', icon: Activity, color: 'var(--red)', gradient: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)', path: '/bounce-analysis' },
   { slug: 'data_enrichment', name: 'Data Enrichment', desc: 'AI-inferred company, role, industry, tech stack from emails', icon: Database, color: 'var(--green)', gradient: 'linear-gradient(135deg, #10a37f 0%, #0a7a5e 100%)', path: '/data-enrichment' },
-  { slug: 'content_generation', name: 'Content Gen', desc: 'Email copywriting: subject lines, body, follow-ups, spam analysis', icon: PenTool, color: '#e91e63', gradient: 'linear-gradient(135deg, #e91e63 0%, #ad1457 100%)', path: '/content-generation' },
+  { slug: 'content_generation', name: 'Content Gen', desc: 'Email copywriting: subject lines, body, follow-ups, spam analysis', icon: PenTool, color: 'var(--red)', gradient: 'linear-gradient(135deg, #e91e63 0%, #ad1457 100%)', path: '/content-generation' },
   { slug: 'campaign_optimizer', name: 'Campaign Optimizer', desc: 'Send timing, volume pacing, A/B testing, reputation safeguards', icon: Rocket, color: 'var(--yellow)', gradient: 'linear-gradient(135deg, #ff6b35 0%, #cc5229 100%)', path: '/campaign-optimizer' },
 ];
 

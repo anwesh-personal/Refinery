@@ -237,7 +237,7 @@ export default function BounceAnalysisPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {(result.recommendations || []).map((r, i) => (
                 <div key={i} style={{ background: 'var(--bg-card)', borderRadius: 12, padding: '14px 18px', border: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '6px 1fr', gap: 14, overflow: 'hidden' }}>
-                  <div style={{ background: PRIO_COLOR[r.priority] || '#888', borderRadius: 3 }} />
+                  <div style={{ background: PRIO_COLOR[r.priority] || 'var(--text-tertiary)', borderRadius: 3 }} />
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{r.title}</div>

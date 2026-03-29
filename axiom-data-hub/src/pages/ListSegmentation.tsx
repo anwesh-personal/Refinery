@@ -32,7 +32,7 @@ interface Job { id: string; status: string; totalProcessed: number; safe: number
 const PRIORITY_COLORS: Record<string, { border: string; bg: string; text: string; gradient: string }> = {
   high: { border: 'var(--green)', bg: '#10a37f12', text: 'var(--green)', gradient: 'linear-gradient(135deg, var(--green) 0%, color-mix(in srgb, var(--green) 70%, #000) 100%)' },
   medium: { border: 'var(--yellow)', bg: '#ffd70012', text: 'var(--yellow)', gradient: 'linear-gradient(135deg, var(--yellow) 0%, #ccad00 100%)' },
-  low: { border: '#a0a0a0', bg: '#a0a0a012', text: '#888', gradient: 'linear-gradient(135deg, #999 0%, #666 100%)' },
+  low: { border: 'var(--text-tertiary)', bg: 'var(--bg-elevated)', text: 'var(--text-tertiary)', gradient: 'linear-gradient(135deg, #999 0%, #666 100%)' },
 };
 
 const DEFAULT_CONFIG: SegmentationConfig = {

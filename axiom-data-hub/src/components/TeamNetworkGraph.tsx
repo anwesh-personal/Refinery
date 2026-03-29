@@ -65,10 +65,10 @@ interface MemberNodeData {
 const ROLE_COLORS: Record<string, string> = {
   superadmin: 'var(--purple)',
   admin: 'var(--blue)',
-  member: '#10b981',
+  member: 'var(--green)',
 };
 
-const TEAM_COLORS = ['var(--purple)', 'var(--blue)', '#10b981', '#f59e0b', 'var(--red)', '#06b6d4', '#ec4899'];
+const TEAM_COLORS = ['var(--purple)', 'var(--blue)', 'var(--green)', '#f59e0b', 'var(--red)', '#06b6d4', '#ec4899'];
 
 const getRoleColor = (role: string) => ROLE_COLORS[role] || 'var(--purple)';
 const formatNum = (n: number) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : n.toString();
@@ -246,7 +246,7 @@ export const TeamNetworkGraph: React.FC = () => {
         if (members.length === 0) return;
         const teamName = teamId === '__unassigned' ? null : teamNameMap[teamId] || null;
         const teamColorIdx = teams.findIndex(t => t.id === teamId);
-        const teamColor = TEAM_COLORS[teamColorIdx % TEAM_COLORS.length] || '#888';
+        const teamColor = TEAM_COLORS[teamColorIdx % TEAM_COLORS.length] || 'var(--text-tertiary)';
 
         // Sort: superadmin first
         members.sort((a, b) => {

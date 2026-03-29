@@ -40,15 +40,15 @@ const TYPE_ICONS: Record<string, string> = {
   anthropic: '🟣', gemini: '🔵', openai: '🟢', mistral: '🟠', private_vps: '🖥️', ollama: '🦙',
 };
 const TYPE_COLORS: Record<string, string> = {
-  anthropic: '#d97757', gemini: 'var(--blue)', openai: 'var(--green)', mistral: '#ff7000', private_vps: 'var(--purple)', ollama: '#a0a0a0',
+  anthropic: 'var(--accent)', gemini: 'var(--blue)', openai: 'var(--green)', mistral: 'var(--accent)', private_vps: 'var(--purple)', ollama: '#a0a0a0',
 };
 const TYPE_GRADIENTS: Record<string, string> = {
-  anthropic: 'linear-gradient(135deg, #d97757 0%, #b85d3a 100%)',
+  anthropic: 'linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, #000) 100%)',
   gemini: 'linear-gradient(135deg, var(--blue) 0%, color-mix(in srgb, var(--blue) 70%, #000) 100%)',
   openai: 'linear-gradient(135deg, var(--green) 0%, color-mix(in srgb, var(--green) 70%, #000) 100%)',
-  mistral: 'linear-gradient(135deg, #ff7000 0%, #cc5a00 100%)',
+  mistral: 'linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, #000) 100%)',
   private_vps: 'linear-gradient(135deg, var(--purple) 0%, color-mix(in srgb, var(--purple) 70%, #000) 100%)',
-  ollama: 'linear-gradient(135deg, #666 0%, #444 100%)',
+  ollama: 'linear-gradient(135deg, var(--text-tertiary) 0%, color-mix(in srgb, var(--text-tertiary) 60%, #000) 100%)',
 };
 const TYPE_LABELS: Record<string, string> = {
   anthropic: 'Anthropic', gemini: 'Google Gemini', openai: 'OpenAI', mistral: 'Mistral', private_vps: 'Private VPS', ollama: 'Ollama',
@@ -428,7 +428,7 @@ export default function AISettingsPage() {
                           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-contrast, #fff)' }}>{p.label}</div>
                           <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: 4 }}>
                             {TYPE_LABELS[p.provider_type]}
-                            {p.validated && <><span style={{ margin: '0 2px' }}>·</span><CheckCircle size={9} style={{ color: '#90EE90' }} /> Verified</>}
+                            {p.validated && <><span style={{ margin: '0 2px' }}>·</span><CheckCircle size={9} style={{ color: 'var(--green)' }} /> Verified</>}
                             {p.selected_model && <><span style={{ margin: '0 2px' }}>·</span>{p.selected_model}</>}
                           </div>
                         </div>

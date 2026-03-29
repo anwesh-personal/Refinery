@@ -51,14 +51,14 @@ interface VerificationJob {
 }
 
 const TIER_COLORS: Record<string, string> = {
-  platinum: '#c0c0e0', gold: 'var(--yellow)', silver: '#c0c0c0', bronze: '#cd7f32', dead: '#666',
+  platinum: '#c0c0e0', gold: 'var(--yellow)', silver: '#c0c0c0', bronze: 'var(--yellow)', dead: 'var(--text-tertiary)',
 };
 const TIER_GRADIENTS: Record<string, string> = {
-  platinum: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  platinum: 'linear-gradient(135deg, var(--purple) 0%, color-mix(in srgb, var(--purple) 70%, #000) 100%)',
   gold: 'linear-gradient(135deg, color-mix(in srgb, var(--yellow) 80%, #000) 0%, #f12711 100%)',
-  silver: 'linear-gradient(135deg, #b5b5b5 0%, #8e8e8e 100%)',
-  bronze: 'linear-gradient(135deg, #cd7f32 0%, #8b5a2b 100%)',
-  dead: 'linear-gradient(135deg, #555 0%, #333 100%)',
+  silver: 'linear-gradient(135deg, var(--text-tertiary) 0%, color-mix(in srgb, var(--text-tertiary) 70%, #000) 100%)',
+  bronze: 'linear-gradient(135deg, var(--yellow) 0%, color-mix(in srgb, var(--yellow) 60%, #000) 100%)',
+  dead: 'linear-gradient(135deg, var(--text-tertiary) 0%, color-mix(in srgb, var(--text-tertiary) 50%, #000) 100%)',
 };
 
 const DEFAULT_CONFIG: ScoringConfig = {

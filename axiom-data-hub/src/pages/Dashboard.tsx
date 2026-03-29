@@ -316,7 +316,7 @@ export default function DashboardPage() {
                 <XAxis dataKey="formattedDay" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} dy={10} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} tickFormatter={(val) => formatNumber(val)} />
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--bg-hover)' }} />
-                <Bar dataKey="Valid" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                <Bar dataKey="Valid" fill="var(--green)" radius={[4, 4, 0, 0]} maxBarSize={40} />
                 <Bar dataKey="Invalid" fill="var(--red)" radius={[4, 4, 0, 0]} maxBarSize={40} />
               </BarChart>
             </ResponsiveContainer>
