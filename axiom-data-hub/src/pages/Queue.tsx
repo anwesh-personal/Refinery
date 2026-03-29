@@ -601,7 +601,7 @@ export default function QueuePage() {
 
       {/* AI Agents */}
       <div style={{ marginTop: 36, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <AgentCard slug="email_marketer" contextLabel="Campaign Strategy — Mail Queue" context={{ queueStats: stats, jobCount: jobs.length }} />
+        <AgentCard slug="supervisor" contextLabel="Campaign Strategy — Mail Queue" context={{ queueStats: stats, jobCount: jobs.length }} />
         <AgentCard slug="smtp_specialist" contextLabel="Infrastructure Health — Mail Queue" context={{ queueStats: stats, jobCount: jobs.length }} />
       </div>
     </>

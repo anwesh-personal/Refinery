@@ -234,7 +234,7 @@ export default function CampaignOptimizerPage() {
 
       {/* AI Agent */}
       <div style={{ marginTop: 36 }}>
-        <AgentCard slug="email_marketer" contextLabel="Campaign Optimization Strategy" />
+        <AgentCard slug="supervisor" contextLabel="Campaign Optimization Strategy" />
       </div>
     </>
   );

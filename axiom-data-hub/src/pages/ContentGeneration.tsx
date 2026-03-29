@@ -248,7 +248,7 @@ export default function ContentGenerationPage() {
 
       {/* AI Agent */}
       <div style={{ marginTop: 36 }}>
-        <AgentCard slug="email_marketer" contextLabel="Email Copy & Sequence Writing" />
+        <AgentCard slug="seo_strategist" contextLabel="Content Strategy & Audience Intelligence" />
       </div>
     </>
   );
