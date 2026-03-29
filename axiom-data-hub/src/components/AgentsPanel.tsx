@@ -21,12 +21,12 @@ interface KBEntry { id: string; agent_id: string; title: string; content: string
 
 const AGENT_IMAGES: Record<string, string> = {
   data_scientist: '/agents/cipher.jpg', smtp_specialist: '/agents/sentinel.jpg',
-  email_marketer: '/agents/calliope.jpg', supervisor: '/agents/crucible.jpg',
+  seo_strategist: '/agents/oracle.jpg', supervisor: '/agents/crucible.jpg',
   verification_engineer: '/agents/argus.jpg',
 };
 
 /** Get the agent's display image — custom avatar_url takes priority, then hardcoded fallback */
-const IMG_VERSION = '20260329c'; // bump this on avatar changes to bust browser cache
+const IMG_VERSION = '20260329d'; // bump this on avatar changes to bust browser cache
 function getAgentImage(agent: { slug: string; avatar_url?: string }): string {
   const base = agent.avatar_url || AGENT_IMAGES[agent.slug] || '';
   if (!base) return '';
@@ -50,11 +50,11 @@ const AGENT_META: Record<string, { pages: string[]; description: string; dataAcc
     dataAccess: ['Server configs', 'Connection status', 'Ping history', 'System settings', 'DNS records'],
     examples: ['Check the health of all my servers', 'Analyze DNS for deliverability issues', 'IP warmup plan for new satellites', 'Troubleshoot MTA configuration'],
   },
-  email_marketer: {
-    pages: ['Targets', 'Queue'],
-    description: 'Your creative marketing strategist. Sees your target lists, segment composition, and audience profiles. Lives on the Targets page and helps craft campaigns, write copy, and optimize send strategies.',
-    dataAccess: ['Target lists', 'Segment composition', 'Audience profiles', 'Email counts', 'Niche tags'],
-    examples: ['Write a 5-email cold outreach sequence', 'Subject line ideas for SaaS CTOs', 'Campaign strategy for this niche', 'Optimize send timing for 50K emails'],
+  seo_strategist: {
+    pages: ['SEO Intelligence', 'Database'],
+    description: 'Your SEO & audience intelligence agent. Maps keyword landscapes, discovers ranking domains, cross-references against your data, and identifies prospecting signals from search behavior.',
+    dataAccess: ['SEMrush data', 'Keyword metrics', 'Domain analytics', 'Competitor intelligence', 'ClickHouse domains'],
+    examples: ['Find domains ranking for "email verification SaaS"', 'Cross-reference top 10 keywords with our data', 'Competitor keyword gap analysis', 'Audience discovery from search intent'],
   },
   supervisor: {
     pages: ['Dashboard'],

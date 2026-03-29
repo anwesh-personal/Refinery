@@ -28,11 +28,11 @@ interface Msg { id: string; role: string; content: string; tokens_used: number; 
 
 const AGENT_IMAGES: Record<string, string> = {
   data_scientist: '/agents/cipher.jpg', smtp_specialist: '/agents/sentinel.jpg',
-  email_marketer: '/agents/calliope.jpg', supervisor: '/agents/crucible.jpg',
+  seo_strategist: '/agents/oracle.jpg', supervisor: '/agents/crucible.jpg',
   verification_engineer: '/agents/argus.jpg',
 };
 
-const IMG_VERSION = '20260329c';
+const IMG_VERSION = '20260329d';
 function getAgentImage(agent: { slug: string; avatar_url?: string }): string {
   const base = agent.avatar_url || AGENT_IMAGES[agent.slug] || '';
   if (!base) return '';
@@ -44,7 +44,7 @@ const QUICK_PROMPTS: Record<string, string[]> = {
   verification_engineer: ['Analyze these verification results', 'Which domains are catch-all?', 'Recommend which unknowns to retry', 'Risk assessment for this batch'],
   data_scientist: ['Analyze this data', 'Find patterns and anomalies', 'Suggest data quality improvements', 'Build an ICP from this'],
   smtp_specialist: ['Check DNS health', 'Analyze bounce patterns', 'Review MTA configuration', 'IP warmup recommendations'],
-  email_marketer: ['Write cold outreach sequence', 'Optimize send timing', 'Subject line ideas', 'Campaign strategy for this audience'],
+  seo_strategist: ['Find ranking domains for a keyword', 'Cross-reference domains with our data', 'Competitor keyword gap analysis', 'Audience discovery from search intent'],
   supervisor: ['Daily briefing', 'Strategic recommendations', 'What should I prioritize?', 'ROI analysis across everything'],
 };
 
