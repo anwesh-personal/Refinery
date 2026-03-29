@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiCall } from '../lib/api';
 import {
   Send, Loader2, MessageSquare, Plus, Trash2, Pin, X,
-  Save, BookOpen, Sliders, MessageCircle, FileText, Copy, Check,
-  ChevronDown, ChevronUp, Wrench
+  Save, BookOpen, Sliders, MessageCircle, FileText, Copy, Check
 } from 'lucide-react';
 import MarkdownRenderer, { MARKDOWN_STYLES } from './MarkdownRenderer';
 
@@ -93,67 +92,17 @@ const TOOL_LABELS: Record<string, { label: string; icon: string }> = {
   generate_email_copy: { label: 'Email Copy', icon: '✍️' },
 };
 
-function ToolCallCard({ toolName, toolInput, toolOutput }: { toolName: string; toolInput?: any; toolOutput?: any }) {
-  const [expanded, setExpanded] = useState(false);
-  const meta = TOOL_LABELS[toolName] || { label: toolName, icon: '🔧' };
-
-  const formatOutput = (data: any): string => {
-    if (!data) return 'No output';
-    if (typeof data === 'string') return data;
-    try { return JSON.stringify(data, null, 2); } catch { return String(data); }
-  };
-
-  const formatInput = (data: any): string => {
-    if (!data) return '';
-    if (typeof data === 'string') {
-      try { return JSON.stringify(JSON.parse(data), null, 2); } catch { return data; }
-    }
-    return JSON.stringify(data, null, 2);
-  };
-
+function ToolCallChip({ toolName }: { toolName: string; toolInput?: any; toolOutput?: any }) {
+  const meta = TOOL_LABELS[toolName] || { label: toolName.replace(/_/g, ' '), icon: '🔧' };
   return (
-    <div style={{ borderRadius: 10, border: '1px solid var(--border)', overflow: 'hidden', background: 'var(--bg-hover)', margin: '2px 0' }}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          width: '100%', padding: '8px 12px', border: 'none', cursor: 'pointer',
-          background: 'transparent', display: 'flex', alignItems: 'center', gap: 8,
-          textAlign: 'left', fontSize: 12,
-        }}
-      >
-        <span style={{ fontSize: 14 }}>{meta.icon}</span>
-        <Wrench size={12} color="var(--accent)" />
-        <span style={{ fontWeight: 700, color: 'var(--accent)', flex: 1 }}>{meta.label}</span>
-        {toolOutput && (
-          <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600 }}>✓ returned</span>
-        )}
-        {expanded ? <ChevronUp size={12} color="var(--text-tertiary)" /> : <ChevronDown size={12} color="var(--text-tertiary)" />}
-      </button>
-
-      {expanded && (
-        <div style={{ borderTop: '1px solid var(--border)' }}>
-          {toolInput && (
-            <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
-              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', marginBottom: 4 }}>Input</div>
-              <pre style={{
-                margin: 0, fontSize: 11, lineHeight: 1.5, overflowX: 'auto',
-                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-              }}>{formatInput(toolInput)}</pre>
-            </div>
-          )}
-          {toolOutput && (
-            <div style={{ padding: '8px 12px' }}>
-              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', marginBottom: 4 }}>Output</div>
-              <pre style={{
-                margin: 0, fontSize: 11, lineHeight: 1.5, overflowX: 'auto', maxHeight: 300,
-                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
-              }}>{formatOutput(toolOutput)}</pre>
-            </div>
-          )}
-        </div>
-      )}
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 500,
+      animation: 'fadeSlideIn 0.4s ease-out',
+    }}>
+      <span>{meta.icon}</span>
+      <span style={{ fontStyle: 'italic' }}>{meta.label}</span>
+      <span style={{ color: 'var(--green)', fontSize: 10 }}>✓</span>
     </div>
   );
 }
@@ -776,7 +725,23 @@ export default function AgentsPanel() {
           <>
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
               {loadingMsgs && <div style={{ textAlign: 'center', padding: 20 }}><Loader2 size={18} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-tertiary)' }} /></div>}
-              {messages.map(m => (
+              {messages.map(m => {
+                // Tool messages → inline timeline chip (no bubble)
+                if (m.tool_name) {
+                  return (
+                    <div key={m.id} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      gap: 8, padding: '2px 0',
+                    }}>
+                      <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                      <ToolCallChip toolName={m.tool_name} />
+                      <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                    </div>
+                  );
+                }
+
+                // Regular messages → chat bubbles
+                return (
                 <div key={m.id} style={{ display: 'flex', gap: 10, maxWidth: m.role === 'user' ? '80%' : '95%', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
                   {m.role !== 'user' && <img src={getAgentImage(selectedAgent)} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover', flexShrink: 0, marginTop: 2 }} />}
                   <div style={{
@@ -790,8 +755,6 @@ export default function AgentsPanel() {
                   }}>
                     {m.role === 'user' ? (
                       <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
-                    ) : m.tool_name ? (
-                      <ToolCallCard toolName={m.tool_name} toolInput={m.tool_input} toolOutput={m.tool_output} />
                     ) : (
                       <MarkdownRenderer content={m.content} />
                     )}
@@ -813,7 +776,8 @@ export default function AgentsPanel() {
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
               {sending && (
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                   <img src={getAgentImage(selectedAgent)} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover' }} />
@@ -848,6 +812,7 @@ export default function AgentsPanel() {
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes bounce { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-5px); } }
+        @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
         ${MARKDOWN_STYLES}
       `}</style>
     </div>
