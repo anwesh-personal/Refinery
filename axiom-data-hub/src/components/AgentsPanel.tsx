@@ -20,13 +20,13 @@ interface Msg { id: string; role: string; content: string; tokens_used: number; 
 interface KBEntry { id: string; agent_id: string; title: string; content: string; category: string; enabled: boolean; priority: number }
 
 const AGENT_IMAGES: Record<string, string> = {
-  data_scientist: '/agents/cipher.png', smtp_specialist: '/agents/sentinel.png',
-  email_marketer: '/agents/calliope.png', supervisor: '/agents/crucible.png',
-  verification_engineer: '/agents/argus.png',
+  data_scientist: '/agents/cipher.jpg', smtp_specialist: '/agents/sentinel.jpg',
+  email_marketer: '/agents/calliope.jpg', supervisor: '/agents/crucible.jpg',
+  verification_engineer: '/agents/argus.jpg',
 };
 
 /** Get the agent's display image — custom avatar_url takes priority, then hardcoded fallback */
-const IMG_VERSION = '20260329b'; // bump this on avatar changes to bust browser cache
+const IMG_VERSION = '20260329c'; // bump this on avatar changes to bust browser cache
 function getAgentImage(agent: { slug: string; avatar_url?: string }): string {
   const base = agent.avatar_url || AGENT_IMAGES[agent.slug] || '';
   if (!base) return '';
