@@ -1,77 +1,84 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiCall } from '../lib/api';
 import MarkdownRenderer from '../components/MarkdownRenderer';
-import {
-  Users, Send, Loader2, CheckCircle2, AlertCircle,
-  Clock, Zap, ChevronDown, ChevronUp, Trash2, Brain
-} from 'lucide-react';
+import { Send, Loader2, Users, Trash2 } from 'lucide-react';
 
-interface Agent {
-  id: string; slug: string; name: string; role: string;
-  avatar_emoji: string; accent_color: string; greeting: string;
-  capabilities: string[]; enabled: boolean;
-}
-
-interface Report {
-  id: string; meeting_id: string; agent_slug: string;
-  agent_name: string; report_content: string | null;
-  tools_used: string[]; tokens_used: number;
-  latency_ms: number; status: string; error: string | null;
-}
-
-interface Meeting {
-  id: string; title: string; question: string;
-  agent_slugs: string[]; status: string;
-  executive_summary: string | null; total_tokens: number;
-  total_latency_ms: number; created_at: string;
-  completed_at: string | null;
-}
-
-const AGENT_COLORS: Record<string, string> = {
-  data_scientist: 'var(--blue)',
-  smtp_specialist: 'var(--green)',
-  seo_strategist: 'var(--red)',
-  supervisor: 'var(--purple)',
-  verification_engineer: 'var(--yellow)',
+/* ── Agent metadata ── */
+const AGENTS: Record<string, { name: string; role: string; color: string; img: string }> = {
+  data_scientist:         { name: 'Cipher',   role: 'Data Intelligence',     color: '#3b82f6', img: '/agents/cipher.jpg' },
+  smtp_specialist:        { name: 'Sentinel', role: 'Email Infrastructure',  color: '#22c55e', img: '/agents/sentinel.jpg' },
+  seo_strategist:         { name: 'Oracle',   role: 'SEO & Market Intel',    color: '#ef4444', img: '/agents/oracle.jpg' },
+  supervisor:             { name: 'Crucible', role: 'Operations Manager',    color: '#a855f7', img: '/agents/crucible.jpg' },
+  verification_engineer:  { name: 'Argus',    role: 'Verification Engineer', color: '#eab308', img: '/agents/argus.jpg' },
 };
+const AGENT_SLUGS = Object.keys(AGENTS);
+const IMG_V = '?v=20260329e';
 
-const STATUS_ICONS: Record<string, { icon: string; color: string }> = {
-  pending: { icon: '⏳', color: 'var(--text-tertiary)' },
-  running: { icon: '🔄', color: 'var(--blue)' },
-  consolidating: { icon: '🧠', color: 'var(--purple)' },
-  complete: { icon: '✅', color: 'var(--green)' },
-  failed: { icon: '❌', color: 'var(--red)' },
-};
+/* ── Types ── */
+interface Meeting { id: string; title: string; question: string; agent_slugs: string[]; status: string; executive_summary: string | null; total_tokens: number; total_latency_ms: number; created_at: string; completed_at: string | null; }
+interface Report { id: string; meeting_id: string; agent_slug: string; agent_name: string; report_content: string | null; status: string; latency_ms: number; tokens_used: number; error: string | null; created_at: string; }
+interface ChatMsg { id: string; type: 'user' | 'agent' | 'system' | 'typing'; slug?: string; content: string; ts: string; }
 
 export default function BoardroomPage() {
-  const [agents, setAgents] = useState<Agent[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
-  const [selectedAgents, setSelectedAgents] = useState<Set<string>>(new Set());
-  const [question, setQuestion] = useState('');
-  const [creating, setCreating] = useState(false);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
-  const [activeReports, setActiveReports] = useState<Report[]>([]);
-  const [expandedReports, setExpandedReports] = useState<Set<string>>(new Set());
+  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState('');
   const [polling, setPolling] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Load agents + meetings on mount
+  // scroll to bottom on new messages
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMsgs]);
+
+  // load meeting history
   useEffect(() => {
-    apiCall<{ agents: Agent[] }>('/api/ai/agents').then(d => setAgents(d.agents || []));
-    apiCall<{ meetings: Meeting[] }>('/api/ai/agents/boardroom/meetings').then(d => setMeetings(d.meetings || []));
+    apiCall<{ meetings: Meeting[] }>('/api/ai/agents/boardroom/meetings')
+      .then(d => setMeetings(d.meetings || [])).catch(() => {});
   }, []);
 
-  // Poll active meeting
-  const pollMeeting = useCallback(async (meetingId: string) => {
+  // ── Poll active meeting for reports ──
+  const pollMeeting = useCallback((meetingId: string, question: string, slugs: string[]) => {
     setPolling(true);
+    // initial system message
+    setChatMsgs([{ id: 'sys-start', type: 'system', content: `Meeting started — ${slugs.length} agents invited`, ts: new Date().toISOString() }]);
+    // add user question
+    setChatMsgs(prev => [...prev, { id: 'user-q', type: 'user', content: question, ts: new Date().toISOString() }]);
+
     const interval = setInterval(async () => {
       try {
         const d = await apiCall<{ meeting: Meeting; reports: Report[] }>(`/api/ai/agents/boardroom/meetings/${meetingId}`);
         setActiveMeeting(d.meeting);
-        setActiveReports(d.reports || []);
+
+        // Build chat from reports
+        const msgs: ChatMsg[] = [
+          { id: 'sys-start', type: 'system', content: `Meeting started — ${slugs.length} agents invited`, ts: d.meeting.created_at },
+          { id: 'user-q', type: 'user', content: question, ts: d.meeting.created_at },
+        ];
+
+        for (const r of (d.reports || [])) {
+          if (r.status === 'complete' && r.report_content) {
+            msgs.push({ id: r.id, type: 'agent', slug: r.agent_slug, content: r.report_content, ts: r.created_at });
+          } else if (r.status === 'running') {
+            msgs.push({ id: `typing-${r.agent_slug}`, type: 'typing', slug: r.agent_slug, content: '', ts: r.created_at });
+          } else if (r.status === 'failed') {
+            msgs.push({ id: r.id, type: 'agent', slug: r.agent_slug, content: `⚠️ ${r.error || 'Agent encountered an error'}`, ts: r.created_at });
+          }
+        }
+
+        // Executive summary
+        if (d.meeting.executive_summary && d.meeting.status === 'complete') {
+          msgs.push({ id: 'crucible-summary', type: 'agent', slug: 'supervisor', content: d.meeting.executive_summary, ts: d.meeting.completed_at || new Date().toISOString() });
+        }
+
+        setChatMsgs(msgs);
+
         if (d.meeting.status === 'complete' || d.meeting.status === 'failed') {
           clearInterval(interval);
           setPolling(false);
-          // Refresh meetings list
           apiCall<{ meetings: Meeting[] }>('/api/ai/agents/boardroom/meetings').then(r => setMeetings(r.meetings || []));
         }
       } catch { clearInterval(interval); setPolling(false); }
@@ -79,307 +86,311 @@ export default function BoardroomPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const toggleAgent = (slug: string) => {
-    const next = new Set(selectedAgents);
-    if (next.has(slug)) next.delete(slug); else next.add(slug);
-    setSelectedAgents(next);
-  };
+  // ── Send message ──
+  const sendMessage = async () => {
+    if (!input.trim() || sending) return;
+    const text = input.trim();
+    setInput('');
+    setSending(true);
 
-  const startMeeting = async () => {
-    if (!question.trim() || selectedAgents.size === 0) return;
-    setCreating(true);
+    // Parse @mentions
+    const mentionedAll = /@all\b/i.test(text);
+    const mentionedSlugs: string[] = [];
+    if (mentionedAll) {
+      mentionedSlugs.push(...AGENT_SLUGS);
+    } else {
+      for (const [slug, meta] of Object.entries(AGENTS)) {
+        if (text.toLowerCase().includes(`@${meta.name.toLowerCase()}`)) {
+          mentionedSlugs.push(slug);
+        }
+      }
+    }
+
+    // Default to all if no @mention
+    const targetSlugs = mentionedSlugs.length > 0 ? mentionedSlugs : AGENT_SLUGS;
+
     try {
       const d = await apiCall<{ meeting: Meeting }>('/api/ai/agents/boardroom/meetings', {
         method: 'POST',
-        body: { question, agents: Array.from(selectedAgents), title: question.slice(0, 80) },
+        body: { question: text, agents: targetSlugs, title: text.slice(0, 80) },
       });
       setActiveMeeting(d.meeting);
-      setActiveReports([]);
-      setExpandedReports(new Set());
-      setQuestion('');
-      setSelectedAgents(new Set());
-      pollMeeting(d.meeting.id);
+      pollMeeting(d.meeting.id, text, targetSlugs);
     } catch (e: any) {
-      alert('Failed: ' + (e.message || e));
+      setChatMsgs(prev => [...prev, { id: `err-${Date.now()}`, type: 'system', content: `❌ ${e.message}`, ts: new Date().toISOString() }]);
     }
-    setCreating(false);
+    setSending(false);
   };
 
+  // ── Open past meeting ──
   const openMeeting = async (m: Meeting) => {
     const d = await apiCall<{ meeting: Meeting; reports: Report[] }>(`/api/ai/agents/boardroom/meetings/${m.id}`);
     setActiveMeeting(d.meeting);
-    setActiveReports(d.reports || []);
-    setExpandedReports(new Set(d.reports?.map(r => r.agent_slug) || []));
+    const msgs: ChatMsg[] = [
+      { id: 'sys-start', type: 'system', content: `Meeting — ${m.agent_slugs.length} agents`, ts: m.created_at },
+      { id: 'user-q', type: 'user', content: m.question, ts: m.created_at },
+    ];
+    for (const r of (d.reports || [])) {
+      if (r.report_content) {
+        msgs.push({ id: r.id, type: 'agent', slug: r.agent_slug, content: r.report_content, ts: r.created_at });
+      }
+    }
+    if (d.meeting.executive_summary) {
+      msgs.push({ id: 'crucible-summary', type: 'agent', slug: 'supervisor', content: d.meeting.executive_summary, ts: d.meeting.completed_at || m.created_at });
+    }
+    setChatMsgs(msgs);
     if (d.meeting.status === 'running' || d.meeting.status === 'consolidating') {
-      pollMeeting(m.id);
+      pollMeeting(m.id, m.question, m.agent_slugs);
     }
   };
 
   const deleteMeeting = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Delete this meeting?')) return;
     await apiCall(`/api/ai/agents/boardroom/meetings/${id}`, { method: 'DELETE' });
     setMeetings(prev => prev.filter(m => m.id !== id));
-    if (activeMeeting?.id === id) { setActiveMeeting(null); setActiveReports([]); }
+    if (activeMeeting?.id === id) { setActiveMeeting(null); setChatMsgs([]); }
   };
 
-  const toggleExpand = (slug: string) => {
-    const next = new Set(expandedReports);
-    if (next.has(slug)) next.delete(slug); else next.add(slug);
-    setExpandedReports(next);
+  // ── @mention handler ──
+  const handleInputChange = (val: string) => {
+    setInput(val);
+    const lastAt = val.lastIndexOf('@');
+    if (lastAt >= 0 && lastAt === val.length - 1 - (val.length - 1 - lastAt)) {
+      const after = val.slice(lastAt + 1);
+      if (after.length <= 12 && !after.includes(' ')) {
+        setShowMentions(true);
+        setMentionFilter(after.toLowerCase());
+        return;
+      }
+    }
+    setShowMentions(false);
+  };
+
+  const insertMention = (name: string) => {
+    const lastAt = input.lastIndexOf('@');
+    setInput(input.slice(0, lastAt) + `@${name} `);
+    setShowMentions(false);
+    inputRef.current?.focus();
   };
 
   const timeAgo = (d: string) => {
     const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
-    if (s < 60) return `${s}s ago`;
+    if (s < 60) return 'just now';
     if (s < 3600) return `${Math.floor(s / 60)}m ago`;
     if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
     return `${Math.floor(s / 86400)}d ago`;
   };
 
+  const filteredMentions = [{ slug: 'all', name: 'all', role: 'Everyone responds' }, ...AGENT_SLUGS.map(s => ({ slug: s, name: AGENTS[s].name, role: AGENTS[s].role }))].filter(a => a.name.toLowerCase().includes(mentionFilter));
+
   return (
-    <>
-      {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-sidebar) 100%)', borderRadius: 20, border: '1px solid var(--border)', padding: '28px 32px', marginBottom: 24, position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: 0, right: 0, width: 200, height: 200, background: 'radial-gradient(circle, var(--purple) 0%, transparent 70%)', opacity: 0.06 }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 8 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg, var(--purple) 0%, var(--blue) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Users size={22} color="var(--accent-contrast)" />
+    <div style={{ display: 'flex', height: 'calc(100vh - 120px)', gap: 0, borderRadius: 20, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+
+      {/* ── Left: Sessions + Agent Roster ── */}
+      <div style={{ width: 260, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'var(--bg-sidebar)' }}>
+        {/* Header */}
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 12, background: 'linear-gradient(135deg, #a855f7, #3b82f6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Users size={18} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 800 }}>AI Boardroom</div>
+              <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>5 agents online</div>
+            </div>
           </div>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>AI Boardroom</h1>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>Multi-agent meetings • Select agents • Ask strategic questions • Get consolidated intelligence</p>
+        </div>
+
+        {/* Agent Roster */}
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', marginBottom: 8 }}>Participants</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {AGENT_SLUGS.map(slug => {
+              const a = AGENTS[slug];
+              return (
+                <div key={slug} onClick={() => insertMention(a.name)} title={`@${a.name} — ${a.role}`} style={{ cursor: 'pointer', position: 'relative' }}>
+                  <img src={a.img + IMG_V} alt={a.name} style={{ width: 36, height: 36, borderRadius: 10, objectFit: 'cover', border: `2px solid ${a.color}40`, transition: 'all 0.15s' }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = a.color; e.currentTarget.style.transform = 'scale(1.1)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = `${a.color}40`; e.currentTarget.style.transform = 'scale(1)'; }}
+                  />
+                  <div style={{ position: 'absolute', bottom: -1, right: -1, width: 10, height: 10, borderRadius: '50%', background: '#22c55e', border: '2px solid var(--bg-sidebar)' }} />
+                </div>
+              );
+            })}
           </div>
+        </div>
+
+        {/* Meeting History */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
+          <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', padding: '4px 4px 8px' }}>History</div>
+          {meetings.map(m => (
+            <div key={m.id} onClick={() => openMeeting(m)} style={{
+              padding: '8px 10px', borderRadius: 8, cursor: 'pointer', marginBottom: 2,
+              background: activeMeeting?.id === m.id ? 'var(--bg-hover)' : 'transparent',
+              border: activeMeeting?.id === m.id ? '1px solid var(--border)' : '1px solid transparent',
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</div>
+              <div style={{ fontSize: 9, color: 'var(--text-tertiary)', marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
+                <span>{m.agent_slugs.length} agents</span>
+                <span>{timeAgo(m.created_at)}</span>
+                <button onClick={e => deleteMeeting(m.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: 0 }}><Trash2 size={10} /></button>
+              </div>
+            </div>
+          ))}
+          {meetings.length === 0 && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', padding: 12, textAlign: 'center' }}>No meetings yet</div>}
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: activeMeeting ? '320px 1fr' : '1fr', gap: 24 }}>
-        {/* Left: Create + History */}
-        <div>
-          {/* Agent Selection */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 16 }}>
-            <h3 style={{ fontSize: 13, fontWeight: 700, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)' }}>
-              <Brain size={13} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-              Select Agents
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {agents.map(ag => {
-                const selected = selectedAgents.has(ag.slug);
-                const c = AGENT_COLORS[ag.slug] || 'var(--accent)';
-                return (
-                  <button key={ag.slug} onClick={() => toggleAgent(ag.slug)} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                    borderRadius: 10, border: selected ? `2px solid ${c}` : '2px solid var(--border)',
-                    background: selected ? `color-mix(in srgb, ${c} 8%, var(--bg-card))` : 'var(--bg-card)',
-                    cursor: 'pointer', transition: 'all 0.15s', width: '100%', textAlign: 'left',
-                  }}>
-                    <span style={{ fontSize: 18 }}>{ag.avatar_emoji}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: selected ? c : 'var(--text-primary)' }}>{ag.name}</div>
-                      <div style={{ fontSize: 10, color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ag.role}</div>
-                    </div>
-                    {selected && <CheckCircle2 size={16} color={c} />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+      {/* ── Right: Chat Area ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
 
-          {/* Question Input */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 16 }}>
+        {/* Chat Messages */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {chatMsgs.length === 0 && (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, opacity: 0.4 }}>
+              <Users size={48} />
+              <div style={{ fontSize: 15, fontWeight: 700 }}>Welcome to the Boardroom</div>
+              <div style={{ fontSize: 12, maxWidth: 320, textAlign: 'center', lineHeight: 1.6 }}>
+                Type <strong>@all</strong> to brief everyone, or <strong>@Cipher</strong> to ask a specific agent. Just type normally and all agents will respond.
+              </div>
+            </div>
+          )}
+
+          {chatMsgs.map(msg => {
+            if (msg.type === 'system') {
+              return (
+                <div key={msg.id} style={{ textAlign: 'center', fontSize: 10, color: 'var(--text-tertiary)', padding: '4px 0' }}>
+                  ── {msg.content} ──
+                </div>
+              );
+            }
+
+            if (msg.type === 'user') {
+              return (
+                <div key={msg.id} style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <div style={{
+                    maxWidth: '70%', padding: '12px 16px', borderRadius: '16px 16px 4px 16px',
+                    background: 'linear-gradient(135deg, #a855f7, #3b82f6)', color: '#fff',
+                    fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap',
+                  }}>{msg.content}</div>
+                </div>
+              );
+            }
+
+            if (msg.type === 'typing') {
+              const a = AGENTS[msg.slug || ''] || AGENTS.data_scientist;
+              return (
+                <div key={msg.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-end', animation: 'fadeSlideIn 0.3s ease-out' }}>
+                  <img src={a.img + IMG_V} alt={a.name} style={{ width: 32, height: 32, borderRadius: 10, objectFit: 'cover', border: `2px solid ${a.color}` }} />
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: a.color, marginBottom: 4 }}>{a.name}</div>
+                    <div style={{ padding: '10px 14px', borderRadius: '4px 16px 16px 16px', background: 'var(--bg-hover)', border: '1px solid var(--border)', display: 'flex', gap: 4, alignItems: 'center' }}>
+                      {[0, 1, 2].map(i => <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: a.color, animation: `typingDot 1.4s infinite ${i * 0.2}s` }} />)}
+                      <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginLeft: 6, fontStyle: 'italic' }}>analyzing...</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // Agent message
+            const a = AGENTS[msg.slug || ''] || AGENTS.data_scientist;
+            const isSummary = msg.id === 'crucible-summary';
+            return (
+              <div key={msg.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', animation: 'fadeSlideIn 0.4s ease-out' }}>
+                <img src={a.img + IMG_V} alt={a.name} style={{
+                  width: 32, height: 32, borderRadius: 10, objectFit: 'cover', flexShrink: 0,
+                  border: `2px solid ${a.color}`, boxShadow: isSummary ? `0 0 12px ${a.color}40` : 'none',
+                }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: a.color }}>{a.name}</span>
+                    <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{a.role}</span>
+                    {isSummary && <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: `${a.color}20`, color: a.color }}>SUMMARY</span>}
+                  </div>
+                  <div style={{
+                    padding: '14px 18px', borderRadius: '4px 16px 16px 16px',
+                    background: isSummary ? `linear-gradient(135deg, ${a.color}08, var(--bg-card))` : 'var(--bg-card)',
+                    border: isSummary ? `2px solid ${a.color}40` : '1px solid var(--border)',
+                    maxWidth: '95%',
+                  }}>
+                    <MarkdownRenderer content={msg.content} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={chatEndRef} />
+        </div>
+
+        {/* ── Input Bar ── */}
+        <div style={{ padding: '12px 20px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg-card)', position: 'relative' }}>
+          {/* @mention dropdown */}
+          {showMentions && (
+            <div style={{
+              position: 'absolute', bottom: '100%', left: 20, right: 20, marginBottom: 4,
+              background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 12,
+              boxShadow: 'var(--shadow-lg)', overflow: 'hidden', zIndex: 10,
+            }}>
+              {filteredMentions.map(a => (
+                <button key={a.slug} onClick={() => insertMention(a.name)} style={{
+                  width: '100%', padding: '8px 14px', border: 'none', cursor: 'pointer',
+                  background: 'transparent', display: 'flex', alignItems: 'center', gap: 10,
+                  textAlign: 'left', fontSize: 12, transition: 'background 0.1s',
+                }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  {a.slug === 'all' ? (
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg, #a855f7, #3b82f6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Users size={14} color="#fff" />
+                    </div>
+                  ) : (
+                    <img src={AGENTS[a.slug]?.img + IMG_V} alt="" style={{ width: 28, height: 28, borderRadius: 8, objectFit: 'cover' }} />
+                  )}
+                  <div>
+                    <div style={{ fontWeight: 700, color: a.slug === 'all' ? 'var(--accent)' : (AGENTS[a.slug]?.color || 'var(--text-primary)') }}>@{a.name}</div>
+                    <div style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{a.role}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
             <textarea
-              value={question}
-              onChange={e => setQuestion(e.target.value)}
-              placeholder="Ask a strategic question... e.g. 'Full intelligence report on zerobounce.net'"
-              rows={3}
+              ref={inputRef}
+              value={input}
+              onChange={e => handleInputChange(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } if (e.key === 'Escape') setShowMentions(false); }}
+              placeholder="Type @ to mention an agent, or just ask a question..."
+              rows={1}
               style={{
-                width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)',
-                borderRadius: 10, padding: 12, fontSize: 13, color: 'var(--text-primary)',
-                resize: 'vertical', fontFamily: 'inherit', outline: 'none',
+                flex: 1, padding: '12px 16px', borderRadius: 14, border: '1px solid var(--border)',
+                background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13,
+                resize: 'none', fontFamily: 'inherit', lineHeight: 1.5, maxHeight: 100, overflowY: 'auto', outline: 'none',
               }}
               onFocus={e => e.target.style.borderColor = 'var(--accent)'}
               onBlur={e => e.target.style.borderColor = 'var(--border)'}
+              onInput={e => { const el = e.currentTarget; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 100) + 'px'; }}
             />
-            <button
-              onClick={startMeeting}
-              disabled={creating || !question.trim() || selectedAgents.size === 0}
-              style={{
-                marginTop: 10, width: '100%', padding: '12px 16px', borderRadius: 10,
-                border: 'none', cursor: creating ? 'wait' : 'pointer',
-                background: selectedAgents.size > 0 && question.trim() ? 'linear-gradient(135deg, var(--purple), var(--blue))' : 'var(--border)',
-                color: selectedAgents.size > 0 && question.trim() ? 'var(--accent-contrast)' : 'var(--text-tertiary)',
-                fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                transition: 'all 0.2s', opacity: creating ? 0.7 : 1,
-              }}
-            >
-              {creating ? <><Loader2 size={14} className="spin" /> Starting Meeting...</> : <><Send size={14} /> Start Meeting ({selectedAgents.size} agent{selectedAgents.size !== 1 ? 's' : ''})</>}
+            <button onClick={sendMessage} disabled={sending || !input.trim()} style={{
+              width: 42, height: 42, borderRadius: 12, border: 'none', cursor: sending ? 'wait' : 'pointer', flexShrink: 0,
+              background: input.trim() ? 'linear-gradient(135deg, #a855f7, #3b82f6)' : 'var(--bg-hover)',
+              color: input.trim() ? '#fff' : 'var(--text-tertiary)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.2s', opacity: sending ? 0.6 : 1,
+            }}>
+              {sending ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
             </button>
           </div>
-
-          {/* Meeting History */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20 }}>
-            <h3 style={{ fontSize: 13, fontWeight: 700, margin: '0 0 12px', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)' }}>
-              <Clock size={13} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-              Meeting History ({meetings.length})
-            </h3>
-            {meetings.length === 0 ? (
-              <p style={{ fontSize: 12, color: 'var(--text-tertiary)', textAlign: 'center', padding: 20 }}>No meetings yet. Select agents and ask a question!</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 400, overflowY: 'auto' }}>
-                {meetings.map(m => {
-                  const st = STATUS_ICONS[m.status] || STATUS_ICONS.pending;
-                  const isActive = activeMeeting?.id === m.id;
-                  return (
-                    <div key={m.id} onClick={() => openMeeting(m)} style={{
-                      padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
-                      border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
-                      background: isActive ? 'var(--bg-hover)' : 'transparent',
-                      transition: 'all 0.15s',
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: 14 }}>{st.icon}</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</div>
-                          <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{m.agent_slugs.length} agents • {timeAgo(m.created_at)}</div>
-                        </div>
-                        <button onClick={(e) => deleteMeeting(m.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: 4 }}>
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         </div>
-
-        {/* Right: Active Meeting View */}
-        {activeMeeting && (
-          <div>
-            {/* Meeting Header */}
-            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 20, marginBottom: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <span style={{ fontSize: 20 }}>{STATUS_ICONS[activeMeeting.status]?.icon || '⏳'}</span>
-                <div style={{ flex: 1 }}>
-                  <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>{activeMeeting.title}</h2>
-                  <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-tertiary)' }}>
-                    {activeMeeting.agent_slugs.length} agents • {activeMeeting.status}
-                    {activeMeeting.total_tokens > 0 && ` • ${activeMeeting.total_tokens} tokens`}
-                    {activeMeeting.total_latency_ms > 0 && ` • ${(activeMeeting.total_latency_ms / 1000).toFixed(1)}s`}
-                  </p>
-                </div>
-                {polling && <Loader2 size={16} className="spin" color="var(--accent)" />}
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)', padding: '10px 14px', background: 'var(--bg-hover)', borderRadius: 8, fontStyle: 'italic' }}>
-                "{activeMeeting.question}"
-              </div>
-            </div>
-
-            {/* Executive Summary (Crucible) */}
-            {activeMeeting.executive_summary && (
-              <div style={{
-                background: 'linear-gradient(135deg, color-mix(in srgb, var(--purple) 8%, var(--bg-card)), var(--bg-card))',
-                border: '2px solid var(--purple)', borderRadius: 16, padding: 20, marginBottom: 16,
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <span style={{ fontSize: 18 }}>🏛️</span>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--purple)' }}>Executive Summary — Crucible</div>
-                </div>
-                <MarkdownRenderer content={activeMeeting.executive_summary} />
-              </div>
-            )}
-
-            {/* Individual Reports */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {activeReports.map(report => {
-                const c = AGENT_COLORS[report.agent_slug] || 'var(--accent)';
-                const expanded = expandedReports.has(report.agent_slug);
-                const isRunning = report.status === 'running';
-                const isDone = report.status === 'complete';
-                const isFailed = report.status === 'failed';
-
-                return (
-                  <div key={report.id} style={{
-                    background: 'var(--bg-card)', border: `1px solid ${isDone ? c : 'var(--border)'}`,
-                    borderRadius: 14, overflow: 'hidden', transition: 'all 0.2s',
-                  }}>
-                    {/* Report Header */}
-                    <button onClick={() => toggleExpand(report.agent_slug)} style={{
-                      width: '100%', padding: '14px 16px', border: 'none', cursor: 'pointer',
-                      background: 'transparent', display: 'flex', alignItems: 'center', gap: 10,
-                      textAlign: 'left',
-                    }}>
-                      <div style={{
-                        width: 8, height: 8, borderRadius: '50%',
-                        background: isRunning ? 'var(--yellow)' : isDone ? c : isFailed ? 'var(--red)' : 'var(--border)',
-                        animation: isRunning ? 'pulse 1.5s ease-in-out infinite' : 'none',
-                        boxShadow: isRunning ? `0 0 8px var(--yellow)` : 'none',
-                      }} />
-                      <span style={{ fontSize: 14, fontWeight: 700, color: isDone ? c : 'var(--text-primary)', flex: 1 }}>
-                        {report.agent_name}
-                      </span>
-                      {report.tools_used.length > 0 && (
-                        <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
-                          <Zap size={10} /> {report.tools_used.length} tools
-                        </span>
-                      )}
-                      {report.latency_ms > 0 && (
-                        <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
-                          {(report.latency_ms / 1000).toFixed(1)}s
-                        </span>
-                      )}
-                      {isRunning && <Loader2 size={14} className="spin" color="var(--yellow)" />}
-                      {isDone && (expanded ? <ChevronUp size={14} color={c} /> : <ChevronDown size={14} color={c} />)}
-                      {isFailed && <AlertCircle size={14} color="var(--red)" />}
-                    </button>
-
-                    {/* Report Content */}
-                    {expanded && report.report_content && (
-                      <div style={{ padding: '14px 16px 16px', borderTop: '1px solid var(--border)' }}>
-                        <MarkdownRenderer content={report.report_content} />
-                      </div>
-                    )}
-
-                    {/* Error */}
-                    {isFailed && report.error && (
-                      <div style={{ padding: '8px 16px 12px', fontSize: 11, color: 'var(--red)' }}>
-                        ⚠️ {report.error}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Loading state */}
-            {activeReports.length === 0 && (activeMeeting.status === 'running' || activeMeeting.status === 'pending') && (
-              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-tertiary)' }}>
-                <Loader2 size={32} className="spin" style={{ marginBottom: 12, opacity: 0.4 }} />
-                <div style={{ fontSize: 13, fontWeight: 600 }}>Agents are preparing their reports...</div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Empty state when no meeting selected */}
-        {!activeMeeting && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
-            <div style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>
-              <Users size={48} style={{ marginBottom: 16, opacity: 0.2 }} />
-              <div style={{ fontSize: 15, fontWeight: 700 }}>Select agents and ask a question</div>
-              <div style={{ fontSize: 12, marginTop: 4 }}>Or click a past meeting from the history</div>
-            </div>
-          </div>
-        )}
       </div>
 
       <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.3; }
-        }
+        @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes typingDot { 0%, 80%, 100% { transform: translateY(0); opacity: 0.4; } 40% { transform: translateY(-4px); opacity: 1; } }
       `}</style>
-    </>
+    </div>
   );
 }
