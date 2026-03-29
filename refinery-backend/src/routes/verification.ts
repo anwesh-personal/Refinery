@@ -3,6 +3,7 @@ import { z } from 'zod';
 import * as verifyService from '../services/verification.js';
 import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
 import { getRequestUser } from '../types/auth.js';
+import { query as chq, streamCSV } from '../db/clickhouse.js';
 
 const router = Router();
 
@@ -178,7 +179,7 @@ router.get('/config', async (_req, res) => {
 });
 
 // GET /api/verification/batches/:id/export
-// Export batch verification results as CSV
+// Export ALL lead data + verification columns for this batch's segment as streaming CSV
 router.get('/batches/:id/export', requireSuperadmin, async (req, res) => {
   try {
     const batchId = String(req.params.id);
@@ -186,22 +187,64 @@ router.get('/batches/:id/export', requireSuperadmin, async (req, res) => {
       return res.status(400).json({ error: 'Invalid batch ID format' });
     }
 
-    const results = await verifyService.exportBatchResults(batchId);
-    const user = getRequestUser(req);
-    console.log(`[Export] Verification batch ${batchId} exported by ${user.name} (${user.id}) — ${results.length} rows`);
+    // Get batch to find segment + validate status
+    const [batch] = await chq<{ segment_id: string; status: string }>(
+      `SELECT segment_id, status FROM verification_batches WHERE id = '${batchId}' LIMIT 1`
+    );
+    if (!batch) return res.status(404).json({ error: 'Batch not found' });
+    if (!['complete', 'cancelled'].includes(batch.status)) {
+      return res.status(409).json({ error: `Batch is still ${batch.status} — export after completion` });
+    }
 
-    // Build CSV
-    const header = 'email,status,verified_at\n';
-    const rows = results.map(r =>
-      `"${r.email.replace(/"/g, '""')}","${r.status}","${r.verified_at}"`
-    ).join('\n');
+    // Get ALL non-internal columns + verification columns
+    const colRows = await chq<{ name: string }>(`
+      SELECT name FROM system.columns
+      WHERE database = currentDatabase() AND table = 'universal_person'
+      ORDER BY position
+    `);
+    const skipCols = new Set(['_ingestion_job_id', '_ingested_at', '_segment_ids', '_bounced', '_source_file_name']);
+    const allCols = colRows.map(c => c.name).filter(c => !skipCols.has(c));
+    const selectCols = allCols.map(c => `\`${c}\``).join(', ');
+
+    const sql = `
+      SELECT ${selectCols} FROM universal_person
+      WHERE has(_segment_ids, '${batch.segment_id.replace(/'/g, "''")}')
+        AND _verification_status IS NOT NULL
+    `;
+
+    const user = getRequestUser(req);
+    console.log(`[Export] Verification batch ${batchId} — streaming all columns by ${user.name} (${user.id})`);
+
+    // Stream CSV directly from ClickHouse
+    const stream = await streamCSV(sql);
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="verification-${batchId.substring(0, 8)}.csv"`);
-    res.send(header + rows);
+    res.setHeader('Content-Disposition', `attachment; filename="verification-${batchId.substring(0, 8)}-${Date.now()}.csv"`);
+    res.setHeader('Transfer-Encoding', 'chunked');
+
+    let hasData = false;
+    for await (const rows of stream) {
+      for (const row of rows) {
+        hasData = true;
+        res.write(row.text);
+        res.write('\n');
+      }
+    }
+
+    if (!hasData) {
+      res.write('No verified leads found in this batch segment\n');
+    }
+
+    res.end();
+    console.log(`[Export] Verification batch ${batchId} export complete`);
   } catch (e: any) {
-    const status = e.message.includes('not found') ? 404 : e.message.includes('still running') ? 409 : 500;
-    res.status(status).json({ error: e.message });
+    if (res.headersSent) {
+      console.error(`[Export] Verification batch streaming error (headers sent): ${e.message}`);
+      res.end();
+    } else {
+      const status = e.message.includes('not found') ? 404 : e.message.includes('still') ? 409 : 500;
+      res.status(status).json({ error: e.message });
+    }
   }
 });
 

@@ -277,7 +277,7 @@ router.get('/:id/data', async (req, res) => {
   }
 });
 
-// GET /api/ingestion/:id/export â€” download all rows from this job as CSV
+// GET /api/ingestion/:id/export — download all rows from this job as streaming CSV
 router.get('/:id/export', async (req, res) => {
   try {
     const jobId = req.params.id;
@@ -299,43 +299,49 @@ router.get('/:id/export', async (req, res) => {
 
     const exportLimit = Number(req.query.limit) || 0; // 0 = unlimited
 
-    const rows = await q(`
+    const sql = `
       SELECT ${selectCols} FROM universal_person
       WHERE _ingestion_job_id = '${esc(jobId)}'
       ${exportLimit > 0 ? `LIMIT ${exportLimit}` : ''}
-    `);
-
-    if (!rows.length) {
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="job-${jobId}-empty.csv"`);
-      return res.send('No data found\n');
-    }
-
-    const cols = Object.keys(rows[0]);
-    const header = cols.join(',');
-    const lines = rows.map((row: any) =>
-      cols.map(c => {
-        const v = row[c];
-        if (v === null || v === undefined) return '';
-        const s = String(v).replace(/"/g, '""');
-        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
-      }).join(',')
-    );
-    const csv = [header, ...lines].join('\n');
+    `;
 
     const user = getRequestUser(req);
     const safeName = job.file_name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    console.log(`[Ingestion] Job data exported: ${jobId} (${job.file_name}) â€” ${rows.length} rows by ${user.name}`);
+    console.log(`[Ingestion] Streaming export job=${jobId} (${job.file_name}) by ${user.name}`);
+
+    // Stream CSV directly from ClickHouse — zero Node.js memory usage
+    const stream = await streamCSV(sql);
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="job-${safeName}-${Date.now()}.csv"`);
-    res.send(csv);
+    res.setHeader('Transfer-Encoding', 'chunked');
+
+    let hasData = false;
+    for await (const rows of stream) {
+      for (const row of rows) {
+        hasData = true;
+        res.write(row.text);
+        res.write('\n');
+      }
+    }
+
+    if (!hasData) {
+      res.write('No data found\n');
+    }
+
+    res.end();
+    console.log(`[Ingestion] Streaming export complete for job=${jobId}`);
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    if (res.headersSent) {
+      console.error(`[Ingestion] Streaming export error (headers sent): ${e.message}`);
+      res.end();
+    } else {
+      res.status(500).json({ error: e.message });
+    }
   }
 });
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”// Helper: determine if a ClickHouse type is string-like
+// ——————————————————// Helper: determine if a ClickHouse type is string-like
 function isStringType(chType: string): boolean {
   const t = chType.replace(/^Nullable\(/, '').replace(/\)$/, '').replace(/^LowCardinality\(/, '').replace(/\)$/, '');
   return t.startsWith('String') || t.startsWith('FixedString') || t === 'UUID';
