@@ -265,23 +265,44 @@ export default function EmailVerifierPage() {
           clearInterval(pollRef.current!);
           pollRef.current = null;
           setProgress(100);
-          setJobStatus('Complete!');
+          setJobStatus('Loading results...');
           sessionStorage.removeItem('pipeline_active_job');
 
-          setResult({
-            id: jobId,
-            startedAt: job.started_at,
-            completedAt: job.completed_at,
-            totalInput: Number(job.total_emails),
-            totalProcessed: Number(job.processed_count),
-            duplicatesRemoved: Number(job.duplicates_removed),
-            typosFixed: Number(job.typos_fixed),
-            safe: Number(job.safe_count),
-            uncertain: Number(job.uncertain_count),
-            risky: Number(job.risky_count),
-            rejected: Number(job.rejected_count),
-            results: job.results || [],
-          } as PipelineResult);
+          // Fetch full results separately (results_json is huge — never loaded during polling)
+          try {
+            const fullJob = await apiCall<any>(`/api/verify/jobs/${jobId}?include=results`);
+            setResult({
+              id: jobId,
+              startedAt: fullJob.started_at,
+              completedAt: fullJob.completed_at,
+              totalInput: Number(fullJob.total_emails),
+              totalProcessed: Number(fullJob.processed_count),
+              duplicatesRemoved: Number(fullJob.duplicates_removed),
+              typosFixed: Number(fullJob.typos_fixed),
+              safe: Number(fullJob.safe_count),
+              uncertain: Number(fullJob.uncertain_count),
+              risky: Number(fullJob.risky_count),
+              rejected: Number(fullJob.rejected_count),
+              results: fullJob.results || [],
+            } as PipelineResult);
+          } catch {
+            // If results fetch fails, still show summary stats
+            setResult({
+              id: jobId,
+              startedAt: job.started_at,
+              completedAt: job.completed_at,
+              totalInput: Number(job.total_emails),
+              totalProcessed: Number(job.processed_count),
+              duplicatesRemoved: Number(job.duplicates_removed),
+              typosFixed: Number(job.typos_fixed),
+              safe: Number(job.safe_count),
+              uncertain: Number(job.uncertain_count),
+              risky: Number(job.risky_count),
+              rejected: Number(job.rejected_count),
+              results: [],
+            } as PipelineResult);
+          }
+          setJobStatus('Complete!');
           setLoading(false);
           setActiveJobId(null);
           fetchRecentJobs();
@@ -306,7 +327,7 @@ export default function EmailVerifierPage() {
 
   const loadCompletedJob = async (jobId: string) => {
     try {
-      const job = await apiCall<any>(`/api/verify/jobs/${jobId}`);
+      const job = await apiCall<any>(`/api/verify/jobs/${jobId}?include=results`);
       if (job.status === 'complete' && job.results) {
         setResult({
           id: jobId,

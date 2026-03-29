@@ -371,23 +371,32 @@ router.get('/jobs', requireSuperadmin, async (_req, res) => {
 });
 
 // ─── GET /api/verify/jobs/:id ───
-// Get job status and progress. Results included when status = 'complete'.
+// Get job status and progress. Results only included when ?include=results.
+// For 100K+ jobs, results_json can be 100MB+ — never load it unless needed.
 
 router.get('/jobs/:id', requireSuperadmin, async (req, res) => {
   try {
+    const includeResults = (req.query.include as string)?.includes('results');
+
+    const columns = [
+      'id', 'total_emails', 'processed_count', 'safe_count', 'risky_count', 'rejected_count',
+      'uncertain_count', 'duplicates_removed', 'typos_fixed', 'status', 'error_message',
+      'started_at', 'completed_at',
+    ];
+    if (includeResults) columns.push('results_json');
+
     const [job] = await chQuery<any>(`
-      SELECT id, total_emails, processed_count, safe_count, risky_count, rejected_count,
-             uncertain_count, duplicates_removed, typos_fixed, status, error_message,
-             results_json, started_at, completed_at
+      SELECT ${columns.join(', ')}
       FROM pipeline_jobs
       WHERE id = '${req.params.id}'
       LIMIT 1
     `);
     if (!job) return res.status(404).json({ error: 'Job not found' });
 
-    // Parse results_json if complete
     const response: any = { ...job };
-    if (job.status === 'complete' && job.results_json) {
+
+    // Only parse results if explicitly requested
+    if (includeResults && job.status === 'complete' && job.results_json) {
       try {
         response.results = JSON.parse(job.results_json);
       } catch { response.results = []; }
