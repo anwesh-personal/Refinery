@@ -75,9 +75,7 @@ export default function ConfigPage() {
     { key: 'segment.export_limit', label: 'Segment Export Limit', description: 'Max leads returned when exporting a segment', type: 'number' },
     { key: 'clickhouse.max_query_size', label: 'ClickHouse Max Query Size', description: 'Max bytes for a single ClickHouse query string (default 512MB)', type: 'number' },
     // ── Third-Party Integrations ──
-    { key: 'semrush_api_key', label: 'SEMRush API Key', description: 'API key for SEMRush keyword research, domain analytics, and competitor analysis (used by Oracle agent)', type: 'secret' },
-    { key: 'mailwizz_api_url', label: 'MailWizz API URL', description: 'Base URL for your MailWizz installation API (e.g. https://your-mailwizz.com/api)', type: 'string' },
-    { key: 'mailwizz_api_key', label: 'MailWizz API Key', description: 'Public API key for MailWizz subscriber list push', type: 'secret' },
+    { key: 'semrush_api_key', label: 'SEMRush API Key', description: 'API key for SEMRush — powers Oracle\'s keyword research, domain analytics, and competitor analysis', type: 'secret' },
   ];
 
   const fetchSysConfig = async () => {

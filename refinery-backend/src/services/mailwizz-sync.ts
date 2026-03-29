@@ -19,13 +19,29 @@ interface MailwizzSubscriber {
 // ── MailWizz API helpers ────────────────────────────────────────────────────
 
 async function getMailwizzConfig(): Promise<{ baseUrl: string; apiKey: string }> {
-  const [baseUrl, apiKey] = await Promise.all([
+  // First try the dynamic MTA provider system (mta_provider/mta_base_url/mta_api_key)
+  const [provider, baseUrl, apiKey] = await Promise.all([
+    getConfig('mta_provider'),
+    getConfig('mta_base_url'),
+    getConfig('mta_api_key'),
+  ]);
+
+  if (provider === 'mailwizz' && baseUrl && apiKey) {
+    return { baseUrl: baseUrl.replace(/\/$/, ''), apiKey };
+  }
+
+  // Fallback to legacy keys if someone set them directly
+  const [legacyUrl, legacyKey] = await Promise.all([
     getConfig('mailwizz_api_url'),
     getConfig('mailwizz_api_key'),
   ]);
-  if (!baseUrl) throw new Error('mailwizz_api_url is not configured. Set it in Server Config.');
-  if (!apiKey) throw new Error('mailwizz_api_key is not configured. Set it in Server Config.');
-  return { baseUrl: baseUrl.replace(/\/$/, ''), apiKey };
+  if (legacyUrl && legacyKey) {
+    return { baseUrl: legacyUrl.replace(/\/$/, ''), apiKey: legacyKey };
+  }
+
+  throw new Error(
+    'MTA not configured. Add a MailWizz provider in the MTA Providers page (Email → MTA Providers → Add Provider).'
+  );
 }
 
 async function mwFetch<T = any>(
