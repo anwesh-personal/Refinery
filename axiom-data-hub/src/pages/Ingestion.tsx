@@ -618,7 +618,7 @@ export default function IngestionPage() {
                 boxShadow: '0 0 20px var(--accent)',
                 flexShrink: 0,
               }}>
-                <Loader2 size={22} color="#fff" className="spin" />
+                <Loader2 size={22} color="var(--accent-contrast)" className="spin" />
               </div>
 
               {/* Info */}
@@ -768,7 +768,7 @@ export default function IngestionPage() {
             style={{
               padding: '8px 20px', borderRadius: 8, border: 'none',
               background: activeView === tab.key ? 'var(--accent)' : 'transparent',
-              color: activeView === tab.key ? '#fff' : 'var(--text-tertiary)',
+              color: activeView === tab.key ? 'var(--accent-contrast)' : 'var(--text-tertiary)',
               fontSize: 13, fontWeight: activeView === tab.key ? 700 : 500,
               cursor: 'pointer', transition: 'all 0.2s',
               display: 'flex', alignItems: 'center', gap: 6,
@@ -1105,7 +1105,7 @@ export default function IngestionPage() {
                     background: rule.enabled ? 'var(--green)' : 'var(--border)', position: 'relative', transition: 'background 0.2s', flexShrink: 0,
                   }}>
                     <div style={{
-                      width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2,
+                      width: 16, height: 16, borderRadius: '50%', background: 'var(--bg-card)', position: 'absolute', top: 2,
                       left: rule.enabled ? 18 : 2, transition: 'left 0.2s',
                     }} />
                   </button>
@@ -1300,7 +1300,7 @@ export default function IngestionPage() {
                             <button
                               onClick={() => openJobDataViewer(job.id)}
                               style={{ padding: '3px 8px', fontSize: 10, fontWeight: 700, borderRadius: 5, cursor: 'pointer', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 3 }}
-                              onMouseOver={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = '#fff'; }}
+                              onMouseOver={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent-contrast)'; }}
                               onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--accent)'; }}
                             ><Eye size={10} /> View Data</button>
                           )}
@@ -1316,7 +1316,7 @@ export default function IngestionPage() {
                                 } catch (e: any) { setError(e.message); }
                               }}
                               style={{ padding: '3px 8px', fontSize: 10, fontWeight: 700, borderRadius: 5, cursor: 'pointer', border: '1px solid var(--red)', background: 'transparent', color: 'var(--red)', transition: 'all 0.15s' }}
-                              onMouseOver={e => { e.currentTarget.style.background = 'var(--red)'; e.currentTarget.style.color = '#fff'; }}
+                              onMouseOver={e => { e.currentTarget.style.background = 'var(--red)'; e.currentTarget.style.color = 'var(--accent-contrast)'; }}
                               onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--red)'; }}
                             >Rollback</button>
                           )}
@@ -1335,7 +1335,7 @@ export default function IngestionPage() {
                                 } catch (e: any) { setError(e.message); }
                               }}
                               style={{ padding: '3px 8px', fontSize: 10, fontWeight: 700, borderRadius: 5, cursor: 'pointer', border: '1px solid var(--purple)', background: 'transparent', color: 'var(--purple)', transition: 'all 0.15s' }}
-                              onMouseOver={e => { e.currentTarget.style.background = 'var(--purple)'; e.currentTarget.style.color = '#fff'; }}
+                              onMouseOver={e => { e.currentTarget.style.background = 'var(--purple)'; e.currentTarget.style.color = 'var(--accent-contrast)'; }}
                               onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--purple)'; }}
                             >Archive</button>
                           )}
@@ -1649,7 +1649,7 @@ export default function IngestionPage() {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <div style={{ width: 40, height: 40, borderRadius: 12, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Table2 size={20} color="#fff" />
+                  <Table2 size={20} color="var(--accent-contrast)" />
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
