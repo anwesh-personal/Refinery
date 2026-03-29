@@ -216,15 +216,13 @@ async function validateProviderKey(slug: string, key: string, endpoint: string):
   try {
     switch (slug) {
       case 'anthropic': {
-        const r = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'claude-3-haiku-20240307', max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] }),
+        const r = await fetch('https://api.anthropic.com/v1/models', {
+          headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
           signal: controller.signal,
         });
         if (r.status === 401) return { valid: false, message: 'Invalid API key' };
         if (r.status === 403) return { valid: false, message: 'API key lacks permissions' };
-        return { valid: r.ok || r.status === 400, message: r.ok ? 'Key validated successfully' : `Status ${r.status} — key may be valid` };
+        return { valid: r.ok, message: r.ok ? 'Key validated successfully' : `Error: ${r.status}` };
       }
       case 'openai': {
         const r = await fetch('https://api.openai.com/v1/models', {
@@ -276,14 +274,17 @@ async function fetchProviderModels(slug: string, key: string, endpoint: string):
   try {
     switch (slug) {
       case 'anthropic': {
-        // Anthropic doesn't have a model listing API — return known models
-        return [
-          'claude-sonnet-4-20250514',
-          'claude-3-5-sonnet-20241022',
-          'claude-3-5-haiku-20241022',
-          'claude-3-opus-20240229',
-          'claude-3-haiku-20240307',
-        ];
+        const r = await fetch('https://api.anthropic.com/v1/models', {
+          headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+          signal: controller.signal,
+        });
+        if (!r.ok) return [];
+        const data: any = await r.json();
+        return (data.data || [])
+          .map((m: any) => m.id)
+          .filter((id: string) => id.includes('claude'))
+          .sort()
+          .reverse(); // newest first
       }
       case 'openai': {
         const r = await fetch('https://api.openai.com/v1/models', {
