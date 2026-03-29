@@ -7,6 +7,9 @@ import { buildSystemManifest } from '../agents/manifest.js';
 import { getToolsForAgent } from '../agents/tools/registry.js';
 import { toOpenAITools } from '../agents/tools/types.js';
 import { executeTool } from '../agents/tools/executor.js';
+import { getPromptContext } from "../agents/context/schema-registry.js";
+import { buildIngestionContext } from "../agents/context/context-builder.js";
+import { parseIntent, buildChainPrompt, buildDebatePrompt } from "../agents/orchestration.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -31,7 +34,7 @@ router.get('/', async (_req: Request, res: Response) => {
 // ── List conversations for an agent ──
 router.get('/:slug/conversations', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = (req as any).userId;
     const { data: agent } = await supabaseAdmin.from('ai_agents').select('id').eq('slug', req.params.slug).single();
     if (!agent) return res.status(404).json({ error: 'Agent not found' });
     const { data, error } = await supabaseAdmin
@@ -49,7 +52,7 @@ router.get('/:slug/conversations', async (req: Request, res: Response) => {
 // ── Create conversation ──
 router.post('/:slug/conversations', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = (req as any).userId;
     const { data: agent } = await supabaseAdmin.from('ai_agents').select('id').eq('slug', req.params.slug).single();
     if (!agent) return res.status(404).json({ error: 'Agent not found' });
     const { data, error } = await supabaseAdmin
@@ -79,7 +82,7 @@ router.get('/conversations/:convId/messages', async (req: Request, res: Response
 router.post('/conversations/:convId/messages', async (req: Request, res: Response) => {
   const start = Date.now();
   try {
-    const userId = (req as any).user?.id;
+    const userId = (req as any).userId;
     const accessToken = String(req.headers.authorization || '').replace('Bearer ', '');
     const { message } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
@@ -485,6 +488,8 @@ INFRASTRUCTURE:
     }
   } catch {}
 
+  // ── Live Schema Context (from Schema Registry) ──
+  try { const schemaCtx = await getPromptContext(); parts.push("=== DATA SCHEMA ===", schemaCtx); } catch {}
   // ── Anti-hallucination rules ──
   parts.push(`
 === IMPORTANT RULES ===
@@ -497,5 +502,166 @@ INFRASTRUCTURE:
 
   return parts.join('\n') || 'No system data available.';
 }
+
+
+
+// Context API
+router.get("/context/ingestion", async (req: Request, res: Response) => {
+  try {
+    const table = (req.query.table as string) || "leads";
+    const sourceFile = req.query.source_file as string;
+    if (!sourceFile) return res.status(400).json({ error: "source_file required" });
+    const result = await buildIngestionContext(table, sourceFile);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ═══════════════════════════════════════════════════════════
+// BOARDROOM MEETINGS — Multi-Agent Orchestration
+// ═══════════════════════════════════════════════════════════
+
+router.get("/boardroom/meetings", async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).userId;
+    const { data, error } = await supabaseAdmin.from("ai_boardroom_meetings")
+      .select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(50);
+    if (error) throw error;
+    res.json({ meetings: data || [] });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.get("/boardroom/meetings/:meetingId", async (req: Request, res: Response) => {
+  try {
+    const { data: meeting } = await supabaseAdmin.from("ai_boardroom_meetings").select("*").eq("id", req.params.meetingId).single();
+    if (!meeting) return res.status(404).json({ error: "Not found" });
+    const { data: reports } = await supabaseAdmin.from("ai_boardroom_reports").select("*").eq("meeting_id", meeting.id).order("created_at");
+    res.json({ meeting, reports: reports || [] });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete("/boardroom/meetings/:meetingId", async (req: Request, res: Response) => {
+  try {
+    await supabaseAdmin.from("ai_boardroom_meetings").delete().eq("id", req.params.meetingId);
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+
+router.post("/boardroom/meetings", async (req: Request, res: Response) => {
+  const meetingStart = Date.now();
+  try {
+    const userId = (req as any).userId;
+    const accessToken = String(req.headers.authorization || "").replace("Bearer ", "");
+    const { question, agents: agentSlugs, title, mode } = req.body;
+    if (!question?.trim()) return res.status(400).json({ error: "Question required" });
+    if (!agentSlugs?.length) return res.status(400).json({ error: "Select at least one agent" });
+
+    const { data: meeting, error: createErr } = await supabaseAdmin.from("ai_boardroom_meetings")
+      .insert({ user_id: userId, title: title || question.slice(0, 80), question, agent_slugs: agentSlugs, status: "running" })
+      .select().single();
+    if (createErr || !meeting) throw createErr || new Error("Failed to create meeting");
+
+    const { data: allAgents } = await supabaseAdmin.from("ai_agents").select("*").in("slug", agentSlugs).eq("enabled", true);
+    if (!allAgents?.length) {
+      await supabaseAdmin.from("ai_boardroom_meetings").update({ status: "failed", error: "No valid agents" }).eq("id", meeting.id);
+      return res.status(400).json({ error: "No valid agents found" });
+    }
+
+    for (const ag of allAgents) {
+      await supabaseAdmin.from("ai_boardroom_reports").insert({ meeting_id: meeting.id, agent_slug: ag.slug, agent_name: ag.name, status: "pending" });
+    }
+
+    res.json({ meeting: { ...meeting, status: "running" } });
+
+    // ── BACKGROUND EXECUTION ──
+    (async () => {
+      let totalTokens = 0;
+      const agentReports: { slug: string; name: string; report: string }[] = [];
+
+      for (const ag of allAgents) {
+        const agentStart = Date.now();
+        try {
+          await supabaseAdmin.from("ai_boardroom_reports").update({ status: "running" }).eq("meeting_id", meeting.id).eq("agent_slug", ag.slug);
+
+          const systemContext = await gatherContext(ag.id, ag.capabilities || []);
+          const manifest = buildSystemManifest(ag.slug);
+          const customBlock = ag.custom_instructions ? "\n=== CUSTOM INSTRUCTIONS ===\n" + ag.custom_instructions : "";
+          // Build mode-aware prompt
+          let boardroomBlock = "\n=== BOARDROOM MEETING MODE ===\nYou are in a boardroom meeting. Answer the question from YOUR department perspective.\n- Use your tools to get REAL data.\n- Be structured: headers, bullets, numbers.\n- Focus on YOUR domain only.\n- Start with a 1-line summary, then detail.\n- End with recommendations or flags.\n\nTHE QUESTION: \"" + question + "\"";
+
+          // Chain mode: inject previous agent's response as context
+          if (mode === "chain" && agentReports.length > 0) {
+            const prev = agentReports[agentReports.length - 1];
+            boardroomBlock += "\n\n=== CHAIN MODE ===\n" + prev.name + " already analyzed this and said:\n---\n" + prev.report + "\n---\nBuild on their analysis. Add YOUR perspective, correct mistakes, provide additional insights from YOUR domain.";
+          }
+
+          // Debate mode: inject opponent's response
+          if (mode === "debate" && agentReports.length > 0) {
+            const prev = agentReports[agentReports.length - 1];
+            boardroomBlock += "\n\n=== DEBATE MODE ===\n" + prev.name + " argued:\n---\n" + prev.report + "\n---\nCounter their arguments. Use data and evidence. Be constructive but challenge weak points. Present YOUR domain\'s perspective.";
+          };
+
+          const systemPrompt = manifest + "\n\n" + ag.system_prompt + customBlock + "\n\n" + systemContext + "\n\n" + boardroomBlock;
+          const agentTools = getToolsForAgent(ag.slug);
+          const openAITools = toOpenAITools(agentTools);
+          const chatMessages: ChatMessage[] = [{ role: "system", content: systemPrompt }, { role: "user", content: question }];
+
+          const resolved = await resolveAgentProvider(ag);
+          if (!resolved) {
+            await supabaseAdmin.from("ai_boardroom_reports").update({ status: "failed", error: "No provider", latency_ms: Date.now() - agentStart }).eq("meeting_id", meeting.id).eq("agent_slug", ag.slug);
+            agentReports.push({ slug: ag.slug, name: ag.name, report: "⚠️ No AI provider configured." });
+            continue;
+          }
+
+          let aiResult = await callAIWithTools(resolved.serviceSlug, chatMessages, openAITools, { maxTokens: ag.max_tokens || 4096, temperature: parseFloat(ag.temperature) || 0.4, userId });
+          let toolRounds = 0;
+          const toolsUsed: string[] = [];
+
+          while (aiResult.success && aiResult.toolCalls?.length && toolRounds < 3) {
+            toolRounds++;
+            chatMessages.push({ role: "assistant", content: aiResult.response || "" });
+            for (const tc of aiResult.toolCalls) {
+              toolsUsed.push(tc.name);
+              const toolResult = await executeTool({ id: tc.id, name: tc.name, arguments: tc.arguments }, { userId: String(userId), agentSlug: ag.slug, conversationId: "", accessToken });
+              chatMessages.push({ role: "tool", content: JSON.stringify(toolResult), tool_call_id: tc.id, name: tc.name });
+            }
+            aiResult = await callAIWithTools(resolved.serviceSlug, chatMessages, openAITools, { maxTokens: ag.max_tokens || 4096, temperature: parseFloat(ag.temperature) || 0.4, userId });
+          }
+
+          const reportContent = aiResult.success ? aiResult.response : "⚠️ Error: " + aiResult.error;
+          totalTokens += aiResult.tokensUsed || 0;
+
+          await supabaseAdmin.from("ai_boardroom_reports").update({ status: aiResult.success ? "complete" : "failed", report_content: reportContent, tools_used: [...new Set(toolsUsed)], tokens_used: aiResult.tokensUsed || 0, latency_ms: Date.now() - agentStart, error: aiResult.success ? null : aiResult.error }).eq("meeting_id", meeting.id).eq("agent_slug", ag.slug);
+          agentReports.push({ slug: ag.slug, name: ag.name, report: reportContent || "" });
+
+        } catch (agentErr: any) {
+          await supabaseAdmin.from("ai_boardroom_reports").update({ status: "failed", error: agentErr.message, latency_ms: Date.now() - agentStart }).eq("meeting_id", meeting.id).eq("agent_slug", ag.slug);
+          agentReports.push({ slug: ag.slug, name: ag.name, report: "⚠️ Error: " + agentErr.message });
+        }
+      }
+
+      // CONSOLIDATION by Crucible
+      await supabaseAdmin.from("ai_boardroom_meetings").update({ status: "consolidating" }).eq("id", meeting.id);
+      try {
+        const reportsBlock = agentReports.map(r => "═══ " + r.name.toUpperCase() + " (" + r.slug + ") ═══\n" + r.report).join("\n\n");
+        const consolidationPrompt = "You are Crucible, the Operations Manager of Refinery Nexus.\n\nThe user asked: \"" + question + "\"\n\nDepartment reports:\n\n" + reportsBlock + "\n\nYOUR TASK:\n1. One-line VERDICT\n2. KEY FINDINGS (3-5 bullets)\n3. CROSS-FUNCTIONAL INSIGHTS\n4. RECOMMENDED ACTIONS (prioritized)\n5. RISK FLAGS\n\nBe executive-level concise. Use markdown.";
+
+        const { data: supervisorAgent } = await supabaseAdmin.from("ai_agents").select("*").eq("slug", "supervisor").single();
+        const cProvider = supervisorAgent ? await resolveAgentProvider(supervisorAgent) : null;
+
+        if (cProvider) {
+          const cResult = await callAIWithTools(cProvider.serviceSlug, [{ role: "system", content: consolidationPrompt }, { role: "user", content: "Consolidate reports for: " + question }], [], { maxTokens: 4096, temperature: 0.3, userId });
+          totalTokens += cResult.tokensUsed || 0;
+          await supabaseAdmin.from("ai_boardroom_meetings").update({ status: "complete", executive_summary: cResult.success ? cResult.response : "⚠️ Consolidation failed: " + cResult.error, total_tokens: totalTokens, total_latency_ms: Date.now() - meetingStart, completed_at: new Date().toISOString() }).eq("id", meeting.id);
+        } else {
+          await supabaseAdmin.from("ai_boardroom_meetings").update({ status: "complete", executive_summary: "⚠️ No provider for consolidation. See individual reports.", total_tokens: totalTokens, total_latency_ms: Date.now() - meetingStart, completed_at: new Date().toISOString() }).eq("id", meeting.id);
+        }
+      } catch (cErr: any) {
+        await supabaseAdmin.from("ai_boardroom_meetings").update({ status: "complete", executive_summary: "⚠️ Consolidation error: " + cErr.message, total_tokens: totalTokens, total_latency_ms: Date.now() - meetingStart, completed_at: new Date().toISOString() }).eq("id", meeting.id);
+      }
+      console.log("[BOARDROOM] Meeting " + meeting.id + " complete — " + agentReports.length + " agents, " + totalTokens + " tokens, " + (Date.now() - meetingStart) + "ms");
+    })();
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
 
 export default router;
