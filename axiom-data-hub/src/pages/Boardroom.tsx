@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiCall } from '../lib/api';
+import MarkdownRenderer from '../components/MarkdownRenderer';
 import {
   Users, Send, Loader2, CheckCircle2, AlertCircle,
   Clock, Zap, ChevronDown, ChevronUp, Trash2, Brain
@@ -285,9 +286,7 @@ export default function BoardroomPage() {
                   <span style={{ fontSize: 18 }}>🏛️</span>
                   <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--purple)' }}>Executive Summary — Crucible</div>
                 </div>
-                <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
-                  {activeMeeting.executive_summary}
-                </div>
+                <MarkdownRenderer content={activeMeeting.executive_summary} />
               </div>
             )}
 
@@ -337,13 +336,8 @@ export default function BoardroomPage() {
 
                     {/* Report Content */}
                     {expanded && report.report_content && (
-                      <div style={{
-                        padding: '0 16px 16px', fontSize: 13, lineHeight: 1.7,
-                        color: 'var(--text-primary)', whiteSpace: 'pre-wrap',
-                        borderTop: '1px solid var(--border)',
-                        paddingTop: 14,
-                      }}>
-                        {report.report_content}
+                      <div style={{ padding: '14px 16px 16px', borderTop: '1px solid var(--border)' }}>
+                        <MarkdownRenderer content={report.report_content} />
                       </div>
                     )}
 
