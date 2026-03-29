@@ -43,10 +43,10 @@ export default function AINexusPage() {
           const active = tab === t.key;
           return (
             <button key={t.key} onClick={() => setTab(t.key)} style={{
-              padding: '8px 14px', borderRadius: 9, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
-              background: active ? 'var(--accent)' : 'transparent',
-              color: active ? '#fff' : 'var(--text-tertiary)',
-              fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
+              padding: '8px 14px', borderRadius: 9, border: active ? '1px solid var(--accent)' : '1px solid transparent', cursor: 'pointer', whiteSpace: 'nowrap',
+              background: active ? 'var(--accent-muted)' : 'transparent',
+              color: active ? 'var(--accent)' : 'var(--text-tertiary)',
+              fontSize: 11, fontWeight: active ? 700 : 600, display: 'flex', alignItems: 'center', gap: 5,
               transition: 'all 0.15s ease', flexShrink: 0,
             }}><Icon size={13} /> {t.label}</button>
           );
