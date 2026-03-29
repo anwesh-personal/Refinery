@@ -7,37 +7,83 @@ import {
 import AgentCard from '../components/AgentCard';
 
 // ── Types ──
-interface KeywordResult {
-  keyword: string; volume: number; difficulty: number; cpc: number;
-  trend: string; competition: string; related: string[];
-}
-interface DomainResult {
-  domain: string; authority: number; traffic: number; keywords: number;
-  topPages: { url: string; traffic: number; keyword: string }[];
-  backlinks: number;
-}
-interface RankingDomain {
-  position: number; domain: string; url: string; title: string;
-  traffic: number;
-}
 interface CrossRefResult {
   domain: string; lead_count: number; verified_safe: number;
   verified_risky: number; unique_companies: number; sample_titles: string[];
 }
-interface CompetitorResult {
-  domain: string; competitor: string;
-  shared_keywords: number; your_unique: number; their_unique: number;
-  gaps: { keyword: string; their_position: number; volume: number }[];
-}
+
+// ── Mock Data (preview mode until SEMrush connected) ──
+const MOCK_KEYWORD = {
+  keyword: 'email verification', volume: 14800, difficulty: 67, cpc: 4.20, competition: 0.82,
+  intent: 'Commercial' as const, trend: [8200, 9100, 10400, 11200, 12800, 13500, 14100, 14800, 13900, 14200, 14600, 14800],
+  serpFeatures: ['People Also Ask', 'Featured Snippet', 'Sitelinks', 'Reviews'],
+  related: [
+    { kw: 'email verification tool', vol: 6600, kd: 58, cpc: 5.10, intent: 'Commercial', trend: 12 },
+    { kw: 'verify email address', vol: 5400, kd: 45, cpc: 3.80, intent: 'Transactional', trend: 8 },
+    { kw: 'bulk email verifier', vol: 3200, kd: 52, cpc: 6.40, intent: 'Commercial', trend: 15 },
+    { kw: 'email validation api', vol: 2900, kd: 61, cpc: 7.20, intent: 'Transactional', trend: 22 },
+    { kw: 'free email checker', vol: 9100, kd: 38, cpc: 1.50, intent: 'Informational', trend: -5 },
+    { kw: 'email list cleaning', vol: 2100, kd: 44, cpc: 4.90, intent: 'Commercial', trend: 18 },
+    { kw: 'email deliverability', vol: 4800, kd: 55, cpc: 3.60, intent: 'Informational', trend: 10 },
+    { kw: 'smtp verification', vol: 1600, kd: 72, cpc: 8.10, intent: 'Transactional', trend: 6 },
+  ],
+};
+
+const MOCK_DOMAIN = {
+  domain: 'zerobounce.net', authority: 62, organicTraffic: 89400, paidTraffic: 12300,
+  organicKeywords: 18200, backlinks: 342000, referringDomains: 4800,
+  trafficTrend: [62000, 65000, 71000, 74000, 78000, 82000, 85000, 87000, 88000, 89400],
+  topKeywords: [
+    { kw: 'email verification', pos: 3, vol: 14800, traffic: 4200 },
+    { kw: 'email verifier', pos: 2, vol: 8100, traffic: 3100 },
+    { kw: 'verify email', pos: 5, vol: 6200, traffic: 1800 },
+    { kw: 'email checker', pos: 4, vol: 5400, traffic: 1500 },
+    { kw: 'bulk email verification', pos: 1, vol: 3200, traffic: 1400 },
+  ],
+  competitors: [
+    { domain: 'neverbounce.com', commonKw: 2400, authority: 55 },
+    { domain: 'hunter.io', commonKw: 1800, authority: 71 },
+    { domain: 'emaillistverify.com', commonKw: 1200, authority: 48 },
+    { domain: 'debounce.io', commonKw: 980, authority: 42 },
+  ],
+};
+
+const MOCK_SERP = [
+  { pos: 1, domain: 'zerobounce.net', url: '/email-verification', title: 'Email Verification - 99% Accuracy | ZeroBounce', authority: 62, traffic: 4200 },
+  { pos: 2, domain: 'neverbounce.com', url: '/', title: 'Email Verification & List Cleaning | NeverBounce', authority: 55, traffic: 3100 },
+  { pos: 3, domain: 'hunter.io', url: '/email-verifier', title: 'Free Email Verifier - Hunter', authority: 71, traffic: 2800 },
+  { pos: 4, domain: 'emaillistverify.com', url: '/', title: 'Email List Verify - Bulk Email Validation', authority: 48, traffic: 1900 },
+  { pos: 5, domain: 'debounce.io', url: '/', title: 'DeBounce - Email Validation & Verification', authority: 42, traffic: 1500 },
+  { pos: 6, domain: 'bounceless.io', url: '/', title: 'Bounceless - Email Verification Service', authority: 35, traffic: 1100 },
+  { pos: 7, domain: 'clearout.io', url: '/', title: 'Clearout - Email Verification Platform', authority: 40, traffic: 900 },
+  { pos: 8, domain: 'mailfloss.com', url: '/', title: 'Mailfloss - Automated Email List Cleaning', authority: 32, traffic: 750 },
+];
+
+const MOCK_GAP = {
+  domain: 'iiinfrastructure.com', competitor: 'zerobounce.net',
+  shared: 340, yourUnique: 120, theirUnique: 17800,
+  gaps: [
+    { kw: 'email verification api', vol: 2900, theirPos: 4, yourPos: null as number | null },
+    { kw: 'bulk email verifier', vol: 3200, theirPos: 1, yourPos: null as number | null },
+    { kw: 'email list cleaning service', vol: 1800, theirPos: 3, yourPos: null as number | null },
+    { kw: 'email validation tool', vol: 2400, theirPos: 5, yourPos: 42 },
+    { kw: 'verify email address free', vol: 5100, theirPos: 6, yourPos: null as number | null },
+    { kw: 'email bounce checker', vol: 1200, theirPos: 2, yourPos: null as number | null },
+  ],
+};
+
+const INTENT_COLORS: Record<string, string> = {
+  Commercial: '#e91e63', Transactional: '#9c27b0', Informational: '#2196f3', Navigational: '#4caf50',
+};
 
 // ── Tool Tabs ──
 type ToolTab = 'keyword' | 'domain' | 'ranking' | 'crossref' | 'competitor';
 const TOOL_TABS: { key: ToolTab; label: string; icon: any; desc: string; color: string }[] = [
-  { key: 'keyword', label: 'Keyword Research', icon: Search, desc: 'Search volume, difficulty, CPC, related keywords', color: '#e91e63' },
-  { key: 'domain', label: 'Domain Analytics', icon: Globe, desc: 'Authority, traffic, top pages, backlinks', color: '#9c27b0' },
-  { key: 'ranking', label: 'Ranking Domains', icon: BarChart3, desc: 'Who ranks for a keyword in Google', color: '#2196f3' },
+  { key: 'keyword', label: 'Keyword Research', icon: Search, desc: 'Volume, difficulty, CPC, intent, SERP features', color: '#e91e63' },
+  { key: 'domain', label: 'Domain Analytics', icon: Globe, desc: 'Authority, traffic, top keywords, competitors', color: '#9c27b0' },
+  { key: 'ranking', label: 'SERP Analysis', icon: BarChart3, desc: 'Top ranking pages for any keyword', color: '#2196f3' },
   { key: 'crossref', label: 'Cross-Reference', icon: Database, desc: 'Check domains against our ClickHouse data', color: '#4caf50' },
-  { key: 'competitor', label: 'Competitor Gap', icon: GitCompare, desc: 'Keyword overlap & gaps vs competitors', color: '#ff9800' },
+  { key: 'competitor', label: 'Keyword Gap', icon: GitCompare, desc: 'Find keywords competitors rank for that you don\'t', color: '#ff9800' },
 ];
 
 export default function SEOIntelligencePage() {
@@ -48,30 +94,21 @@ export default function SEOIntelligencePage() {
   const [copied, setCopied] = useState<string | null>(null);
   const copy = (text: string, id: string) => { navigator.clipboard.writeText(text); setCopied(id); setTimeout(() => setCopied(null), 2000); };
 
-  // ── Keyword State ──
+  // ── Tool status ──
   const [kwInput, setKwInput] = useState('');
-  const [kwResults, setKwResults] = useState<KeywordResult[] | null>(null);
   const [kwStatus, setKwStatus] = useState<string | null>(null);
-
-  // ── Domain State ──
   const [domInput, setDomInput] = useState('');
-  const [domResult, setDomResult] = useState<DomainResult | null>(null);
   const [domStatus, setDomStatus] = useState<string | null>(null);
-
-  // ── Ranking State ──
   const [rankKw, setRankKw] = useState('');
-  const [rankResults, setRankResults] = useState<RankingDomain[] | null>(null);
   const [rankStatus, setRankStatus] = useState<string | null>(null);
-
-  // ── CrossRef State ──
   const [crInput, setCrInput] = useState('');
   const [crResults, setCrResults] = useState<{ matches: CrossRefResult[]; missing_domains: string[]; found_in_database: number; not_found: number } | null>(null);
-
-  // ── Competitor State ──
   const [compDomain, setCompDomain] = useState('');
   const [compTarget, setCompTarget] = useState('');
-  const [compResult, setCompResult] = useState<CompetitorResult | null>(null);
   const [compStatus, setCompStatus] = useState<string | null>(null);
+
+  // ── Show preview mode (mock data) ──
+  const [, setShowPreview] = useState(true);
 
   // ── Pipeline Workflow ──
   const [pipelineKeyword, setPipelineKeyword] = useState('');
@@ -236,33 +273,92 @@ export default function SEOIntelligencePage() {
       {activeTab === 'keyword' && (
         <div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            <input value={kwInput} onChange={e => setKwInput(e.target.value)} placeholder="Enter keyword (e.g., 'email verification')" onKeyDown={e => e.key === 'Enter' && !loading && kwInput.trim() && execute('seo/keywords', { keyword: kwInput }).then(r => { if (r) { setKwResults(r.results || []); setKwStatus(r.status || null); } })}
+            <input value={kwInput} onChange={e => setKwInput(e.target.value)} placeholder="Enter keyword (e.g., 'email verification')"
+              onKeyDown={e => e.key === 'Enter' && !loading && kwInput.trim() && execute('seo/keywords', { keyword: kwInput }).then(r => { if (r) setKwStatus(r.status || null); })}
               style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }} />
-            <button onClick={() => execute('seo/keywords', { keyword: kwInput }).then(r => { if (r) { setKwResults(r.results || []); setKwStatus(r.status || null); } })} disabled={loading || !kwInput.trim()} style={{
+            <button onClick={() => execute('seo/keywords', { keyword: kwInput }).then(r => { if (r) setKwStatus(r.status || null); })} disabled={loading || !kwInput.trim()} style={{
               padding: '12px 20px', borderRadius: 12, border: 'none', cursor: 'pointer',
               background: `linear-gradient(135deg, ${tabColor} 0%, color-mix(in srgb, ${tabColor} 70%, #000) 100%)`,
-              color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5,
-              opacity: loading ? 0.5 : 1,
+              color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: loading ? 0.5 : 1,
             }}>{loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Search size={14} />} Research</button>
           </div>
 
           {kwStatus === 'semrush_not_configured' && (
-            <div style={{ background: 'color-mix(in srgb, var(--yellow) 8%, var(--bg-card))', borderRadius: 14, border: '1px solid color-mix(in srgb, var(--yellow) 30%, var(--border))', padding: 20, marginBottom: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <AlertTriangle size={16} style={{ color: 'var(--yellow)' }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>SEMrush API Not Configured</span>
-              </div>
-              <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-                This tool requires a SEMrush API key. Once configured, it will return keyword volume, difficulty, CPC, trends, and related keywords.
-                Go to <strong>AI Settings → Integrations</strong> to add your SEMrush API key.
-              </p>
-              <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-                <div style={{ padding: '8px 14px', borderRadius: 8, background: 'var(--bg-app)', border: '1px solid var(--border)', fontSize: 10, color: 'var(--text-tertiary)' }}>
-                  💡 Meanwhile, use the <strong>Cross-Reference</strong> tab to check domains against your existing data, or chat with <strong>Oracle</strong> below.
-                </div>
-              </div>
+            <div style={{ background: 'color-mix(in srgb, var(--yellow) 8%, var(--bg-card))', borderRadius: 14, border: '1px solid color-mix(in srgb, var(--yellow) 30%, var(--border))', padding: 16, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <AlertTriangle size={14} style={{ color: 'var(--yellow)', flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>SEMrush API not configured. Showing <strong>preview data</strong> below. Add API key in <strong>AI Settings → Integrations</strong>.</span>
             </div>
           )}
+
+          {/* ── Keyword Overview Cards ── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
+            {[
+              { label: 'Volume', value: MOCK_KEYWORD.volume.toLocaleString(), sub: '/mo', color: '#e91e63' },
+              { label: 'Keyword Difficulty', value: `${MOCK_KEYWORD.difficulty}%`, sub: 'Hard', color: MOCK_KEYWORD.difficulty > 60 ? '#ef4444' : MOCK_KEYWORD.difficulty > 30 ? '#f59e0b' : '#22c55e' },
+              { label: 'CPC', value: `$${MOCK_KEYWORD.cpc.toFixed(2)}`, sub: 'avg', color: '#9c27b0' },
+              { label: 'Competition', value: MOCK_KEYWORD.competition.toFixed(2), sub: 'High', color: '#ff9800' },
+              { label: 'Intent', value: MOCK_KEYWORD.intent, sub: '', color: INTENT_COLORS[MOCK_KEYWORD.intent] || '#666' },
+            ].map((c, i) => (
+              <div key={i} style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', padding: 16, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: 3, background: c.color }} />
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>{c.label}</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: c.color }}>{c.value}</div>
+                {c.sub && <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>{c.sub}</div>}
+              </div>
+            ))}
+          </div>
+
+          {/* ── Trend Sparkline ── */}
+          <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', padding: 16, marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 10 }}>12-Month Volume Trend</div>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 60 }}>
+              {MOCK_KEYWORD.trend.map((v, i) => {
+                const max = Math.max(...MOCK_KEYWORD.trend);
+                const h = (v / max) * 100;
+                return <div key={i} style={{ flex: 1, height: `${h}%`, borderRadius: '4px 4px 0 0', background: `linear-gradient(180deg, #e91e63 0%, color-mix(in srgb, #e91e63 40%, transparent) 100%)`, transition: 'height 0.5s', position: 'relative' }}>
+                  <div style={{ position: 'absolute', bottom: -16, left: '50%', transform: 'translateX(-50%)', fontSize: 7, color: 'var(--text-tertiary)' }}>{['J','F','M','A','M','J','J','A','S','O','N','D'][i]}</div>
+                </div>;
+              })}
+            </div>
+          </div>
+
+          {/* ── SERP Features ── */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', alignSelf: 'center', marginRight: 4 }}>SERP Features:</span>
+            {MOCK_KEYWORD.serpFeatures.map(f => (
+              <span key={f} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 10, fontWeight: 600, background: 'color-mix(in srgb, #e91e63 8%, var(--bg-card))', color: '#e91e63', border: '1px solid color-mix(in srgb, #e91e63 20%, var(--border))' }}>{f}</span>
+            ))}
+          </div>
+
+          {/* ── Related Keywords Table ── */}
+          <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Related Keywords ({MOCK_KEYWORD.related.length})</div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                    {['Keyword', 'Intent', 'Volume', 'KD%', 'CPC', 'Trend'].map(h => (
+                      <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {MOCK_KEYWORD.related.map((r, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>{r.kw}</td>
+                      <td style={{ padding: '10px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 9, fontWeight: 700, background: `color-mix(in srgb, ${INTENT_COLORS[r.intent] || '#666'} 12%, transparent)`, color: INTENT_COLORS[r.intent] || '#666' }}>{r.intent}</span></td>
+                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 600 }}>{r.vol.toLocaleString()}</td>
+                      <td style={{ padding: '10px 12px' }}><span style={{ color: r.kd > 60 ? '#ef4444' : r.kd > 30 ? '#f59e0b' : '#22c55e', fontWeight: 700 }}>{r.kd}</span></td>
+                      <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>${r.cpc.toFixed(2)}</td>
+                      <td style={{ padding: '10px 12px' }}><span style={{ color: r.trend > 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>{r.trend > 0 ? '↗' : '↘'} {Math.abs(r.trend)}%</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 8, fontSize: 9, color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'right' }}>📊 Preview data — connect SEMrush API for live metrics</div>
         </div>
       )}
 
@@ -270,47 +366,128 @@ export default function SEOIntelligencePage() {
       {activeTab === 'domain' && (
         <div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            <input value={domInput} onChange={e => setDomInput(e.target.value)} placeholder="Enter domain (e.g., zerobounce.net)" onKeyDown={e => e.key === 'Enter' && !loading && domInput.trim() && execute('seo/domain', { domain: domInput }).then(r => { if (r) { setDomResult(r.result || null); setDomStatus(r.status || null); } })}
+            <input value={domInput} onChange={e => setDomInput(e.target.value)} placeholder="Enter domain (e.g., zerobounce.net)"
+              onKeyDown={e => e.key === 'Enter' && !loading && domInput.trim() && execute('seo/domain', { domain: domInput }).then(r => { if (r) setDomStatus(r.status || null); })}
               style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }} />
-            <button onClick={() => execute('seo/domain', { domain: domInput }).then(r => { if (r) { setDomResult(r.result || null); setDomStatus(r.status || null); } })} disabled={loading || !domInput.trim()} style={{
+            <button onClick={() => execute('seo/domain', { domain: domInput }).then(r => { if (r) setDomStatus(r.status || null); })} disabled={loading || !domInput.trim()} style={{
               padding: '12px 20px', borderRadius: 12, border: 'none', cursor: 'pointer',
-              background: `linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%)`, color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: loading ? 0.5 : 1,
+              background: 'linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%)', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: loading ? 0.5 : 1,
             }}>{loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Globe size={14} />} Analyze</button>
           </div>
 
           {domStatus === 'semrush_not_configured' && (
-            <div style={{ background: 'color-mix(in srgb, var(--yellow) 8%, var(--bg-card))', borderRadius: 14, border: '1px solid color-mix(in srgb, var(--yellow) 30%, var(--border))', padding: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <AlertTriangle size={16} style={{ color: 'var(--yellow)' }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>SEMrush API Not Configured</span>
-              </div>
-              <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, margin: '8px 0 0' }}>Domain analytics requires SEMrush. Add API key in <strong>AI Settings → Integrations</strong>.</p>
+            <div style={{ background: 'color-mix(in srgb, var(--yellow) 8%, var(--bg-card))', borderRadius: 14, border: '1px solid color-mix(in srgb, var(--yellow) 30%, var(--border))', padding: 16, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <AlertTriangle size={14} style={{ color: 'var(--yellow)', flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>SEMrush API not configured. Showing <strong>preview</strong> for <strong>{MOCK_DOMAIN.domain}</strong>.</span>
             </div>
           )}
+
+          {/* Authority Score Gauge + Stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 14, marginBottom: 16 }}>
+            <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', padding: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 100, height: 100, borderRadius: '50%', border: '6px solid color-mix(in srgb, #9c27b0 20%, var(--border))', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', background: `conic-gradient(#9c27b0 ${MOCK_DOMAIN.authority}%, color-mix(in srgb, #9c27b0 10%, var(--bg-app)) 0)` }}>
+                <div style={{ width: 76, height: 76, borderRadius: '50%', background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: '#9c27b0' }}>{MOCK_DOMAIN.authority}</div>
+                  <div style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Authority</div>
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              {[
+                { label: 'Organic Traffic', value: (MOCK_DOMAIN.organicTraffic / 1000).toFixed(1) + 'K', color: '#4caf50' },
+                { label: 'Paid Traffic', value: (MOCK_DOMAIN.paidTraffic / 1000).toFixed(1) + 'K', color: '#2196f3' },
+                { label: 'Organic Keywords', value: (MOCK_DOMAIN.organicKeywords / 1000).toFixed(1) + 'K', color: '#e91e63' },
+                { label: 'Backlinks', value: (MOCK_DOMAIN.backlinks / 1000).toFixed(0) + 'K', color: '#ff9800' },
+                { label: 'Referring Domains', value: (MOCK_DOMAIN.referringDomains / 1000).toFixed(1) + 'K', color: '#9c27b0' },
+                { label: 'Domain', value: MOCK_DOMAIN.domain, color: 'var(--text-primary)' },
+              ].map((s, i) => (
+                <div key={i} style={{ background: 'var(--bg-app)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ fontSize: 8, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>{s.label}</div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Top Organic Keywords */}
+          <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden', marginBottom: 16 }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Top Organic Keywords</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
+                {['Keyword', 'Position', 'Volume', 'Est. Traffic'].map(h => (<th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{h}</th>))}
+              </tr></thead>
+              <tbody>{MOCK_DOMAIN.topKeywords.map((k, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>{k.kw}</td>
+                  <td style={{ padding: '10px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 800, background: k.pos <= 3 ? 'color-mix(in srgb, #4caf50 12%, transparent)' : 'color-mix(in srgb, #ff9800 12%, transparent)', color: k.pos <= 3 ? '#4caf50' : '#ff9800' }}>#{k.pos}</span></td>
+                  <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>{k.vol.toLocaleString()}</td>
+                  <td style={{ padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 600 }}>{k.traffic.toLocaleString()}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+
+          {/* Competitors */}
+          <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Main Organic Competitors</div>
+            {MOCK_DOMAIN.competitors.map((c, i) => (
+              <div key={i} style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Globe size={12} style={{ color: '#9c27b0' }} />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{c.domain}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 12, fontSize: 10, color: 'var(--text-tertiary)' }}>
+                  <span>🔑 {c.commonKw.toLocaleString()} common</span>
+                  <span>📊 Authority: <strong style={{ color: '#9c27b0' }}>{c.authority}</strong></span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 9, color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'right' }}>📊 Preview data — connect SEMrush API for live metrics</div>
         </div>
       )}
 
-      {/* ═══ RANKING DOMAINS ═══ */}
+      {/* ═══ SERP ANALYSIS ═══ */}
       {activeTab === 'ranking' && (
         <div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            <input value={rankKw} onChange={e => setRankKw(e.target.value)} placeholder="Who ranks for this keyword?" onKeyDown={e => e.key === 'Enter' && !loading && rankKw.trim() && execute('seo/ranking', { keyword: rankKw }).then(r => { if (r) { setRankResults(r.results || []); setRankStatus(r.status || null); } })}
+            <input value={rankKw} onChange={e => setRankKw(e.target.value)} placeholder="Who ranks for this keyword?"
+              onKeyDown={e => e.key === 'Enter' && !loading && rankKw.trim() && execute('seo/ranking', { keyword: rankKw }).then(r => { if (r) setRankStatus(r.status || null); })}
               style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }} />
-            <button onClick={() => execute('seo/ranking', { keyword: rankKw }).then(r => { if (r) { setRankResults(r.results || []); setRankStatus(r.status || null); } })} disabled={loading || !rankKw.trim()} style={{
+            <button onClick={() => execute('seo/ranking', { keyword: rankKw }).then(r => { if (r) setRankStatus(r.status || null); })} disabled={loading || !rankKw.trim()} style={{
               padding: '12px 20px', borderRadius: 12, border: 'none', cursor: 'pointer',
-              background: `linear-gradient(135deg, #2196f3 0%, #1565c0 100%)`, color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: loading ? 0.5 : 1,
-            }}>{loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <BarChart3 size={14} />} Find</button>
+              background: 'linear-gradient(135deg, #2196f3 0%, #1565c0 100%)', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5, opacity: loading ? 0.5 : 1,
+            }}>{loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <BarChart3 size={14} />} Analyze SERP</button>
           </div>
 
           {rankStatus === 'semrush_not_configured' && (
-            <div style={{ background: 'color-mix(in srgb, var(--yellow) 8%, var(--bg-card))', borderRadius: 14, border: '1px solid color-mix(in srgb, var(--yellow) 30%, var(--border))', padding: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <AlertTriangle size={16} style={{ color: 'var(--yellow)' }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>SEMrush API Not Configured</span>
-              </div>
-              <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, margin: '8px 0 0' }}>Ranking domain lookup requires SEMrush. Add API key in <strong>AI Settings → Integrations</strong>.</p>
+            <div style={{ background: 'color-mix(in srgb, var(--yellow) 8%, var(--bg-card))', borderRadius: 14, border: '1px solid color-mix(in srgb, var(--yellow) 30%, var(--border))', padding: 16, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <AlertTriangle size={14} style={{ color: 'var(--yellow)', flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Showing preview for <strong>"email verification"</strong>.</span>
             </div>
           )}
+
+          {/* SERP Results Table */}
+          <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Organic Results — "email verification"</span>
+              <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{MOCK_SERP.length} results</span>
+            </div>
+            {MOCK_SERP.map((r, i) => (
+              <div key={i} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: r.pos <= 3 ? 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)' : r.pos <= 5 ? 'linear-gradient(135deg, #2196f3 0%, #1565c0 100%)' : 'var(--bg-app)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, color: r.pos <= 5 ? '#fff' : 'var(--text-tertiary)', flexShrink: 0 }}>#{r.pos}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.title}</div>
+                  <div style={{ fontSize: 10, color: '#4caf50', marginTop: 2 }}>{r.domain}{r.url}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 16, flexShrink: 0, fontSize: 10, color: 'var(--text-tertiary)' }}>
+                  <div><div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Authority</div><span style={{ fontWeight: 700, color: '#9c27b0' }}>{r.authority}</span></div>
+                  <div><div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Traffic</div><span style={{ fontWeight: 700, color: '#2196f3' }}>{r.traffic.toLocaleString()}</span></div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 9, color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'right' }}>📊 Preview data — connect SEMrush API for live metrics</div>
         </div>
       )}
 
@@ -410,7 +587,7 @@ export default function SEOIntelligencePage() {
         </div>
       )}
 
-      {/* ═══ COMPETITOR GAP ═══ */}
+      {/* ═══ KEYWORD GAP ═══ */}
       {activeTab === 'competitor' && (
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
@@ -419,20 +596,52 @@ export default function SEOIntelligencePage() {
             <input value={compTarget} onChange={e => setCompTarget(e.target.value)} placeholder="Competitor domain"
               style={{ padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13 }} />
           </div>
-          <button onClick={() => execute('seo/competitor', { domain: compDomain, competitor_domain: compTarget }).then(r => { if (r) { setCompResult(r.result || null); setCompStatus(r.status || null); } })} disabled={loading || !compDomain.trim()} style={{
+          <button onClick={() => execute('seo/competitor', { domain: compDomain, competitor_domain: compTarget }).then(r => { if (r) setCompStatus(r.status || null); })} disabled={loading || !compDomain.trim()} style={{
             padding: '12px 20px', borderRadius: 12, border: 'none', cursor: 'pointer', width: '100%',
-            background: `linear-gradient(135deg, #ff9800 0%, #ef6c00 100%)`, color: '#fff', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: loading ? 0.5 : 1,
+            background: 'linear-gradient(135deg, #ff9800 0%, #ef6c00 100%)', color: '#fff', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: loading ? 0.5 : 1, marginBottom: 16,
           }}>{loading ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <GitCompare size={14} />} Analyze Gap</button>
 
           {compStatus === 'semrush_not_configured' && (
-            <div style={{ background: 'color-mix(in srgb, var(--yellow) 8%, var(--bg-card))', borderRadius: 14, border: '1px solid color-mix(in srgb, var(--yellow) 30%, var(--border))', padding: 20, marginTop: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <AlertTriangle size={16} style={{ color: 'var(--yellow)' }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>SEMrush API Not Configured</span>
-              </div>
-              <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, margin: '8px 0 0' }}>Competitor gap analysis requires SEMrush. Add API key in <strong>AI Settings → Integrations</strong>.</p>
+            <div style={{ background: 'color-mix(in srgb, var(--yellow) 8%, var(--bg-card))', borderRadius: 14, border: '1px solid color-mix(in srgb, var(--yellow) 30%, var(--border))', padding: 16, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <AlertTriangle size={14} style={{ color: 'var(--yellow)', flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Showing preview gap analysis.</span>
             </div>
           )}
+
+          {/* Gap Summary */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+            <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)', padding: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: 28, fontWeight: 900, color: '#4caf50' }}>{MOCK_GAP.shared}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Shared Keywords</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)', padding: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: 28, fontWeight: 900, color: '#2196f3' }}>{MOCK_GAP.yourUnique}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Your Unique</div>
+            </div>
+            <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)', padding: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: 28, fontWeight: 900, color: '#ef4444' }}>{(MOCK_GAP.theirUnique / 1000).toFixed(1)}K</div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Their Unique (Gap)</div>
+            </div>
+          </div>
+
+          {/* Gap Table */}
+          <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Top Keyword Gaps — Keywords they rank for that you don't</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
+                {['Keyword', 'Volume', 'Their Position', 'Your Position'].map(h => (<th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>{h}</th>))}
+              </tr></thead>
+              <tbody>{MOCK_GAP.gaps.map((g, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text-primary)' }}>{g.kw}</td>
+                  <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>{g.vol.toLocaleString()}</td>
+                  <td style={{ padding: '10px 12px' }}><span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 800, background: 'color-mix(in srgb, #4caf50 12%, transparent)', color: '#4caf50' }}>#{g.theirPos}</span></td>
+                  <td style={{ padding: '10px 12px' }}>{g.yourPos ? <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 800, background: 'color-mix(in srgb, #ff9800 12%, transparent)', color: '#ff9800' }}>#{g.yourPos}</span> : <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, background: 'color-mix(in srgb, #ef4444 12%, transparent)', color: '#ef4444' }}>Not ranking</span>}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 9, color: 'var(--text-tertiary)', fontStyle: 'italic', textAlign: 'right' }}>📊 Preview data — connect SEMrush API for live metrics</div>
         </div>
       )}
 
