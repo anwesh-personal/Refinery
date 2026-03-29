@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, ChevronDown, ChevronUp, Sparkles, Copy, Check, Download } from 'lucide-react';
+import { Send, Loader2, ChevronDown, ChevronUp, Sparkles, Copy, Check, Download, Wrench } from 'lucide-react';
 import { apiCall } from '../lib/api';
 import MarkdownRenderer, { MARKDOWN_STYLES } from './MarkdownRenderer';
 
@@ -24,7 +24,7 @@ interface Agent {
   avatar_url?: string;
 }
 
-interface Msg { id: string; role: string; content: string; tokens_used: number; latency_ms: number; model_used?: string; created_at: string }
+interface Msg { id: string; role: string; content: string; tool_name?: string; tool_input?: any; tool_output?: any; tokens_used: number; latency_ms: number; model_used?: string; created_at: string }
 
 const AGENT_IMAGES: Record<string, string> = {
   data_scientist: '/agents/cipher.jpg', smtp_specialist: '/agents/sentinel.jpg',
@@ -215,6 +215,12 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
                 }}>
                   {m.role === 'user' ? (
                     <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                  ) : m.tool_name ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', color: 'var(--text-tertiary)', fontSize: 11 }}>
+                      <Wrench size={11} color="var(--accent)" />
+                      <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{m.tool_name.replace(/_/g, ' ')}</span>
+                      {m.tool_output && <span style={{ fontSize: 9, color: 'var(--green)' }}>✓</span>}
+                    </div>
                   ) : (
                     <MarkdownRenderer content={m.content} />
                   )}

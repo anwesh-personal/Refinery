@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiCall } from '../lib/api';
 import {
   Send, Loader2, MessageSquare, Plus, Trash2, Pin, X,
-  Save, BookOpen, Sliders, MessageCircle, FileText, Copy, Check
+  Save, BookOpen, Sliders, MessageCircle, FileText, Copy, Check,
+  ChevronDown, ChevronUp, Wrench
 } from 'lucide-react';
 import MarkdownRenderer, { MARKDOWN_STYLES } from './MarkdownRenderer';
 
@@ -16,7 +17,7 @@ interface Agent {
 }
 interface ProviderOption { id: string; label: string; provider_type: string; selected_model: string; cached_models: string[] }
 interface Conversation { id: string; title: string; pinned: boolean; created_at: string; updated_at: string }
-interface Msg { id: string; role: string; content: string; tokens_used: number; latency_ms: number; provider_used?: string; model_used?: string; created_at: string }
+interface Msg { id: string; role: string; content: string; tool_name?: string; tool_input?: any; tool_output?: any; tokens_used: number; latency_ms: number; provider_used?: string; model_used?: string; created_at: string }
 interface KBEntry { id: string; agent_id: string; title: string; content: string; category: string; enabled: boolean; priority: number }
 
 const AGENT_IMAGES: Record<string, string> = {
@@ -69,6 +70,93 @@ const AGENT_META: Record<string, { pages: string[]; description: string; dataAcc
     examples: ['Analyze these verification results', 'Which domains are catch-all?', 'Recommend which unknowns to retry', 'Risk assessment for this batch'],
   },
 };
+
+const TOOL_LABELS: Record<string, { label: string; icon: string }> = {
+  query_database: { label: 'Database Query', icon: '🗄️' },
+  get_table_schema: { label: 'Schema Lookup', icon: '📋' },
+  list_segments: { label: 'Segments', icon: '📊' },
+  create_segment: { label: 'Create Segment', icon: '✨' },
+  get_segment_count: { label: 'Segment Count', icon: '#️⃣' },
+  start_verification: { label: 'Start Verification', icon: '🔍' },
+  get_verification_status: { label: 'Verification Status', icon: '📡' },
+  get_verification_results: { label: 'Verification Results', icon: '✅' },
+  list_verification_jobs: { label: 'Verification Jobs', icon: '📋' },
+  search_keywords: { label: 'Keyword Research', icon: '🔑' },
+  get_domain_analytics: { label: 'Domain Analytics', icon: '🌐' },
+  find_ranking_domains: { label: 'Ranking Domains', icon: '🏆' },
+  cross_reference_domains: { label: 'Cross-Reference', icon: '🔗' },
+  get_competitor_keywords: { label: 'Competitor Keywords', icon: '⚔️' },
+  get_server_health: { label: 'Server Health', icon: '💚' },
+  get_dashboard_stats: { label: 'Dashboard Stats', icon: '📈' },
+  list_s3_sources: { label: 'S3 Sources', icon: '☁️' },
+  start_ingestion: { label: 'Start Ingestion', icon: '📥' },
+  generate_email_copy: { label: 'Email Copy', icon: '✍️' },
+};
+
+function ToolCallCard({ toolName, toolInput, toolOutput }: { toolName: string; toolInput?: any; toolOutput?: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const meta = TOOL_LABELS[toolName] || { label: toolName, icon: '🔧' };
+
+  const formatOutput = (data: any): string => {
+    if (!data) return 'No output';
+    if (typeof data === 'string') return data;
+    try { return JSON.stringify(data, null, 2); } catch { return String(data); }
+  };
+
+  const formatInput = (data: any): string => {
+    if (!data) return '';
+    if (typeof data === 'string') {
+      try { return JSON.stringify(JSON.parse(data), null, 2); } catch { return data; }
+    }
+    return JSON.stringify(data, null, 2);
+  };
+
+  return (
+    <div style={{ borderRadius: 10, border: '1px solid var(--border)', overflow: 'hidden', background: 'var(--bg-hover)', margin: '2px 0' }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          width: '100%', padding: '8px 12px', border: 'none', cursor: 'pointer',
+          background: 'transparent', display: 'flex', alignItems: 'center', gap: 8,
+          textAlign: 'left', fontSize: 12,
+        }}
+      >
+        <span style={{ fontSize: 14 }}>{meta.icon}</span>
+        <Wrench size={12} color="var(--accent)" />
+        <span style={{ fontWeight: 700, color: 'var(--accent)', flex: 1 }}>{meta.label}</span>
+        {toolOutput && (
+          <span style={{ fontSize: 10, color: 'var(--green)', fontWeight: 600 }}>✓ returned</span>
+        )}
+        {expanded ? <ChevronUp size={12} color="var(--text-tertiary)" /> : <ChevronDown size={12} color="var(--text-tertiary)" />}
+      </button>
+
+      {expanded && (
+        <div style={{ borderTop: '1px solid var(--border)' }}>
+          {toolInput && (
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', marginBottom: 4 }}>Input</div>
+              <pre style={{
+                margin: 0, fontSize: 11, lineHeight: 1.5, overflowX: 'auto',
+                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+              }}>{formatInput(toolInput)}</pre>
+            </div>
+          )}
+          {toolOutput && (
+            <div style={{ padding: '8px 12px' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)', marginBottom: 4 }}>Output</div>
+              <pre style={{
+                margin: 0, fontSize: 11, lineHeight: 1.5, overflowX: 'auto', maxHeight: 300,
+                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+              }}>{formatOutput(toolOutput)}</pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function AgentsPanel() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -702,6 +790,8 @@ export default function AgentsPanel() {
                   }}>
                     {m.role === 'user' ? (
                       <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                    ) : m.tool_name ? (
+                      <ToolCallCard toolName={m.tool_name} toolInput={m.tool_input} toolOutput={m.tool_output} />
                     ) : (
                       <MarkdownRenderer content={m.content} />
                     )}
