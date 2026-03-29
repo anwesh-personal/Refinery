@@ -1378,11 +1378,27 @@ export default function EmailVerifierPage() {
                 onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
                 onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}
               />
-              <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 6 }}>
-                Files will be named: <span style={{ fontFamily: 'monospace', color: 'var(--accent)' }}>
-                  {(vaultCustomName.trim() || 'MyLeads').replace(/[^a-zA-Z0-9._\- ]/g, '_').replace(/\s+/g, '_')}_safe_2026-03-29.csv
-                </span> etc.
-              </div>
+              {(() => {
+                const baseName = (vaultCustomName.trim() || 'MyLeads').replace(/[^a-zA-Z0-9._\- ]/g, '_').replace(/\s+/g, '_');
+                const selected = Object.entries(vaultClassifications).filter(([, v]) => v).map(([k]) => k);
+                const dateStr = new Date().toISOString().slice(0, 10);
+                return (
+                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 6 }}>
+                    {selected.length > 0 ? (
+                      <>
+                        <span style={{ marginBottom: 4, display: 'block' }}>{selected.length} file(s) will be created:</span>
+                        {selected.map(cls => (
+                          <div key={cls} style={{ fontFamily: 'monospace', color: 'var(--accent)', marginLeft: 8, lineHeight: 1.8 }}>
+                            📄 {baseName}_{cls}_{dateStr}.csv
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      <span>Select at least one classification below</span>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Classification Filters */}
