@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { apiCall } from '../lib/api';
 import {
   Loader2, ChevronDown, Settings, Activity, AlertTriangle,
-  Zap, Shield, TrendingDown, CheckCircle, XCircle, Download
+  Zap, Shield, TrendingDown, CheckCircle, XCircle
 } from 'lucide-react';
 
 interface BounceConfig {
