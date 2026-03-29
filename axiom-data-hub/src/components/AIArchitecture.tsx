@@ -189,6 +189,55 @@ const LAYERS = [
   { key: 'agent', label: 'AI Agents (Contextual)', color: '#10a37f', emoji: '🤖' },
 ];
 
+// ═══ AGENT PROFILES (Tutorial Cards) ═══
+interface AgentProfile {
+  slug: string; name: string; role: string; color: string;
+  pages: string[]; description: string; dataAccess: string[];
+  exampleQuestions: string[]; capabilities: string[];
+}
+
+const AGENT_PROFILES: AgentProfile[] = [
+  {
+    slug: 'cortex', name: 'Cortex', role: 'Data Scientist', color: '#4285f4',
+    pages: ['Database', 'Segments'],
+    description: 'Cortex is your data scientist. It analyzes your ClickHouse database — schema, column distributions, row counts, and filter state. It lives as a collapsible card at the bottom of the Database page. When you click it, your current table metadata and column list are automatically passed as context.',
+    dataAccess: ['ClickHouse schema', 'Table stats', 'Column metadata', 'Active filters', 'Visible columns'],
+    exampleQuestions: ['Analyze the data quality of this table', 'Find patterns in my lead data', 'Suggest segments based on industry and seniority', 'Build an ICP from top-performing leads'],
+    capabilities: ['data_analysis', 'icp_building', 'pattern_detection', 'schema_analysis'],
+  },
+  {
+    slug: 'bastion', name: 'Bastion', role: 'SMTP & Infrastructure Specialist', color: '#ef4444',
+    pages: ['Config', 'MTA & Swarm'],
+    description: 'Bastion guards your infrastructure. It sees your configured servers (ClickHouse, S3, MTA satellites), their connection status, ping history, and system settings. It lives on the Server Config page and helps troubleshoot connectivity, DNS, and deliverability issues.',
+    dataAccess: ['Server configs', 'Connection status', 'Ping history', 'System settings', 'DNS records'],
+    exampleQuestions: ['Check the health of all my servers', 'Analyze DNS for deliverability issues', 'IP warmup plan for new satellites', 'Troubleshoot MTA configuration'],
+    capabilities: ['dns_analysis', 'smtp_troubleshooting', 'blacklist_checking', 'warmup_planning'],
+  },
+  {
+    slug: 'muse', name: 'Muse', role: 'Email Marketing Strategist', color: '#e91e63',
+    pages: ['Targets', 'Queue'],
+    description: 'Muse is your creative marketing strategist. It sees your target lists (names, email counts, status) and available segments with niche tags and lead counts. It lives on the Targets page and helps craft campaigns, write copy, and optimize send strategies.',
+    dataAccess: ['Target lists', 'Segment composition', 'Audience profiles', 'Email counts', 'Niche tags'],
+    exampleQuestions: ['Write a 5-email cold outreach sequence', 'Subject line ideas for SaaS CTOs', 'Campaign strategy for this niche', 'Optimize send timing for 50K emails'],
+    capabilities: ['copywriting', 'campaign_strategy', 'send_optimization', 'audience_analysis'],
+  },
+  {
+    slug: 'overseer', name: 'Overseer', role: 'AI Supervisor — Executive Briefings', color: '#ffd700',
+    pages: ['Dashboard'],
+    description: 'Overseer is the all-seeing supervisor. It has the widest context: total records, storage usage, 7-day ingestion trends, verification trends, top segments, and the recent activity feed. It lives on the Dashboard and provides executive-level briefings and strategic recommendations.',
+    dataAccess: ['All statistics', 'Ingestion trends (7d)', 'Verification trends (7d)', 'Top segments', 'Activity feed'],
+    exampleQuestions: ['Give me a daily briefing', 'What should I prioritize today?', 'ROI analysis of the verification pipeline', 'Strategic recommendations for scaling'],
+    capabilities: ['strategic_planning', 'cross_domain_analysis', 'executive_briefing', 'trend_analysis'],
+  },
+  {
+    slug: 'litmus', name: 'Litmus', role: 'Verification Engineer', color: '#10a37f',
+    pages: ['Verification'],
+    description: 'Litmus is the verification expert. It appears as a card on the Verification page after a job finishes. It automatically receives the complete job data: file name, total/processed counts, suppression results breakdown, and timestamps. Ask it to analyze results, assess risk, or recommend retries.',
+    dataAccess: ['Job results', 'Suppression breakdown', 'Domain analysis', 'Bounce patterns', 'Timestamps'],
+    exampleQuestions: ['Analyze these verification results', 'Which domains are catch-all?', 'Recommend which unknowns to retry', 'Risk assessment for this batch'],
+    capabilities: ['result_analysis', 'catch_all_detection', 'risk_assessment', 'retry_strategy'],
+  },
+];
 // ═══ Component ═══
 
 export default function AIArchitecture() {
@@ -363,6 +412,148 @@ export default function AIArchitecture() {
           </div>
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* AGENT TUTORIAL — Detailed Breakdown Below the Flow Map       */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+
+      <div style={{ marginTop: 36 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 4px' }}>Meet Your AI Agents</h2>
+        <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '0 0 20px', maxWidth: 600 }}>
+          Each agent is a specialist AI assistant embedded where it's most useful. Configure them in AI Nexus → Agents. Use them on their pages.
+        </p>
+
+        {/* How It Works — 3 Column */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 28 }}>
+          {[
+            { step: '1', title: 'Configure in AI Nexus', desc: 'Go to Agents tab. Click any agent. Edit their Core Prompt, add Prompt Stack instructions, upload Knowledge Base entries, tune temperature.', color: '#8b5cf6' },
+            { step: '2', title: 'Agents Appear on Pages', desc: 'Each agent surfaces as a card on the page where they help. Litmus on Verification, Cortex on Database, etc. They receive the page\'s live data automatically.', color: '#4285f4' },
+            { step: '3', title: 'Ask & Get Insights', desc: 'Click the agent card, ask your question. The agent sees your current data context — no copy-pasting. Responses are powered by your configured AI provider.', color: '#10a37f' },
+          ].map(s => (
+            <div key={s.step} style={{
+              padding: '20px 22px', borderRadius: 14,
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              position: 'relative', overflow: 'hidden',
+            }}>
+              <div style={{
+                position: 'absolute', top: -6, right: -6, width: 48, height: 48, borderRadius: '50%',
+                background: `${s.color}08`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 28, fontWeight: 900, color: `${s.color}25`,
+              }}>{s.step}</div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: s.color, marginBottom: 8 }}>{s.step}</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 6 }}>{s.title}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.6 }}>{s.desc}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Agent Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 20, marginBottom: 36 }}>
+          {AGENT_PROFILES.map(agent => (
+            <div key={agent.slug} style={{
+              borderRadius: 18, overflow: 'hidden', background: 'var(--bg-card)',
+              border: `1px solid ${agent.color}20`, transition: 'transform 0.15s, box-shadow 0.15s',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = `0 16px 40px ${agent.color}15`; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+            >
+              {/* Agent Header */}
+              <div style={{
+                background: `linear-gradient(135deg, ${agent.color} 0%, ${agent.color}cc 100%)`,
+                padding: '20px 22px', display: 'flex', alignItems: 'center', gap: 14,
+              }}>
+                <img src={AGENT_IMGS[agent.slug]} alt={agent.name} style={{
+                  width: 64, height: 64, borderRadius: 16, objectFit: 'cover',
+                  border: '3px solid rgba(255,255,255,0.25)', boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+                }} />
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: '#fff' }}>{agent.name}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>{agent.role}</div>
+                  <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                    {agent.pages.map(p => (
+                      <span key={p} style={{
+                        fontSize: 8, padding: '2px 7px', borderRadius: 4, fontWeight: 700,
+                        background: 'rgba(255,255,255,0.15)', color: '#fff',
+                      }}>📍 {p}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Agent Body */}
+              <div style={{ padding: '18px 22px' }}>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7, margin: '0 0 14px' }}>
+                  {agent.description}
+                </p>
+
+                {/* What it sees */}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                    🔍 What it sees (auto-injected)
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {agent.dataAccess.map(d => (
+                      <span key={d} style={{
+                        padding: '3px 8px', borderRadius: 5, fontSize: 9, fontWeight: 600,
+                        background: 'var(--bg-app)', border: '1px solid var(--border)', color: 'var(--text-secondary)',
+                      }}>{d}</span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Example Questions */}
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                    💬 Example questions
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {agent.exampleQuestions.map((q, i) => (
+                      <div key={i} style={{
+                        padding: '6px 10px', borderRadius: 8, fontSize: 11, color: 'var(--text-primary)',
+                        background: `${agent.color}06`, border: `1px solid ${agent.color}12`,
+                        fontStyle: 'italic',
+                      }}>"{q}"</div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Capabilities */}
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                    ⚡ Capabilities
+                  </div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {agent.capabilities.map(c => (
+                      <span key={c} style={{
+                        padding: '3px 8px', borderRadius: 4, fontSize: 8, fontWeight: 700,
+                        textTransform: 'uppercase', background: `${agent.color}10`, color: agent.color,
+                        border: `1px solid ${agent.color}25`,
+                      }}>{c.replace(/_/g, ' ')}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Configuration Reminder */}
+        <div style={{
+          padding: '20px 24px', borderRadius: 16,
+          background: `linear-gradient(135deg, #8b5cf610 0%, #4285f410 100%)`,
+          border: '1px solid #8b5cf620', display: 'flex', alignItems: 'center', gap: 16,
+        }}>
+          <div style={{ fontSize: 32, flexShrink: 0 }}>⚙️</div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 4 }}>
+              All agents are fully customizable
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              Go to <strong style={{ color: 'var(--accent)' }}>AI Nexus → Agents</strong> → click any agent to open the configuration modal. Edit the <strong>Core Prompt</strong> (personality, expertise, demeanour), add <strong>Prompt Stack</strong> instructions (project-specific rules), upload <strong>Knowledge Base</strong> entries (training data, examples, references), and tune <strong>Temperature</strong> and <strong>Max Tokens</strong>. Changes take effect immediately for all conversations.
+            </div>
+          </div>
+        </div>
+      </div>
 
       <style>{`
         @keyframes slideInPanel {

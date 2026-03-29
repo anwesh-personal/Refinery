@@ -6,7 +6,7 @@ import type { PermissionKey } from './auth/AuthContext';
 import {
   LayoutDashboard, CloudDownload, Database, Filter, ShieldCheck,
   Send, ListOrdered, Server, ScrollText, Users, Settings2,
-  Moon, Sun, LogOut, Menu, X, ChevronRight, Beaker, Palette, Check, PlayCircle, Trash2, Radio, Brain, Sparkles, Target, Layers, Activity, PenTool, Rocket, GitBranch
+  Moon, Sun, LogOut, Menu, X, ChevronRight, Beaker, Palette, Check, PlayCircle, Trash2, Radio, Brain, GitBranch
 } from 'lucide-react';
 
 interface LayoutProps { children: ReactNode; }
@@ -41,13 +41,6 @@ const NAV = [
     items: [
       { name: 'AI Dashboard', icon: LayoutDashboard, path: '/ai-nexus?tab=dashboard', requires: 'canViewConfig' as PermissionKey },
       { name: 'Agents', icon: Brain, path: '/ai-nexus?tab=agents', requires: 'canViewConfig' as PermissionKey },
-      { name: 'Lead Scoring', icon: Sparkles, path: '/ai-nexus?tab=lead-scoring', requires: 'canViewConfig' as PermissionKey },
-      { name: 'ICP Analysis', icon: Target, path: '/ai-nexus?tab=icp-analysis', requires: 'canViewConfig' as PermissionKey },
-      { name: 'Segmentation', icon: Layers, path: '/ai-nexus?tab=list-segmentation', requires: 'canViewConfig' as PermissionKey },
-      { name: 'Bounce Analysis', icon: Activity, path: '/ai-nexus?tab=bounce-analysis', requires: 'canViewConfig' as PermissionKey },
-      { name: 'Enrichment', icon: Database, path: '/ai-nexus?tab=data-enrichment', requires: 'canViewConfig' as PermissionKey },
-      { name: 'Content Gen', icon: PenTool, path: '/ai-nexus?tab=content-generation', requires: 'canViewConfig' as PermissionKey },
-      { name: 'Optimizer', icon: Rocket, path: '/ai-nexus?tab=campaign-optimizer', requires: 'canViewConfig' as PermissionKey },
       { name: 'Architecture', icon: GitBranch, path: '/ai-nexus?tab=architecture', requires: 'canViewConfig' as PermissionKey },
       { name: 'AI Settings', icon: Settings2, path: '/ai-nexus?tab=settings', requires: 'canViewConfig' as PermissionKey },
     ],
