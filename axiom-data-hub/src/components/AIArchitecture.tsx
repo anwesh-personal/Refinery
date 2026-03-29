@@ -19,11 +19,13 @@ interface NodeData {
   [key: string]: unknown;
 }
 
-// ── Agent Avatars ──
+// ── Agent Avatars — must match LIVE Supabase names ──
 const AGENT_IMGS: Record<string, string> = {
-  cortex: '/agents/cortex.png', sentinel: '/agents/sentinel.png',
-  muse: '/agents/muse.png', overseer: '/agents/overseer.png',
-  litmus: '/agents/litmus.png',
+  cipher: '/agents/cipher.png',
+  sentinel: '/agents/sentinel.png',
+  oracle: '/agents/oracle.jpg',
+  crucible: '/agents/crucible.png',
+  argus: '/agents/argus.png',
 };
 
 // ═══ Custom Node Components ═══
@@ -145,11 +147,11 @@ const initialNodes: Node<NodeData>[] = [
   { id: 'nexus', type: 'hub', position: { x: 310, y: 440 }, data: { label: 'AI NEXUS', subtitle: 'Configuration hub for all AI agents, tools, and providers', color: 'var(--purple)', icon: '🧠', layer: 'hub', details: '**AI Nexus** is the central configuration hub.\n\n**It does NOT process data itself.** Instead, it:\n\n1. **Configures AI Providers** — API keys, model selection, fallback routing\n2. **Manages Agents** — Core prompts, prompt stacks, knowledge bases, temperature\n3. **Tracks Usage** — Token counts, costs, latency per call\n4. **Hosts Tools** — Standalone AI features (ICP, Scoring, Enrichment, etc.)\n\n**The agents configured here are then surfaced contextually on the pages where they\'re useful.** You don\'t chat with agents in AI Nexus — you configure them here, use them where they work.\n\n**Page:** `/ai-nexus`' } },
 
   // Row 3: Agents (Bottom)
-  { id: 'cortex', type: 'agent', position: { x: 0, y: 620 }, data: { label: 'Cortex', subtitle: 'Data Scientist — analyzes your data, finds patterns, builds ICPs', color: 'var(--blue)', icon: '📊', layer: 'agent', pages: ['Database', 'Merge', 'Segments'], dataAccess: ['ClickHouse schema', 'Table stats', 'Column metadata', 'Row samples'], capabilities: ['data_analysis', 'icp_building', 'pattern_detection', 'segmentation'], details: '**Cortex** is your data scientist.\n\n**Where you\'ll find it:** A collapsible card at the bottom of the **Database**, **Merge Playground**, and **Segments** pages.\n\n**What it sees:** Your ClickHouse table schema, column names, row counts, data distributions, and current filter state.\n\n**What to ask it:**\n- "Analyze the data quality of this table"\n- "Find patterns in my lead data"\n- "Suggest segments based on industry and seniority"\n- "Build an ICP from my best-performing leads"\n\n**How it connects:** When you click the Cortex card on the Database page, it automatically receives your table metadata, column list, and current view as context. No copy-pasting needed.' } },
-  { id: 'sentinel', type: 'agent', position: { x: 190, y: 620 }, data: { label: 'Sentinel', subtitle: 'SMTP Specialist — guards your infrastructure', color: 'var(--red)', icon: '🛡️', layer: 'agent', pages: ['Config', 'MTA'], dataAccess: ['Server configs', 'DNS records', 'System settings'], capabilities: ['dns_analysis', 'smtp_troubleshooting', 'blacklist_checking'], details: '**Sentinel** is your infrastructure guardian.\n\n**Where you\'ll find it:** A collapsible card at the bottom of the **Config** and **MTA Config** pages.\n\n**What it sees:** Your configured servers (ClickHouse, S3, MTA), their connection status, ping history, and system settings.\n\n**What to ask it:**\n- "Check the health of all my servers"\n- "Analyze my DNS configuration for deliverability"\n- "What\'s wrong with my MTA configuration?"\n- "IP warmup recommendations for a new satellite"\n\n**How it connects:** Server data from the Config page is automatically passed as context.' } },
-  { id: 'muse', type: 'agent', position: { x: 380, y: 620 }, data: { label: 'Muse', subtitle: 'Email Marketer — writes copy, plans campaigns', color: 'var(--red)', icon: '✉️', layer: 'agent', pages: ['Targets', 'Queue'], dataAccess: ['Target lists', 'Segment composition', 'Audience profiles'], capabilities: ['copywriting', 'campaign_strategy', 'send_optimization'], details: '**Muse** is your creative marketing strategist.\n\n**Where you\'ll find it:** A collapsible card on the **Targets** and **Queue** pages.\n\n**What it sees:** Your target lists (names, email counts, status), available segments with their niche tags and lead counts.\n\n**What to ask it:**\n- "Write a 5-email cold outreach sequence for this audience"\n- "Optimize send timing for 50K emails"\n- "Subject line ideas for SaaS CTOs"\n- "Campaign strategy for this niche"\n\n**How it connects:** Target list and segment data is passed as context. Muse knows your audience composition.' } },
-  { id: 'overseer', type: 'agent', position: { x: 560, y: 620 }, data: { label: 'Overseer', subtitle: 'Supervisor — sees everything, makes strategic calls', color: 'var(--yellow)', icon: '👑', layer: 'agent', pages: ['Dashboard'], dataAccess: ['All stats', 'All trends', 'All activity', 'All agents'], capabilities: ['strategic_planning', 'cross_domain_analysis', 'executive_briefing'], details: '**Overseer** is your AI twin — the all-rounder supervisor.\n\n**Where you\'ll find it:** A collapsible card on the **Dashboard** page.\n\n**What it sees:** Everything: total records, storage usage, ingestion trends (7d), verification trends (7d), top segments, recent activity feed.\n\n**What to ask it:**\n- "Give me a daily briefing"\n- "What should I prioritize today?"\n- "ROI analysis of my verification pipeline"\n- "Strategic recommendations for scaling"\n\n**How it connects:** Dashboard stats are automatically injected. Overseer has the widest context of any agent.' } },
-  { id: 'litmus', type: 'agent', position: { x: 750, y: 620 }, data: { label: 'Litmus', subtitle: 'Verification Engineer — the definitive test', color: 'var(--green)', icon: '🔬', layer: 'agent', pages: ['Verification'], dataAccess: ['Job results', 'SMTP responses', 'Bounce patterns', 'Domain analysis'], capabilities: ['result_analysis', 'catch_all_detection', 'risk_assessment', 'retry_strategy'], details: '**Litmus** is your verification engineer.\n\n**Where you\'ll find it:** A collapsible card on the **Verification** page — appears after a job finishes.\n\n**What it sees:** Complete job data: file name, total emails, processed count, suppression results breakdown (ok, ok_for_all, risky, unknown, etc.), upload/completion timestamps.\n\n**What to ask it:**\n- "Analyze these verification results"\n- "Which domains are catch-all?"\n- "Recommend which unknowns to retry"\n- "Risk assessment for this batch"\n\n**How it connects:** After a verification job completes, Litmus automatically receives the full job results as context. Just click and ask.' } },
+  { id: 'cipher', type: 'agent', position: { x: 0, y: 620 }, data: { label: 'Cipher', subtitle: 'Data Scientist — analyzes data, finds patterns, builds ICPs', color: 'var(--blue)', icon: '📊', layer: 'agent', pages: ['Database', 'Merge', 'Segments'], dataAccess: ['ClickHouse schema', 'Table stats', 'Column metadata', 'Row samples'], capabilities: ['data_analysis', 'icp_building', 'pattern_detection', 'segmentation'], details: '**Cipher** is your data scientist.\n\n**Where you\'ll find it:** A collapsible card at the bottom of the **Database**, **Merge Playground**, and **Segments** pages.\n\n**What it sees:** Your ClickHouse table schema, column names, row counts, data distributions, and current filter state.\n\n**What to ask it:**\n- "Analyze the data quality of this table"\n- "Find patterns in my lead data"\n- "Suggest segments based on industry and seniority"\n- "Build an ICP from my best-performing leads"\n\n**How it connects:** When you click the Cipher card on the Database page, it automatically receives your table metadata, column list, and current view as context.' } },
+  { id: 'sentinel', type: 'agent', position: { x: 190, y: 620 }, data: { label: 'Sentinel', subtitle: 'SMTP Specialist — guards your infrastructure', color: 'var(--red)', icon: '🛡️', layer: 'agent', pages: ['Config', 'Email Infrastructure'], dataAccess: ['Server configs', 'DNS records', 'SMTP servers'], capabilities: ['dns_analysis', 'smtp_troubleshooting', 'blacklist_checking'], details: '**Sentinel** is your infrastructure guardian.\n\n**Where you\'ll find it:** A collapsible card at the bottom of the **Config** and **Email Infrastructure** pages.\n\n**What it sees:** Your configured servers (ClickHouse, S3, SMTP), connection status, ping history, and system settings.\n\n**What to ask it:**\n- "Check the health of all my servers"\n- "Analyze my DNS configuration for deliverability"\n- "IP warmup recommendations for a new satellite"\n\n**How it connects:** Server data from the Config page is automatically passed as context.' } },
+  { id: 'oracle', type: 'agent', position: { x: 380, y: 620 }, data: { label: 'Oracle', subtitle: 'SEO & Audience Intelligence — keyword research, domain analytics', color: 'var(--red)', icon: '🔮', layer: 'agent', pages: ['Targets', 'Segments'], dataAccess: ['SEMrush data', 'Keyword metrics', 'Domain analytics', 'Competitor landscape'], capabilities: ['keyword_research', 'domain_analytics', 'competitor_analysis', 'audience_discovery'], details: '**Oracle** is your SEO & audience intelligence agent.\n\n**Where you\'ll find it:** A collapsible card on the **Targets** and **Segments** pages.\n\n**What it does:** Maps the digital landscape — keywords, ranking domains, competitors, audiences. Bridges SEMrush data into prospecting intelligence.\n\n**What to ask it:**\n- "Find keywords for this niche"\n- "Which domains rank for this keyword?"\n- "Cross-reference ranking domains with our database"\n- "Competitor analysis for this industry"\n\n**How it connects:** SEMrush API integration. Cross-references domains against your ClickHouse data.' } },
+  { id: 'crucible', type: 'agent', position: { x: 560, y: 620 }, data: { label: 'Crucible', subtitle: 'Supervisor — sees everything, makes strategic calls', color: 'var(--yellow)', icon: '👑', layer: 'agent', pages: ['Dashboard'], dataAccess: ['All stats', 'All trends', 'All activity', 'All agents'], capabilities: ['strategic_planning', 'cross_domain_analysis', 'executive_briefing'], details: '**Crucible** is your AI twin — the all-rounder supervisor.\n\n**Where you\'ll find it:** A collapsible card on the **Dashboard** page.\n\n**What it sees:** Everything: total records, storage usage, ingestion trends (7d), verification trends (7d), top segments, recent activity feed.\n\n**What to ask it:**\n- "Give me a daily briefing"\n- "What should I prioritize today?"\n- "ROI analysis of my verification pipeline"\n- "Strategic recommendations for scaling"\n\n**How it connects:** Dashboard stats are automatically injected. Crucible has the widest context of any agent.' } },
+  { id: 'argus', type: 'agent', position: { x: 750, y: 620 }, data: { label: 'Argus', subtitle: 'Verification Engineer — the definitive test', color: 'var(--green)', icon: '🔬', layer: 'agent', pages: ['Verification'], dataAccess: ['Job results', 'SMTP responses', 'Bounce patterns', 'Domain analysis'], capabilities: ['result_analysis', 'catch_all_detection', 'risk_assessment', 'retry_strategy'], details: '**Argus** is your verification engineer.\n\n**Where you\'ll find it:** A collapsible card on the **Verification** page — appears after a job finishes.\n\n**What it sees:** Complete job data: file name, total emails, processed count, suppression results breakdown (ok, ok_for_all, risky, unknown, etc.), upload/completion timestamps.\n\n**What to ask it:**\n- "Analyze these verification results"\n- "Which domains are catch-all?"\n- "Recommend which unknowns to retry"\n- "Risk assessment for this batch"\n\n**How it connects:** After a verification job completes, Argus automatically receives the full job results as context. Just click and ask.' } },
 ];
 
 const initialEdges: Edge[] = [
@@ -166,11 +168,11 @@ const initialEdges: Edge[] = [
   { id: 'e-tgt-q', source: 'target', target: 'queue', animated: true, style: { stroke: 'var(--red)', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--red)' } },
 
   // Nexus ↔ Agents
-  { id: 'e-nx-cortex', source: 'nexus', target: 'cortex', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 }, label: 'configures', labelStyle: { fontSize: 7, fill: 'var(--text-tertiary)' } },
+  { id: 'e-nx-cipher', source: 'nexus', target: 'cipher', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 }, label: 'configures', labelStyle: { fontSize: 7, fill: 'var(--text-tertiary)' } },
   { id: 'e-nx-sentinel', source: 'nexus', target: 'sentinel', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 } },
-  { id: 'e-nx-muse', source: 'nexus', target: 'muse', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 } },
-  { id: 'e-nx-overseer', source: 'nexus', target: 'overseer', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 } },
-  { id: 'e-nx-litmus', source: 'nexus', target: 'litmus', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 } },
+  { id: 'e-nx-oracle', source: 'nexus', target: 'oracle', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 } },
+  { id: 'e-nx-crucible', source: 'nexus', target: 'crucible', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 } },
+  { id: 'e-nx-argus', source: 'nexus', target: 'argus', type: 'smoothstep', style: { stroke: 'var(--purple)', strokeWidth: 1.5 } },
 
   // Pipeline → Nexus (AI enhancement)
   { id: 'e-ing-nx', source: 'ingest', target: 'nexus', sourceHandle: 'bot', type: 'smoothstep', style: { stroke: 'var(--blue)' } },
@@ -198,41 +200,41 @@ interface AgentProfile {
 
 const AGENT_PROFILES: AgentProfile[] = [
   {
-    slug: 'cortex', name: 'Cortex', role: 'Data Scientist', color: 'var(--blue)',
+    slug: 'cipher', name: 'Cipher', role: 'Data Scientist', color: 'var(--blue)',
     pages: ['Database', 'Segments'],
-    description: 'Cortex is your data scientist. It analyzes your ClickHouse database — schema, column distributions, row counts, and filter state. It lives as a collapsible card at the bottom of the Database page. When you click it, your current table metadata and column list are automatically passed as context.',
+    description: 'Cipher is your data scientist. It analyzes your ClickHouse database — schema, column distributions, row counts, and filter state. It lives as a collapsible card at the bottom of the Database page. When you click it, your current table metadata and column list are automatically passed as context.',
     dataAccess: ['ClickHouse schema', 'Table stats', 'Column metadata', 'Active filters', 'Visible columns'],
     exampleQuestions: ['Analyze the data quality of this table', 'Find patterns in my lead data', 'Suggest segments based on industry and seniority', 'Build an ICP from top-performing leads'],
     capabilities: ['data_analysis', 'icp_building', 'pattern_detection', 'schema_analysis'],
   },
   {
     slug: 'sentinel', name: 'Sentinel', role: 'SMTP & Infrastructure Specialist', color: 'var(--red)',
-    pages: ['Config', 'MTA & Swarm'],
-    description: 'Sentinel guards your infrastructure. It sees your configured servers (ClickHouse, S3, MTA satellites), their connection status, ping history, and system settings. It lives on the Server Config page and helps troubleshoot connectivity, DNS, and deliverability issues.',
-    dataAccess: ['Server configs', 'Connection status', 'Ping history', 'System settings', 'DNS records'],
-    exampleQuestions: ['Check the health of all my servers', 'Analyze DNS for deliverability issues', 'IP warmup plan for new satellites', 'Troubleshoot MTA configuration'],
+    pages: ['Config', 'Email Infrastructure'],
+    description: 'Sentinel guards your infrastructure. It sees your configured servers (ClickHouse, S3, SMTP delivery servers), their connection status, ping history, and system settings. It lives on the Server Config and Email Infrastructure pages and helps troubleshoot connectivity, DNS, and deliverability issues.',
+    dataAccess: ['Server configs', 'Connection status', 'Ping history', 'SMTP servers', 'DNS records'],
+    exampleQuestions: ['Check the health of all my servers', 'Analyze DNS for deliverability issues', 'IP warmup plan for new satellites', 'Troubleshoot SMTP configuration'],
     capabilities: ['dns_analysis', 'smtp_troubleshooting', 'blacklist_checking', 'warmup_planning'],
   },
   {
-    slug: 'muse', name: 'Muse', role: 'Email Marketing Strategist', color: 'var(--red)',
-    pages: ['Targets', 'Queue'],
-    description: 'Muse is your creative marketing strategist. It sees your target lists (names, email counts, status) and available segments with niche tags and lead counts. It lives on the Targets page and helps craft campaigns, write copy, and optimize send strategies.',
-    dataAccess: ['Target lists', 'Segment composition', 'Audience profiles', 'Email counts', 'Niche tags'],
-    exampleQuestions: ['Write a 5-email cold outreach sequence', 'Subject line ideas for SaaS CTOs', 'Campaign strategy for this niche', 'Optimize send timing for 50K emails'],
-    capabilities: ['copywriting', 'campaign_strategy', 'send_optimization', 'audience_analysis'],
+    slug: 'oracle', name: 'Oracle', role: 'SEO & Audience Intelligence', color: 'var(--red)',
+    pages: ['Targets', 'Segments'],
+    description: 'Oracle maps the digital landscape — keywords, ranking domains, competitors, audiences. It bridges SEMrush data into prospecting intelligence. It cross-references ranking domains against your ClickHouse data to find overlap between search signals and your lead database.',
+    dataAccess: ['SEMrush data', 'Keyword metrics', 'Domain analytics', 'Competitor landscape', 'universal_person cross-ref'],
+    exampleQuestions: ['Find keywords for this niche', 'Which domains rank for this keyword?', 'Cross-reference ranking domains with our database', 'Competitor analysis for this industry'],
+    capabilities: ['keyword_research', 'domain_analytics', 'competitor_analysis', 'audience_discovery'],
   },
   {
-    slug: 'overseer', name: 'Overseer', role: 'AI Supervisor — Executive Briefings', color: 'var(--yellow)',
+    slug: 'crucible', name: 'Crucible', role: 'AI Supervisor — Executive Briefings', color: 'var(--yellow)',
     pages: ['Dashboard'],
-    description: 'Overseer is the all-seeing supervisor. It has the widest context: total records, storage usage, 7-day ingestion trends, verification trends, top segments, and the recent activity feed. It lives on the Dashboard and provides executive-level briefings and strategic recommendations.',
+    description: 'Crucible is the all-seeing supervisor and Anwesh\'s AI twin. It has the widest context: total records, storage usage, 7-day ingestion trends, verification trends, top segments, and the recent activity feed. It lives on the Dashboard and provides executive-level briefings and strategic recommendations.',
     dataAccess: ['All statistics', 'Ingestion trends (7d)', 'Verification trends (7d)', 'Top segments', 'Activity feed'],
     exampleQuestions: ['Give me a daily briefing', 'What should I prioritize today?', 'ROI analysis of the verification pipeline', 'Strategic recommendations for scaling'],
     capabilities: ['strategic_planning', 'cross_domain_analysis', 'executive_briefing', 'trend_analysis'],
   },
   {
-    slug: 'litmus', name: 'Litmus', role: 'Verification Engineer', color: 'var(--green)',
+    slug: 'argus', name: 'Argus', role: 'Verification Engineer', color: 'var(--green)',
     pages: ['Verification'],
-    description: 'Litmus is the verification expert. It appears as a card on the Verification page after a job finishes. It automatically receives the complete job data: file name, total/processed counts, suppression results breakdown, and timestamps. Ask it to analyze results, assess risk, or recommend retries.',
+    description: 'Argus is the verification expert. It appears as a card on the Verification page after a job finishes. It automatically receives the complete job data: file name, total/processed counts, suppression results breakdown, and timestamps. Ask it to analyze results, assess risk, or recommend retries.',
     dataAccess: ['Job results', 'Suppression breakdown', 'Domain analysis', 'Bounce patterns', 'Timestamps'],
     exampleQuestions: ['Analyze these verification results', 'Which domains are catch-all?', 'Recommend which unknowns to retry', 'Risk assessment for this batch'],
     capabilities: ['result_analysis', 'catch_all_detection', 'risk_assessment', 'retry_strategy'],
