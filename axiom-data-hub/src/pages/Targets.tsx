@@ -4,6 +4,7 @@ import { ServerSelector } from '../components/ServerSelector';
 import { useState, useEffect, useCallback } from 'react';
 import { apiCall } from '../lib/api';
 import AudiencePushModal from '../components/AudiencePushModal';
+import AgentCard from '../components/AgentCard';
 
 /* ── Types ── */
 interface TargetList {
@@ -332,6 +333,20 @@ export default function TargetsPage() {
             <div style={{ fontSize: 13, marginTop: 4 }}>Create a target list from a verified segment above</div>
           </div>
         )}
+      </div>
+
+      {/* Muse AI Agent — Email Marketing */}
+      <div style={{ marginTop: 24, marginBottom: 24 }}>
+        <AgentCard
+          slug="email_marketer"
+          contextLabel="Campaign Strategy — Target Lists"
+          context={{
+            targetLists: lists.map(l => ({ name: l.name, emails: Number(l.email_count), status: l.status })),
+            totalLists: stats?.total_lists,
+            totalEmails: stats?.total_emails,
+            availableSegments: segments.map(s => ({ name: s.name, leads: Number(s.lead_count), niche: s.niche })),
+          }}
+        />
       </div>
 
       <AudiencePushModal

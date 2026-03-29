@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ServerSelector } from '../components/ServerSelector';
 import { apiCall } from '../lib/api';
 import { useToast } from '../components/Toast';
+import AgentCard from '../components/AgentCard';
 
 // --- Interfaces ---
 interface DbStats { totalRows: string; totalBytes: string; tableCount: string; segmentCount: string; }
@@ -1503,6 +1504,23 @@ export default function DatabasePage() {
           </div>
         </>
       )}
+      {/* Cortex AI Agent — Data Analysis */}
+      <div style={{ marginTop: 24, marginBottom: 24 }}>
+        <AgentCard
+          slug="data_scientist"
+          contextLabel="Data Analysis — Universal Person Database"
+          context={{
+            totalRows: stats?.totalRows,
+            totalBytes: stats?.totalBytes,
+            tableCount: stats?.tableCount,
+            segmentCount: stats?.segmentCount,
+            tables: tables.map(t => ({ name: t.table, rows: t.rows, size: t.bytes_on_disk })),
+            columns: allColumns,
+            currentFilters: Object.entries(filters).filter(([_, v]) => v).length,
+            visibleColumns: Object.entries(visibleCols).filter(([_, v]) => v).map(([k]) => k),
+          }}
+        />
+      </div>
     </>
   );
 }

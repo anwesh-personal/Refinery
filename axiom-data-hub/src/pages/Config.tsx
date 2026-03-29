@@ -4,6 +4,7 @@ import { apiCall } from '../lib/api';
 import { useServers } from '../components/ServerSelector';
 import { Server, Plus, Trash2, Edit2, Play, CheckCircle, XCircle, Database, Cloud, Settings, Save } from 'lucide-react';
 import { Can } from '../auth/ProtectedRoute';
+import AgentCard from '../components/AgentCard';
 
 interface ServerData {
   id: string;
@@ -593,6 +594,21 @@ export default function ConfigPage() {
             </Can>
           </div>
         )}
+      </div>
+      {/* Bastion AI Agent — Infrastructure Analysis */}
+      <div style={{ marginTop: 24, marginBottom: 24 }}>
+        <AgentCard
+          slug="smtp_specialist"
+          contextLabel="Infrastructure Health — Server Config"
+          context={{
+            servers: servers.map(s => ({
+              name: s.name, type: s.type, host: s.host, port: s.port,
+              isDefault: s.is_default, isActive: s.is_active,
+              lastPingOk: s.last_ping_ok, lastPingAt: s.last_ping_at,
+            })),
+            systemConfig: sysConfig,
+          }}
+        />
       </div>
     </>
   );

@@ -30,7 +30,9 @@ ALTER TABLE ai_agents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT no
 -- RLS
 ALTER TABLE ai_agent_knowledge ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Anyone can view agent KB" ON ai_agent_knowledge;
 CREATE POLICY "Anyone can view agent KB" ON ai_agent_knowledge FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Superadmins manage agent KB" ON ai_agent_knowledge;
 CREATE POLICY "Superadmins manage agent KB" ON ai_agent_knowledge FOR ALL TO authenticated
   USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'superadmin'))
   WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'superadmin'));

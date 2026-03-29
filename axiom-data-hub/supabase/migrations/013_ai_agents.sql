@@ -59,15 +59,23 @@ ALTER TABLE ai_agents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_agent_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_agent_messages ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Anyone can view agents" ON ai_agents;
 CREATE POLICY "Anyone can view agents" ON ai_agents FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Superadmins manage agents" ON ai_agents;
 CREATE POLICY "Superadmins manage agents" ON ai_agents FOR ALL TO authenticated USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'superadmin')) WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'superadmin'));
 
+DROP POLICY IF EXISTS "Users see own conversations" ON ai_agent_conversations;
 CREATE POLICY "Users see own conversations" ON ai_agent_conversations FOR SELECT TO authenticated USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "Users create conversations" ON ai_agent_conversations;
 CREATE POLICY "Users create conversations" ON ai_agent_conversations FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid());
+DROP POLICY IF EXISTS "Users update own conversations" ON ai_agent_conversations;
 CREATE POLICY "Users update own conversations" ON ai_agent_conversations FOR UPDATE TO authenticated USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "Users delete own conversations" ON ai_agent_conversations;
 CREATE POLICY "Users delete own conversations" ON ai_agent_conversations FOR DELETE TO authenticated USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users see own messages" ON ai_agent_messages;
 CREATE POLICY "Users see own messages" ON ai_agent_messages FOR SELECT TO authenticated USING (EXISTS (SELECT 1 FROM ai_agent_conversations WHERE id = conversation_id AND user_id = auth.uid()));
+DROP POLICY IF EXISTS "System inserts messages" ON ai_agent_messages;
 CREATE POLICY "System inserts messages" ON ai_agent_messages FOR INSERT TO authenticated WITH CHECK (true);
 
 -- ── Updated_at trigger ──
@@ -75,6 +83,7 @@ CREATE OR REPLACE FUNCTION update_agent_conv_updated_at() RETURNS TRIGGER AS $$
 BEGIN NEW.updated_at = now(); RETURN NEW; END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_agent_conv_updated ON ai_agent_conversations;
 CREATE TRIGGER trigger_agent_conv_updated
   BEFORE UPDATE ON ai_agent_conversations
   FOR EACH ROW EXECUTE FUNCTION update_agent_conv_updated_at();
@@ -267,4 +276,11 @@ YOU CAN USE THESE TOOLS:
 
 Your mission: maximize verification accuracy while minimizing false positives. Every email that passes your review should be sendable. Every reject should be justified.')
 
-ON CONFLICT (slug) DO NOTHING;
+ON CONFLICT (slug) DO UPDATE SET
+  name = EXCLUDED.name,
+  role = EXCLUDED.role,
+  avatar_emoji = EXCLUDED.avatar_emoji,
+  accent_color = EXCLUDED.accent_color,
+  greeting = EXCLUDED.greeting,
+  capabilities = EXCLUDED.capabilities,
+  system_prompt = EXCLUDED.system_prompt;

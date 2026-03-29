@@ -3,6 +3,7 @@ import { ShieldCheck, CheckCircle, XCircle, Clock, Upload, RefreshCw, Activity, 
 import { PageHeader, StatCard, SectionHeader, DataTable, Button, Input, Badge } from '../components/UI';
 import { ServerSelector, useServers } from '../components/ServerSelector';
 import { apiCall } from '../lib/api';
+import AgentCard from '../components/AgentCard';
 
 interface VerifyStats {
   verified: number;
@@ -1108,6 +1109,28 @@ export default function VerificationPage() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Litmus AI Agent — Post-Verification Analysis ── */}
+      {v550DetailJob && v550DetailJob.status === 'finished' && (
+        <div style={{ marginTop: 16 }}>
+          <AgentCard
+            slug="verification_engineer"
+            contextLabel={`Analyze Verification Job — ${v550DetailJob.file_name}`}
+            context={{
+              jobId: v550DetailJob.jobId,
+              fileName: v550DetailJob.file_name,
+              status: v550DetailJob.status,
+              totalEmails: v550DetailJob.count,
+              processed: v550DetailJob.processed,
+              duplicates: v550DetailJob.duplicates,
+              results: v550DetailJob.suppression_results,
+              breakdown: v550Breakdown,
+              uploadTime: v550DetailJob.uploadTime,
+              completionTime: v550DetailJob.completionTime,
+            }}
+          />
         </div>
       )}
     </>

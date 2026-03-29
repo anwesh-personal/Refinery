@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { apiCall } from '../lib/api';
 import { TeamNetworkGraph } from '../components/TeamNetworkGraph';
+import AgentCard from '../components/AgentCard';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 
 interface DbStats {
@@ -333,6 +334,25 @@ export default function DashboardPage() {
           <TeamNetworkGraph />
         </div>
       )}
+
+      {/* Overseer AI Agent — Executive Briefing */}
+      <div className="animate-fadeIn stagger-3" style={{ marginBottom: 36 }}>
+        <AgentCard
+          slug="supervisor"
+          contextLabel="Executive Briefing — Refinery Status"
+          context={{
+            totalRecords: totalLeads,
+            totalStorage: formatBytes(totalBytes),
+            activeTablesCount: dbStats?.tableCount,
+            segmentCount: dbStats?.segmentCount,
+            pendingIngestionJobs: pendingJobs,
+            ingestionTrend: ingestionTrends.slice(-7).map(t => ({ day: t.day, rows: Number(t.rows) })),
+            verificationTrend: verificationTrends.slice(-7).map(t => ({ day: t.day, valid: Number(t.valid), invalid: Number(t.invalid) })),
+            topSegments: segmentBreakdown.slice(0, 5).map(s => ({ name: s.name, leads: Number(s.lead_count) })),
+            recentActivity: activities.slice(0, 5).map(a => ({ type: a.type, title: a.title, status: a.status })),
+          }}
+        />
+      </div>
 
       {/* Two Column Layout (Actions / Activity) */}
       <div className="animate-fadeIn stagger-4" style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(350px, 1fr)', gap: 36, marginBottom: 36 }}>
