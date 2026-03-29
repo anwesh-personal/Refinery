@@ -18,15 +18,7 @@ import EmailVerifierPage from './pages/EmailVerifier';
 import TutorialPage from './pages/Tutorial';
 import JanitorPage from './pages/Janitor';
 import MTAConfigPage from './pages/MTAConfig';
-import AISettingsPage from './pages/AISettings';
-import LeadScoringPage from './pages/LeadScoring';
-import ICPAnalysisPage from './pages/ICPAnalysis';
-import ListSegmentationPage from './pages/ListSegmentation';
-import BounceAnalysisPage from './pages/BounceAnalysis';
-import DataEnrichmentPage from './pages/DataEnrichment';
-import ContentGenerationPage from './pages/ContentGeneration';
-import CampaignOptimizerPage from './pages/CampaignOptimizer';
-import AIDashboardPage from './pages/AIDashboard';
+import AINexusPage from './pages/AINexus';
 import ImpersonationBanner from './components/ImpersonationBanner';
 import { CommandPalette } from './components/CommandPalette';
 import { ServerProvider } from './components/ServerSelector';
@@ -63,15 +55,7 @@ export default function App() {
                     <Route path="/tutorial" element={<TutorialPage />} />
                     <Route path="/janitor" element={<JanitorPage />} />
                     <Route path="/mta-config" element={<ProtectedRoute requires="canViewConfig"><MTAConfigPage /></ProtectedRoute>} />
-                    <Route path="/ai-settings" element={<ProtectedRoute requires="canViewConfig"><AISettingsPage /></ProtectedRoute>} />
-                    <Route path="/ai-dashboard" element={<ProtectedRoute requires="canViewConfig"><AIDashboardPage /></ProtectedRoute>} />
-                    <Route path="/lead-scoring" element={<ProtectedRoute requires="canViewConfig"><LeadScoringPage /></ProtectedRoute>} />
-                    <Route path="/icp-analysis" element={<ProtectedRoute requires="canViewConfig"><ICPAnalysisPage /></ProtectedRoute>} />
-                    <Route path="/list-segmentation" element={<ProtectedRoute requires="canViewConfig"><ListSegmentationPage /></ProtectedRoute>} />
-                    <Route path="/bounce-analysis" element={<ProtectedRoute requires="canViewConfig"><BounceAnalysisPage /></ProtectedRoute>} />
-                    <Route path="/data-enrichment" element={<ProtectedRoute requires="canViewConfig"><DataEnrichmentPage /></ProtectedRoute>} />
-                    <Route path="/content-generation" element={<ProtectedRoute requires="canViewConfig"><ContentGenerationPage /></ProtectedRoute>} />
-                    <Route path="/campaign-optimizer" element={<ProtectedRoute requires="canViewConfig"><CampaignOptimizerPage /></ProtectedRoute>} />
+                    <Route path="/ai-nexus" element={<ProtectedRoute requires="canViewConfig"><AINexusPage /></ProtectedRoute>} />
                     {/* Catch-all 404 for protected routes */}
                     <Route path="*" element={<NotFoundPage />} />
                   </Routes>

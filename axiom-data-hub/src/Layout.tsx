@@ -37,17 +37,18 @@ const NAV = [
     ],
   },
   {
-    label: 'AI TOOLS',
+    label: 'AI NEXUS',
     items: [
-      { name: 'AI Dashboard', icon: LayoutDashboard, path: '/ai-dashboard', requires: 'canViewConfig' as PermissionKey },
-      { name: 'Lead Scoring', icon: Sparkles, path: '/lead-scoring', requires: 'canViewConfig' as PermissionKey },
-      { name: 'ICP Analysis', icon: Target, path: '/icp-analysis', requires: 'canViewConfig' as PermissionKey },
-      { name: 'List Segmentation', icon: Layers, path: '/list-segmentation', requires: 'canViewConfig' as PermissionKey },
-      { name: 'Bounce Analysis', icon: Activity, path: '/bounce-analysis', requires: 'canViewConfig' as PermissionKey },
-      { name: 'Data Enrichment', icon: Database, path: '/data-enrichment', requires: 'canViewConfig' as PermissionKey },
-      { name: 'Content Gen', icon: PenTool, path: '/content-generation', requires: 'canViewConfig' as PermissionKey },
-      { name: 'Campaign Optimizer', icon: Rocket, path: '/campaign-optimizer', requires: 'canViewConfig' as PermissionKey },
-      { name: 'AI Settings', icon: Brain, path: '/ai-settings', requires: 'canViewConfig' as PermissionKey },
+      { name: 'AI Dashboard', icon: LayoutDashboard, path: '/ai-nexus?tab=dashboard', requires: 'canViewConfig' as PermissionKey },
+      { name: 'Lead Scoring', icon: Sparkles, path: '/ai-nexus?tab=lead-scoring', requires: 'canViewConfig' as PermissionKey },
+      { name: 'ICP Analysis', icon: Target, path: '/ai-nexus?tab=icp-analysis', requires: 'canViewConfig' as PermissionKey },
+      { name: 'List Segmentation', icon: Layers, path: '/ai-nexus?tab=list-segmentation', requires: 'canViewConfig' as PermissionKey },
+      { name: 'Bounce Analysis', icon: Activity, path: '/ai-nexus?tab=bounce-analysis', requires: 'canViewConfig' as PermissionKey },
+      { name: 'Data Enrichment', icon: Database, path: '/ai-nexus?tab=data-enrichment', requires: 'canViewConfig' as PermissionKey },
+      { name: 'Content Gen', icon: PenTool, path: '/ai-nexus?tab=content-generation', requires: 'canViewConfig' as PermissionKey },
+      { name: 'Campaign Optimizer', icon: Rocket, path: '/ai-nexus?tab=campaign-optimizer', requires: 'canViewConfig' as PermissionKey },
+      { name: 'Agents', icon: Brain, path: '/ai-nexus?tab=agents', requires: 'canViewConfig' as PermissionKey },
+      { name: 'AI Settings', icon: Settings2, path: '/ai-nexus?tab=settings', requires: 'canViewConfig' as PermissionKey },
     ],
   },
   {
@@ -166,7 +167,10 @@ export default function Layout({ children }: LayoutProps) {
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {visibleItems.map((item) => {
-                    const active = location.pathname === item.path;
+                    const [itemPath, itemQuery] = item.path.split('?');
+                    const active = itemQuery
+                      ? location.pathname === itemPath && location.search === `?${itemQuery}`
+                      : location.pathname === item.path;
                     return (
                       <button
                         key={item.path}
