@@ -64,7 +64,7 @@ export default function ContentGenerationPage() {
       <div style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-sidebar) 100%)', borderRadius: 20, border: '1px solid var(--border)', padding: '28px 32px', marginBottom: 24, position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'var(--red)', opacity: 0.04 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #e91e63 0%, #ad1457 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PenTool size={18} style={{ color: 'var(--accent-contrast, #fff)' }} /></div>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 70%, #000) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><PenTool size={18} style={{ color: 'var(--accent-contrast)' }} /></div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Content Generation</h1>
         </div>
         <p style={{ fontSize: 12, color: 'var(--text-tertiary)', maxWidth: 600, lineHeight: 1.6 }}>AI copywriter: subject lines, email body variations, follow-up sequences, spam analysis — all configurable.</p>
@@ -76,15 +76,15 @@ export default function ContentGenerationPage() {
         <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', padding: 16 }}>
           <label style={labelStyle}>Content Type</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-            {TYPES.map(t => <button key={t} onClick={() => setConfig(p => ({ ...p, contentType: t }))} style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.contentType === t ? 'var(--red)' : 'var(--border)'}`, background: config.contentType === t ? 'var(--red)' : 'transparent', color: config.contentType === t ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{t.replace(/_/g, ' ')}</button>)}
+            {TYPES.map(t => <button key={t} onClick={() => setConfig(p => ({ ...p, contentType: t }))} style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.contentType === t ? 'var(--red)' : 'var(--border)'}`, background: config.contentType === t ? 'var(--red)' : 'transparent', color: config.contentType === t ? 'var(--accent-contrast)' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{t.replace(/_/g, ' ')}</button>)}
           </div>
           <label style={labelStyle}>Tone</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-            {TONES.map(t => <button key={t} onClick={() => setConfig(p => ({ ...p, tone: t }))} style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.tone === t ? 'var(--red)' : 'var(--border)'}`, background: config.tone === t ? 'var(--red)' : 'transparent', color: config.tone === t ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{t}</button>)}
+            {TONES.map(t => <button key={t} onClick={() => setConfig(p => ({ ...p, tone: t }))} style={{ padding: '5px 10px', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.tone === t ? 'var(--red)' : 'var(--border)'}`, background: config.tone === t ? 'var(--red)' : 'transparent', color: config.tone === t ? 'var(--accent-contrast)' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{t}</button>)}
           </div>
           <label style={labelStyle}>Length</label>
           <div style={{ display: 'flex', gap: 4 }}>
-            {LENGTHS.map(l => <button key={l} onClick={() => setConfig(p => ({ ...p, length: l }))} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10, fontWeight: 600, border: `1px solid ${config.length === l ? 'var(--red)' : 'var(--border)'}`, background: config.length === l ? 'var(--red)' : 'transparent', color: config.length === l ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{l}</button>)}
+            {LENGTHS.map(l => <button key={l} onClick={() => setConfig(p => ({ ...p, length: l }))} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10, fontWeight: 600, border: `1px solid ${config.length === l ? 'var(--red)' : 'var(--border)'}`, background: config.length === l ? 'var(--red)' : 'transparent', color: config.length === l ? 'var(--accent-contrast)' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{l}</button>)}
           </div>
         </div>
 
@@ -133,12 +133,12 @@ export default function ContentGenerationPage() {
           <label style={labelStyle}>Company</label><input value={config.brand.companyName} onChange={e => setConfig(p => ({ ...p, brand: { ...p.brand, companyName: e.target.value } }))} style={{ ...inputStyle, marginBottom: 8 }} />
           <label style={labelStyle}>Sender Name</label><input value={config.brand.senderName} onChange={e => setConfig(p => ({ ...p, brand: { ...p.brand, senderName: e.target.value } }))} style={{ ...inputStyle, marginBottom: 8 }} />
           <label style={labelStyle}>Signature</label>
-          <div style={{ display: 'flex', gap: 4 }}>{SIG_STYLES.map(s => <button key={s} onClick={() => setConfig(p => ({ ...p, brand: { ...p.brand, signatureStyle: s } }))} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.brand.signatureStyle === s ? 'var(--red)' : 'var(--border)'}`, background: config.brand.signatureStyle === s ? 'var(--red)' : 'transparent', color: config.brand.signatureStyle === s ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{s}</button>)}</div>
+          <div style={{ display: 'flex', gap: 4 }}>{SIG_STYLES.map(s => <button key={s} onClick={() => setConfig(p => ({ ...p, brand: { ...p.brand, signatureStyle: s } }))} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.brand.signatureStyle === s ? 'var(--red)' : 'var(--border)'}`, background: config.brand.signatureStyle === s ? 'var(--red)' : 'transparent', color: config.brand.signatureStyle === s ? 'var(--accent-contrast)' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{s}</button>)}</div>
         </div>
         <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', padding: 16 }}>
           <label style={labelStyle}>Custom Instructions</label>
           <textarea value={config.customInstructions} onChange={e => setConfig(p => ({ ...p, customInstructions: e.target.value }))} placeholder="Additional copywriting instructions..." rows={5} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
-          <button onClick={run} disabled={generating} style={{ marginTop: 12, width: '100%', padding: '12px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, #e91e63 0%, #ad1457 100%)', color: 'var(--accent-contrast, #fff)', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: generating ? 0.5 : 1, boxShadow: '0 4px 14px rgba(233,30,99,0.25)' }}>
+          <button onClick={run} disabled={generating} style={{ marginTop: 12, width: '100%', padding: '12px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 70%, #000) 100%)', color: 'var(--accent-contrast)', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: generating ? 0.5 : 1, boxShadow: '0 4px 14px rgba(233,30,99,0.25)' }}>
             {generating ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <PenTool size={14} />} {generating ? 'Generating...' : 'Generate Content'}
           </button>
         </div>
@@ -149,7 +149,7 @@ export default function ContentGenerationPage() {
         <>
           <div style={{ display: 'flex', gap: 2, marginBottom: 16, background: 'var(--bg-card)', borderRadius: 10, padding: 3, border: '1px solid var(--border)', width: 'fit-content' }}>
             {[{ k: 'subjects', l: `Subject Lines (${result.subjectLines?.length || 0})` }, { k: 'emails', l: `Emails (${result.emailVariations?.length || 0})` }, { k: 'followups', l: `Follow-ups (${result.followUps?.length || 0})` }, { k: 'spam', l: 'Spam Analysis' }].map(t => (
-              <button key={t.k} onClick={() => setActiveTab(t.k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: activeTab === t.k ? 'var(--red)' : 'transparent', color: activeTab === t.k ? '#fff' : 'var(--text-tertiary)', fontSize: 11, fontWeight: 600 }}>{t.l}</button>
+              <button key={t.k} onClick={() => setActiveTab(t.k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: activeTab === t.k ? 'var(--red)' : 'transparent', color: activeTab === t.k ? 'var(--accent-contrast)' : 'var(--text-tertiary)', fontSize: 11, fontWeight: 600 }}>{t.l}</button>
             ))}
           </div>
 
@@ -161,7 +161,7 @@ export default function ContentGenerationPage() {
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3 }}>{s.text}</div>
                     <div style={{ display: 'flex', gap: 8, fontSize: 10, color: 'var(--text-tertiary)' }}>
-                      <span style={{ padding: '1px 6px', borderRadius: 4, background: '#e91e6315', color: 'var(--red)', fontWeight: 600 }}>{s.type}</span>
+                      <span style={{ padding: '1px 6px', borderRadius: 4, background: 'var(--red-muted)', color: 'var(--red)', fontWeight: 600 }}>{s.type}</span>
                       <span>📈 {s.estimatedOpenRate}</span>
                     </div>
                   </div>
@@ -176,7 +176,7 @@ export default function ContentGenerationPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {(result.emailVariations || []).map((e, i) => (
                 <div key={i} style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
-                  <div style={{ background: 'linear-gradient(135deg, #e91e6310 0%, #ad145710 100%)', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--red) 6%, transparent) 0%, color-mix(in srgb, var(--red) 4%, transparent) 100%)', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
                     <div><div style={{ fontSize: 11, fontWeight: 700, color: 'var(--red)' }}>Variation {i + 1}</div><div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{e.subjectLine}</div></div>
                     <button onClick={() => copyText(`Subject: ${e.subjectLine}\n\n${e.body}${e.psLine ? '\n\nP.S. ' + e.psLine : ''}`, `email-${i}`)} style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-app)', cursor: 'pointer', fontSize: 10, fontWeight: 600, color: copied === `email-${i}` ? 'var(--green)' : 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 3 }}>{copied === `email-${i}` ? <Check size={10} /> : <Copy size={10} />} Copy</button>
                   </div>
@@ -216,9 +216,9 @@ export default function ContentGenerationPage() {
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Spam Score (lower = better)</div>
               </div>
               {result.spamAnalysis.flaggedWords.length > 0 && (
-                <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid #ef444430', padding: 16 }}>
+                <div style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--red)', padding: 16 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--red)', marginBottom: 6 }}>⚠️ Flagged Words</div>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{result.spamAnalysis.flaggedWords.map(w => <span key={w} style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: '#ef444415', color: 'var(--red)', border: '1px solid #ef444430' }}>{w}</span>)}</div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{result.spamAnalysis.flaggedWords.map(w => <span key={w} style={{ padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600, background: 'var(--red-muted)', color: 'var(--red)', border: '1px solid var(--red)' }}>{w}</span>)}</div>
                 </div>
               )}
               {result.spamAnalysis.suggestions.length > 0 && (
@@ -243,7 +243,7 @@ export default function ContentGenerationPage() {
         </>
       )}
 
-      {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420, background: toast.type === 'error' ? 'var(--red)' : 'var(--accent)', color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)', animation: 'slideUp 0.25s ease-out', cursor: 'pointer' }} onClick={() => setToast(null)}>{toast.type === 'error' ? '❌' : 'ℹ️'} {toast.message}</div>}
+      {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420, background: toast.type === 'error' ? 'var(--red)' : 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 12, fontWeight: 600, boxShadow: 'var(--shadow-lg)', animation: 'slideUp 0.25s ease-out', cursor: 'pointer' }} onClick={() => setToast(null)}>{toast.type === 'error' ? '❌' : 'ℹ️'} {toast.message}</div>}
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}`}</style>
 
       {/* AI Agent */}

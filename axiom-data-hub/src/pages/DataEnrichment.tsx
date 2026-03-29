@@ -76,7 +76,7 @@ export default function DataEnrichmentPage() {
       <div style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-sidebar) 100%)', borderRadius: 20, border: '1px solid var(--border)', padding: '28px 32px', marginBottom: 24, position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'var(--green)', opacity: 0.04 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #10a37f 0%, #0a7a5e 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Database size={18} style={{ color: 'var(--accent-contrast, #fff)' }} /></div>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--green) 0%, color-mix(in srgb, var(--green) 70%, #000) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Database size={18} style={{ color: 'var(--accent-contrast)' }} /></div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Data Enrichment</h1>
         </div>
         <p style={{ fontSize: 12, color: 'var(--text-tertiary)', maxWidth: 600, lineHeight: 1.6 }}>AI-inferred company data, role seniority, industry, tech stack, and buyer personas from email addresses.</p>
@@ -91,7 +91,7 @@ export default function DataEnrichmentPage() {
               <select value={selectedJobId} onChange={e => setSelectedJobId(e.target.value)} style={{ ...inputStyle, appearance: 'none', paddingRight: 28, cursor: 'pointer' }}><option value="">Select...</option>{jobs.map(j => <option key={j.id} value={j.id}>Job {j.id.slice(0, 8)} — {j.totalProcessed} emails</option>)}</select>
               <ChevronDown size={12} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-tertiary)' }} />
             </div>
-            <button onClick={run} disabled={enriching || !selectedJobId} style={{ padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, #10a37f 0%, #0a7a5e 100%)', color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, opacity: (enriching || !selectedJobId) ? 0.5 : 1 }}>
+            <button onClick={run} disabled={enriching || !selectedJobId} style={{ padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, var(--green) 0%, color-mix(in srgb, var(--green) 70%, #000) 100%)', color: 'var(--accent-contrast)', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, opacity: (enriching || !selectedJobId) ? 0.5 : 1 }}>
               {enriching ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Database size={14} />} {enriching ? 'Enriching...' : 'Enrich Data'}
             </button>
           </div>
@@ -108,7 +108,7 @@ export default function DataEnrichmentPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 14 }}>
             <div><label style={labelStyle}>Depth</label>
               <div style={{ display: 'flex', gap: 4 }}>{(['basic', 'standard', 'comprehensive'] as const).map(d => (
-                <button key={d} onClick={() => setConfig(p => ({ ...p, enrichmentDepth: d }))} style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: `1px solid ${config.enrichmentDepth === d ? 'var(--green)' : 'var(--border)'}`, background: config.enrichmentDepth === d ? 'var(--green)' : 'transparent', color: config.enrichmentDepth === d ? '#fff' : 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{d}</button>
+                <button key={d} onClick={() => setConfig(p => ({ ...p, enrichmentDepth: d }))} style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: `1px solid ${config.enrichmentDepth === d ? 'var(--green)' : 'var(--border)'}`, background: config.enrichmentDepth === d ? 'var(--green)' : 'transparent', color: config.enrichmentDepth === d ? 'var(--accent-contrast)' : 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{d}</button>
               ))}</div></div>
             <div><label style={labelStyle}>Industry Context</label><input value={config.industryContext} onChange={e => setConfig(p => ({ ...p, industryContext: e.target.value }))} placeholder="e.g. SaaS, Fintech" style={inputStyle} /></div>
             <div><label style={labelStyle}>Max Leads</label><input type="number" min={5} max={300} value={config.maxLeads} onChange={e => setConfig(p => ({ ...p, maxLeads: Number(e.target.value) }))} style={{ ...inputStyle, maxWidth: 100 }} /></div>
@@ -132,7 +132,7 @@ export default function DataEnrichmentPage() {
           {/* Tabs */}
           <div style={{ display: 'flex', gap: 2, marginBottom: 16, background: 'var(--bg-card)', borderRadius: 10, padding: 3, border: '1px solid var(--border)', width: 'fit-content' }}>
             {[{ k: 'leads', l: `Leads (${result.leads?.length || 0})` }, { k: 'dist', l: 'Distribution' }, { k: 'insights', l: `Insights (${result.insights?.length || 0})` }].map(t => (
-              <button key={t.k} onClick={() => setActiveTab(t.k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: activeTab === t.k ? 'var(--green)' : 'transparent', color: activeTab === t.k ? '#fff' : 'var(--text-tertiary)', fontSize: 11, fontWeight: 600 }}>{t.l}</button>
+              <button key={t.k} onClick={() => setActiveTab(t.k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: activeTab === t.k ? 'var(--green)' : 'transparent', color: activeTab === t.k ? 'var(--accent-contrast)' : 'var(--text-tertiary)', fontSize: 11, fontWeight: 600 }}>{t.l}</button>
             ))}
           </div>
 
@@ -142,7 +142,7 @@ export default function DataEnrichmentPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <div style={{ display: 'flex', gap: 6 }}>
                   {['all', 'high', 'medium', 'low'].map(c => (
-                    <button key={c} onClick={() => setFilterConf(c)} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 10, fontWeight: 600, border: `1px solid ${c === 'all' ? 'var(--border)' : (CONF_COLOR[c] || 'var(--border)')}`, background: filterConf === c ? (c === 'all' ? 'var(--accent)' : CONF_COLOR[c]) : 'transparent', color: filterConf === c ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{c}</button>
+                    <button key={c} onClick={() => setFilterConf(c)} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 10, fontWeight: 600, border: `1px solid ${c === 'all' ? 'var(--border)' : (CONF_COLOR[c] || 'var(--border)')}`, background: filterConf === c ? (c === 'all' ? 'var(--accent)' : CONF_COLOR[c]) : 'transparent', color: filterConf === c ? 'var(--accent-contrast)' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{c}</button>
                   ))}
                 </div>
                 <button onClick={exportCSV} style={{ padding: '6px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text-secondary)', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}><Download size={12} /> CSV</button>
@@ -203,7 +203,7 @@ export default function DataEnrichmentPage() {
               {(result.insights || []).map((ins, i) => (
                 <div key={i} style={{ background: 'var(--bg-card)', borderRadius: 12, padding: '14px 18px', border: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr auto', gap: 12 }}>
                   <div><div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 3 }}>{ins.title}</div><div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{ins.description}</div></div>
-                  <span style={{ padding: '3px 8px', borderRadius: 5, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', alignSelf: 'flex-start', background: ins.impact === 'high' ? '#ff6b3520' : ins.impact === 'medium' ? '#ffd70020' : '#10a37f20', color: ins.impact === 'high' ? 'var(--yellow)' : ins.impact === 'medium' ? 'var(--yellow)' : 'var(--green)' }}>{ins.impact}</span>
+                  <span style={{ padding: '3px 8px', borderRadius: 5, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', alignSelf: 'flex-start', background: ins.impact === 'high' ? 'var(--yellow-muted)' : ins.impact === 'medium' ? 'var(--yellow-muted)' : 'var(--green-muted)', color: ins.impact === 'high' ? 'var(--yellow)' : ins.impact === 'medium' ? 'var(--yellow)' : 'var(--green)' }}>{ins.impact}</span>
                 </div>
               ))}
             </div>
@@ -218,7 +218,7 @@ export default function DataEnrichmentPage() {
       )}
 
       {!result && !enriching && jobs.length === 0 && <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--bg-card)', borderRadius: 20, border: '1px dashed var(--border)' }}><AlertTriangle size={32} style={{ color: 'var(--text-tertiary)', marginBottom: 12, opacity: 0.4 }} /><div style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>No verification jobs found</div></div>}
-      {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420, background: toast.type === 'error' ? 'var(--red)' : 'var(--accent)', color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)', animation: 'slideUp 0.25s ease-out', cursor: 'pointer' }} onClick={() => setToast(null)}>{toast.type === 'error' ? '❌' : 'ℹ️'} {toast.message}</div>}
+      {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420, background: toast.type === 'error' ? 'var(--red)' : 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 12, fontWeight: 600, boxShadow: 'var(--shadow-lg)', animation: 'slideUp 0.25s ease-out', cursor: 'pointer' }} onClick={() => setToast(null)}>{toast.type === 'error' ? '❌' : 'ℹ️'} {toast.message}</div>}
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}`}</style>
 
       {/* AI Agent */}

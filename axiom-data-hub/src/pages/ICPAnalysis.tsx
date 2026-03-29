@@ -49,9 +49,9 @@ const INSIGHT_ICONS: Record<string, string> = {
   opportunity: '🚀', warning: '⚠️', pattern: '🔍', recommendation: '💡',
 };
 const IMPACT_BADGE: Record<string, { bg: string; color: string }> = {
-  high: { bg: '#ff6b3520', color: 'var(--yellow)' },
-  medium: { bg: '#ffd70020', color: 'var(--yellow)' },
-  low: { bg: '#10a37f20', color: 'var(--green)' },
+  high: { bg: 'var(--yellow-muted)', color: 'var(--yellow)' },
+  medium: { bg: 'var(--yellow-muted)', color: 'var(--yellow)' },
+  low: { bg: 'var(--green-muted)', color: 'var(--green)' },
 };
 
 const DEFAULT_CONFIG: ICPConfig = {
@@ -127,7 +127,7 @@ export default function ICPAnalysisPage() {
         <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'var(--blue)', opacity: 0.04 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--blue) 0%, color-mix(in srgb, var(--blue) 70%, #000) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Target size={18} style={{ color: 'var(--accent-contrast, #fff)' }} />
+            <Target size={18} style={{ color: 'var(--accent-contrast)' }} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>ICP Analysis</h1>
         </div>
@@ -150,7 +150,7 @@ export default function ICPAnalysisPage() {
             </div>
             <button onClick={runAnalysis} disabled={analyzing || !selectedJobId} style={{
               padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer',
-              background: 'linear-gradient(135deg, var(--blue) 0%, color-mix(in srgb, var(--blue) 70%, #000) 100%)', color: 'var(--accent-contrast, #fff)',
+              background: 'linear-gradient(135deg, var(--blue) 0%, color-mix(in srgb, var(--blue) 70%, #000) 100%)', color: 'var(--accent-contrast)',
               fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6,
               opacity: (analyzing || !selectedJobId) ? 0.5 : 1, boxShadow: '0 4px 14px rgba(66,133,244,0.25)',
             }}>
@@ -188,7 +188,7 @@ export default function ICPAnalysisPage() {
                   <button key={d} onClick={() => setConfig(prev => ({ ...prev, analysisDepth: d }))} style={{
                     flex: 1, padding: '7px 0', borderRadius: 7, border: `1px solid ${config.analysisDepth === d ? 'var(--accent)' : 'var(--border)'}`,
                     background: config.analysisDepth === d ? 'var(--accent)' : 'transparent',
-                    color: config.analysisDepth === d ? '#fff' : 'var(--text-secondary)',
+                    color: config.analysisDepth === d ? 'var(--accent-contrast)' : 'var(--text-secondary)',
                     fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize',
                   }}>{d}</button>
                 ))}
@@ -265,7 +265,7 @@ export default function ICPAnalysisPage() {
               <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
                 padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
                 background: activeTab === t.key ? 'var(--accent)' : 'transparent',
-                color: activeTab === t.key ? '#fff' : 'var(--text-tertiary)',
+                color: activeTab === t.key ? 'var(--accent-contrast)' : 'var(--text-tertiary)',
                 fontSize: 11, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4,
               }}>{t.icon} {t.label}</button>
             ))}
@@ -448,7 +448,7 @@ export default function ICPAnalysisPage() {
           position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
           padding: '14px 22px', borderRadius: 12, maxWidth: 420,
           background: toast.type === 'error' ? 'var(--red)' : toast.type === 'warning' ? 'var(--yellow)' : 'var(--accent)',
-          color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+          color: 'var(--accent-contrast)', fontSize: 12, fontWeight: 600, boxShadow: 'var(--shadow-lg)',
           animation: 'slideUp 0.25s ease-out', cursor: 'pointer',
         }} onClick={() => setToast(null)}>
           {toast.type === 'error' ? '❌' : toast.type === 'warning' ? '⚠️' : 'ℹ️'} {toast.message}

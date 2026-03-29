@@ -27,7 +27,7 @@ interface OptimizerResult {
 interface Job { id: string; status: string; totalProcessed: number; safe: number; uncertain: number; results: any[] }
 
 const HOUR_COLORS: Record<string, string> = { peak: 'var(--green)', good: 'var(--yellow)', acceptable: 'var(--yellow)' };
-const PRIO_STYLE: Record<string, { bg: string; color: string }> = { critical: { bg: '#ef444418', color: 'var(--red)' }, important: { bg: '#ff6b3518', color: 'var(--yellow)' }, recommended: { bg: '#4285f418', color: 'var(--blue)' } };
+const PRIO_STYLE: Record<string, { bg: string; color: string }> = { critical: { bg: 'var(--red-muted)', color: 'var(--red)' }, important: { bg: 'var(--yellow-muted)', color: 'var(--yellow)' }, recommended: { bg: 'var(--blue-muted)', color: 'var(--blue)' } };
 const TIMEZONES = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Europe/Paris', 'Asia/Kolkata', 'Asia/Tokyo', 'Australia/Sydney', 'UTC'];
 
 const DEFAULT_CONFIG: OptimizerConfig = {
@@ -74,7 +74,7 @@ export default function CampaignOptimizerPage() {
       <div style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-sidebar) 100%)', borderRadius: 20, border: '1px solid var(--border)', padding: '28px 32px', marginBottom: 24, position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'var(--yellow)', opacity: 0.04 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--yellow) 0%, #cc5229 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Rocket size={18} style={{ color: 'var(--accent-contrast, #fff)' }} /></div>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--yellow) 0%, var(--accent-hover) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Rocket size={18} style={{ color: 'var(--accent-contrast)' }} /></div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Campaign Optimizer</h1>
         </div>
         <p style={{ fontSize: 12, color: 'var(--text-tertiary)', maxWidth: 600, lineHeight: 1.6 }}>AI-powered send timing, volume pacing, domain rotation, A/B testing, and reputation safeguards.</p>
@@ -93,13 +93,13 @@ export default function CampaignOptimizerPage() {
               </div>
             </div>
             <div><label style={labelStyle}>Campaign Type</label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{CAMPAIGN_TYPES.map(t => <button key={t} onClick={() => setConfig(p => ({ ...p, campaignContext: { ...p.campaignContext, campaignType: t } }))} style={{ padding: '5px 8px', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.campaignContext.campaignType === t ? 'var(--yellow)' : 'var(--border)'}`, background: config.campaignContext.campaignType === t ? 'var(--yellow)' : 'transparent', color: config.campaignContext.campaignType === t ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{t.replace(/_/g, ' ')}</button>)}</div></div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{CAMPAIGN_TYPES.map(t => <button key={t} onClick={() => setConfig(p => ({ ...p, campaignContext: { ...p.campaignContext, campaignType: t } }))} style={{ padding: '5px 8px', borderRadius: 6, fontSize: 9, fontWeight: 600, border: `1px solid ${config.campaignContext.campaignType === t ? 'var(--yellow)' : 'var(--border)'}`, background: config.campaignContext.campaignType === t ? 'var(--yellow)' : 'transparent', color: config.campaignContext.campaignType === t ? 'var(--accent-contrast)' : 'var(--text-tertiary)', cursor: 'pointer', textTransform: 'capitalize' }}>{t.replace(/_/g, ' ')}</button>)}</div></div>
             <div><label style={labelStyle}>Daily Send Limit</label><input type="number" min={10} max={50000} value={config.constraints.dailySendLimit} onChange={e => setConfig(p => ({ ...p, constraints: { ...p.constraints, dailySendLimit: Number(e.target.value) } }))} style={inputStyle} /></div>
             <div><label style={labelStyle}>Sending Domains</label><input type="number" min={1} max={20} value={config.constraints.sendingDomainCount} onChange={e => setConfig(p => ({ ...p, constraints: { ...p.constraints, sendingDomainCount: Number(e.target.value), multiDomainAvailable: Number(e.target.value) > 1 } }))} style={{ ...inputStyle, maxWidth: 80 }} /></div>
             <div><label style={labelStyle}>Timezone</label>
               <div style={{ position: 'relative' }}><select value={config.constraints.timeZone} onChange={e => setConfig(p => ({ ...p, constraints: { ...p.constraints, timeZone: e.target.value } }))} style={{ ...inputStyle, appearance: 'none', paddingRight: 28, cursor: 'pointer' }}>{TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}</select><ChevronDown size={12} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-tertiary)' }} /></div></div>
             <div><label style={labelStyle}>Audience</label>
-              <div style={{ display: 'flex', gap: 4 }}>{['B2B', 'B2C', 'Mixed'].map(a => <button key={a} onClick={() => setConfig(p => ({ ...p, campaignContext: { ...p.campaignContext, audienceType: a } }))} style={{ flex: 1, padding: '6px', borderRadius: 6, fontSize: 10, fontWeight: 600, border: `1px solid ${config.campaignContext.audienceType === a ? 'var(--yellow)' : 'var(--border)'}`, background: config.campaignContext.audienceType === a ? 'var(--yellow)' : 'transparent', color: config.campaignContext.audienceType === a ? '#fff' : 'var(--text-tertiary)', cursor: 'pointer' }}>{a}</button>)}</div></div>
+              <div style={{ display: 'flex', gap: 4 }}>{['B2B', 'B2C', 'Mixed'].map(a => <button key={a} onClick={() => setConfig(p => ({ ...p, campaignContext: { ...p.campaignContext, audienceType: a } }))} style={{ flex: 1, padding: '6px', borderRadius: 6, fontSize: 10, fontWeight: 600, border: `1px solid ${config.campaignContext.audienceType === a ? 'var(--yellow)' : 'var(--border)'}`, background: config.campaignContext.audienceType === a ? 'var(--yellow)' : 'transparent', color: config.campaignContext.audienceType === a ? 'var(--accent-contrast)' : 'var(--text-tertiary)', cursor: 'pointer' }}>{a}</button>)}</div></div>
             <div><label style={labelStyle}>Industry</label><input value={config.campaignContext.industry} onChange={e => setConfig(p => ({ ...p, campaignContext: { ...p.campaignContext, industry: e.target.value } }))} placeholder="SaaS, Fintech..." style={inputStyle} /></div>
           </div>
           {/* Toggles */}
@@ -110,7 +110,7 @@ export default function CampaignOptimizerPage() {
             ))}
           </div>
           <div style={{ marginBottom: 14 }}><label style={labelStyle}>Previous Campaign Data</label><textarea value={config.campaignContext.previousCampaignData} onChange={e => setConfig(p => ({ ...p, campaignContext: { ...p.campaignContext, previousCampaignData: e.target.value } }))} placeholder="Past performance: 25% open rate, 3% reply, 2% bounce..." rows={2} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} /></div>
-          <button onClick={run} disabled={optimizing} style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, var(--yellow) 0%, #cc5229 100%)', color: 'var(--accent-contrast, #fff)', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: optimizing ? 0.5 : 1, boxShadow: '0 4px 14px rgba(255,107,53,0.25)' }}>
+          <button onClick={run} disabled={optimizing} style={{ width: '100%', padding: '12px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, var(--yellow) 0%, var(--accent-hover) 100%)', color: 'var(--accent-contrast)', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: optimizing ? 0.5 : 1, boxShadow: 'var(--shadow-md)' }}>
             {optimizing ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Rocket size={14} />} {optimizing ? 'Optimizing...' : 'Optimize Campaign'}
           </button>
         </div>
@@ -123,7 +123,7 @@ export default function CampaignOptimizerPage() {
 
           <div style={{ display: 'flex', gap: 2, marginBottom: 16, background: 'var(--bg-card)', borderRadius: 10, padding: 3, border: '1px solid var(--border)', width: 'fit-content' }}>
             {[{ k: 'strategy', l: 'Strategy' }, { k: 'schedule', l: 'Schedule' }, { k: 'volume', l: 'Volume' }, { k: 'abtests', l: 'A/B Tests' }, { k: 'safeguards', l: 'Safeguards' }].map(t => (
-              <button key={t.k} onClick={() => setActiveTab(t.k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: activeTab === t.k ? 'var(--yellow)' : 'transparent', color: activeTab === t.k ? '#fff' : 'var(--text-tertiary)', fontSize: 11, fontWeight: 600 }}>{t.l}</button>
+              <button key={t.k} onClick={() => setActiveTab(t.k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: activeTab === t.k ? 'var(--yellow)' : 'transparent', color: activeTab === t.k ? 'var(--accent-contrast)' : 'var(--text-tertiary)', fontSize: 11, fontWeight: 600 }}>{t.l}</button>
             ))}
           </div>
 
@@ -142,7 +142,7 @@ export default function CampaignOptimizerPage() {
                   </div>
                 ))}
               </div>
-              {result.warnings?.length > 0 && <div style={{ borderRadius: 12, border: '1px solid #ffd70040', background: '#ffd70010', padding: 14 }}>{result.warnings.map((w, i) => <div key={i} style={{ fontSize: 11, color: 'var(--yellow)', display: 'flex', gap: 4, marginBottom: 3 }}><AlertTriangle size={12} style={{ flexShrink: 0 }} /> {w}</div>)}</div>}
+              {result.warnings?.length > 0 && <div style={{ borderRadius: 12, border: '1px solid var(--yellow)', background: 'var(--yellow-muted)', padding: 14 }}>{result.warnings.map((w, i) => <div key={i} style={{ fontSize: 11, color: 'var(--yellow)', display: 'flex', gap: 4, marginBottom: 3 }}><AlertTriangle size={12} style={{ flexShrink: 0 }} /> {w}</div>)}</div>}
             </div>
           )}
 
@@ -151,14 +151,14 @@ export default function CampaignOptimizerPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
               <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', padding: 18 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 5 }}><Calendar size={14} /> Best Days</div>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{result.sendSchedule.optimalDays.map(d => <span key={d} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: 'var(--green-muted)', color: 'var(--green)', border: '1px solid #10a37f30' }}>{d}</span>)}</div>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{result.sendSchedule.optimalDays.map(d => <span key={d} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: 'var(--green-muted)', color: 'var(--green)', border: '1px solid var(--green)' }}>{d}</span>)}</div>
               </div>
               <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', padding: 18 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 5 }}><Clock size={14} /> Best Hours ({result.sendSchedule.timezone})</div>
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{(result.sendSchedule.optimalHours || []).map(h => <span key={h.hour} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: `${HOUR_COLORS[h.quality] || 'var(--text-tertiary)'}15`, color: HOUR_COLORS[h.quality] || 'var(--text-tertiary)', border: `1px solid ${HOUR_COLORS[h.quality] || 'var(--text-tertiary)'}30` }}>{h.hour} ({h.quality})</span>)}</div>
               </div>
               {result.sendSchedule.avoidTimes?.length > 0 && (
-                <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid #ef444425', padding: 18 }}>
+                <div style={{ background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--red)', padding: 18 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--red)', marginBottom: 10 }}>🚫 Avoid</div>
                   {result.sendSchedule.avoidTimes.map((t, i) => <div key={i} style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 3 }}>• {t}</div>)}
                 </div>
@@ -197,8 +197,8 @@ export default function CampaignOptimizerPage() {
                 <div key={i} style={{ background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)', padding: 16 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--yellow)', textTransform: 'uppercase', marginBottom: 6 }}>{ab.variable}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                    <div style={{ padding: '8px 10px', borderRadius: 8, background: '#10a37f08', border: '1px solid #10a37f25' }}><div style={{ fontSize: 8, fontWeight: 700, color: 'var(--green)', marginBottom: 2 }}>VARIATION A</div><div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{ab.variationA}</div></div>
-                    <div style={{ padding: '8px 10px', borderRadius: 8, background: '#4285f408', border: '1px solid #4285f425' }}><div style={{ fontSize: 8, fontWeight: 700, color: 'var(--blue)', marginBottom: 2 }}>VARIATION B</div><div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{ab.variationB}</div></div>
+                    <div style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--green-muted)', border: '1px solid var(--green)' }}><div style={{ fontSize: 8, fontWeight: 700, color: 'var(--green)', marginBottom: 2 }}>VARIATION A</div><div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{ab.variationA}</div></div>
+                    <div style={{ padding: '8px 10px', borderRadius: 8, background: 'var(--blue-muted)', border: '1px solid var(--blue)' }}><div style={{ fontSize: 8, fontWeight: 700, color: 'var(--blue)', marginBottom: 2 }}>VARIATION B</div><div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{ab.variationB}</div></div>
                   </div>
                   <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>📊 Sample: {ab.sampleSize}</div>
                   <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 2, fontStyle: 'italic' }}><TrendingUp size={10} style={{ verticalAlign: 'middle' }} /> {ab.expectedInsight}</div>

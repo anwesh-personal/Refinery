@@ -40,7 +40,7 @@ const TYPE_ICONS: Record<string, string> = {
   anthropic: '🟣', gemini: '🔵', openai: '🟢', mistral: '🟠', private_vps: '🖥️', ollama: '🦙',
 };
 const TYPE_COLORS: Record<string, string> = {
-  anthropic: 'var(--accent)', gemini: 'var(--blue)', openai: 'var(--green)', mistral: 'var(--accent)', private_vps: 'var(--purple)', ollama: '#a0a0a0',
+  anthropic: 'var(--accent)', gemini: 'var(--blue)', openai: 'var(--green)', mistral: 'var(--accent)', private_vps: 'var(--purple)', ollama: 'var(--text-tertiary)',
 };
 const TYPE_GRADIENTS: Record<string, string> = {
   anthropic: 'linear-gradient(135deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 70%, #000) 100%)',
@@ -255,7 +255,7 @@ export default function AISettingsPage() {
             </div>
             <button onClick={() => setShowAddForm(!showAddForm)} style={{
               padding: '10px 20px', borderRadius: 10, border: 'none', cursor: 'pointer',
-              background: 'var(--accent)', color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 700,
+              background: 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 12, fontWeight: 700,
               display: 'flex', alignItems: 'center', gap: 6, transition: 'transform 0.15s, box-shadow 0.15s',
               boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
             }}
@@ -323,7 +323,7 @@ export default function AISettingsPage() {
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
             <button onClick={addProvider} disabled={adding || !newLabel.trim()} style={{
-              padding: '9px 22px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'var(--accent-contrast, #fff)',
+              padding: '9px 22px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'var(--accent-contrast)',
               fontSize: 12, fontWeight: 700, cursor: 'pointer', opacity: (adding || !newLabel.trim()) ? 0.5 : 1,
             }}>{adding ? 'Creating...' : 'Create Provider'}</button>
             <button onClick={() => setShowAddForm(false)} style={{
@@ -343,7 +343,7 @@ export default function AISettingsPage() {
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             padding: '8px 18px', borderRadius: 9, border: 'none', cursor: 'pointer',
             background: tab === t.key ? 'var(--accent)' : 'transparent',
-            color: tab === t.key ? '#fff' : 'var(--text-tertiary)',
+            color: tab === t.key ? 'var(--accent-contrast)' : 'var(--text-tertiary)',
             fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
             transition: 'all 0.15s ease',
           }}>{t.icon} {t.label}</button>
@@ -425,7 +425,7 @@ export default function AISettingsPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span style={{ fontSize: 22, filter: 'brightness(1.2)' }}>{TYPE_ICONS[p.provider_type]}</span>
                         <div>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-contrast, #fff)' }}>{p.label}</div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-contrast)' }}>{p.label}</div>
                           <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', gap: 4 }}>
                             {TYPE_LABELS[p.provider_type]}
                             {p.validated && <><span style={{ margin: '0 2px' }}>·</span><CheckCircle size={9} style={{ color: 'var(--green)' }} /> Verified</>}
@@ -452,7 +452,7 @@ export default function AISettingsPage() {
                         </label>
                         {/* Expand/collapse */}
                         <button onClick={() => setExpandedCards(prev => ({ ...prev, [p.id]: !expanded }))} style={{
-                          background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, padding: 4, cursor: 'pointer', color: 'var(--accent-contrast, #fff)',
+                          background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 6, padding: 4, cursor: 'pointer', color: 'var(--accent-contrast)',
                           transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s',
                         }}>
                           <ChevronDown size={14} />
@@ -491,7 +491,7 @@ export default function AISettingsPage() {
                               </div>
                               <button onClick={() => saveKey(p.id)} disabled={!editingKeys[p.id]} style={{
                                 ...miniBtn, background: editingKeys[p.id] ? color : 'var(--bg-app)',
-                                color: editingKeys[p.id] ? '#fff' : 'var(--text-tertiary)', border: `1px solid ${editingKeys[p.id] ? color : 'var(--border)'}`,
+                                color: editingKeys[p.id] ? 'var(--accent-contrast)' : 'var(--text-tertiary)', border: `1px solid ${editingKeys[p.id] ? color : 'var(--border)'}`,
                               }}>Save</button>
                               <button onClick={() => validateKeyAction(p.id)} disabled={validating[p.id]} style={{
                                 ...miniBtn, background: `${color}10`, color, border: `1px solid ${color}30`,
@@ -561,7 +561,7 @@ export default function AISettingsPage() {
                         <div>
                           <button onClick={() => testProviderAction(p.id)} disabled={testing[p.id] || !p.selected_model} style={{
                             padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                            background: p.selected_model ? gradient : 'var(--bg-app)', color: p.selected_model ? '#fff' : 'var(--text-tertiary)',
+                            background: p.selected_model ? gradient : 'var(--bg-app)', color: p.selected_model ? 'var(--accent-contrast)' : 'var(--text-tertiary)',
                             fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5,
                             opacity: (!p.selected_model || testing[p.id]) ? 0.4 : 1, width: '100%', justifyContent: 'center',
                             boxShadow: p.selected_model ? `0 3px 12px ${color}25` : 'none',
@@ -683,7 +683,7 @@ export default function AISettingsPage() {
           position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
           padding: '14px 22px', borderRadius: 12, maxWidth: 420,
           background: toast.type === 'error' ? 'var(--red)' : toast.type === 'warning' ? 'var(--yellow)' : 'var(--accent)',
-          color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+          color: 'var(--accent-contrast)', fontSize: 12, fontWeight: 600, boxShadow: 'var(--shadow-lg)',
           animation: 'slideUp 0.25s ease-out',
           cursor: 'pointer', backdropFilter: 'blur(8px)',
         }} onClick={() => setToast(null)}>

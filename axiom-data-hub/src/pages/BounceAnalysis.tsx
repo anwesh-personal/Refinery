@@ -73,7 +73,7 @@ export default function BounceAnalysisPage() {
       <div style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--bg-sidebar) 100%)', borderRadius: 20, border: '1px solid var(--border)', padding: '28px 32px', marginBottom: 24, position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'var(--red)', opacity: 0.04 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 70%, #000) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Activity size={18} style={{ color: 'var(--accent-contrast, #fff)' }} /></div>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 70%, #000) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Activity size={18} style={{ color: 'var(--accent-contrast)' }} /></div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>Bounce Analysis</h1>
         </div>
         <p style={{ fontSize: 12, color: 'var(--text-tertiary)', maxWidth: 600, lineHeight: 1.6 }}>Pre-send deliverability prediction. Identifies bounce risks, domain health issues, and provides actionable recommendations.</p>
@@ -90,7 +90,7 @@ export default function BounceAnalysisPage() {
               </select>
               <ChevronDown size={12} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-tertiary)' }} />
             </div>
-            <button onClick={run} disabled={analyzing || !selectedJobId} style={{ padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 70%, #000) 100%)', color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, opacity: (analyzing || !selectedJobId) ? 0.5 : 1 }}>
+            <button onClick={run} disabled={analyzing || !selectedJobId} style={{ padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 70%, #000) 100%)', color: 'var(--accent-contrast)', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, opacity: (analyzing || !selectedJobId) ? 0.5 : 1 }}>
               {analyzing ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Activity size={14} />} {analyzing ? 'Analyzing...' : 'Analyze Bounces'}
             </button>
           </div>
@@ -108,14 +108,14 @@ export default function BounceAnalysisPage() {
             <div><label style={labelStyle}>Risk Tolerance</label>
               <div style={{ display: 'flex', gap: 4 }}>
                 {(['conservative', 'balanced', 'aggressive'] as const).map(r => (
-                  <button key={r} onClick={() => setConfig(p => ({ ...p, riskTolerance: r }))} style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: `1px solid ${config.riskTolerance === r ? 'var(--red)' : 'var(--border)'}`, background: config.riskTolerance === r ? 'var(--red)' : 'transparent', color: config.riskTolerance === r ? 'var(--accent-contrast, #fff)' : 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{r}</button>
+                  <button key={r} onClick={() => setConfig(p => ({ ...p, riskTolerance: r }))} style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: `1px solid ${config.riskTolerance === r ? 'var(--red)' : 'var(--border)'}`, background: config.riskTolerance === r ? 'var(--red)' : 'transparent', color: config.riskTolerance === r ? 'var(--accent-contrast)' : 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{r}</button>
                 ))}
               </div>
             </div>
             <div><label style={labelStyle}>Sender Reputation</label>
               <div style={{ display: 'flex', gap: 4 }}>
                 {(['new', 'warm', 'established'] as const).map(s => (
-                  <button key={s} onClick={() => setConfig(p => ({ ...p, senderReputation: s }))} style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: `1px solid ${config.senderReputation === s ? 'var(--red)' : 'var(--border)'}`, background: config.senderReputation === s ? 'var(--red)' : 'transparent', color: config.senderReputation === s ? 'var(--accent-contrast, #fff)' : 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{s}</button>
+                  <button key={s} onClick={() => setConfig(p => ({ ...p, senderReputation: s }))} style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: `1px solid ${config.senderReputation === s ? 'var(--red)' : 'var(--border)'}`, background: config.senderReputation === s ? 'var(--red)' : 'transparent', color: config.senderReputation === s ? 'var(--accent-contrast)' : 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>{s}</button>
                 ))}
               </div>
             </div>
@@ -149,7 +149,7 @@ export default function BounceAnalysisPage() {
           {/* Tabs */}
           <div style={{ display: 'flex', gap: 2, marginBottom: 16, background: 'var(--bg-card)', borderRadius: 10, padding: 3, border: '1px solid var(--border)', width: 'fit-content' }}>
             {[{ k: 'overview', l: 'Overview' }, { k: 'domains', l: `Domains (${result.domainHealth?.length || 0})` }, { k: 'patterns', l: `Patterns (${result.patterns?.length || 0})` }, { k: 'actions', l: 'Actions' }].map(t => (
-              <button key={t.k} onClick={() => setActiveTab(t.k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: activeTab === t.k ? 'var(--red)' : 'transparent', color: activeTab === t.k ? 'var(--accent-contrast, #fff)' : 'var(--text-tertiary)', fontSize: 11, fontWeight: 600 }}>{t.l}</button>
+              <button key={t.k} onClick={() => setActiveTab(t.k)} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: activeTab === t.k ? 'var(--red)' : 'transparent', color: activeTab === t.k ? 'var(--accent-contrast)' : 'var(--text-tertiary)', fontSize: 11, fontWeight: 600 }}>{t.l}</button>
             ))}
           </div>
 
@@ -283,7 +283,7 @@ function EmptyState() {
   return <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--bg-card)', borderRadius: 20, border: '1px dashed var(--border)' }}><AlertTriangle size={32} style={{ color: 'var(--text-tertiary)', marginBottom: 12, opacity: 0.4 }} /><div style={{ fontSize: 14, color: 'var(--text-tertiary)', fontWeight: 500 }}>No verification jobs found</div></div>;
 }
 function Toast({ toast, onClose }: { toast: { type: string; message: string }; onClose: () => void }) {
-  return <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420, background: toast.type === 'error' ? 'var(--red)' : 'var(--accent)', color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 600, boxShadow: 'var(--shadow-lg)', animation: 'slideUp 0.25s ease-out', cursor: 'pointer' }} onClick={onClose}>{toast.type === 'error' ? '❌' : 'ℹ️'} {toast.message}</div>;
+  return <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420, background: toast.type === 'error' ? 'var(--red)' : 'var(--accent)', color: 'var(--accent-contrast)', fontSize: 12, fontWeight: 600, boxShadow: 'var(--shadow-lg)', animation: 'slideUp 0.25s ease-out', cursor: 'pointer' }} onClick={onClose}>{toast.type === 'error' ? '❌' : 'ℹ️'} {toast.message}</div>;
 }
 const labelStyle: React.CSSProperties = { fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: 0.8, display: 'block', marginBottom: 4 };
 const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 11px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12 };

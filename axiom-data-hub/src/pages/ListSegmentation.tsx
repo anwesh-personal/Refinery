@@ -30,9 +30,9 @@ interface SegmentationResult {
 interface Job { id: string; status: string; totalProcessed: number; safe: number; uncertain: number; risky: number; results: any[] }
 
 const PRIORITY_COLORS: Record<string, { border: string; bg: string; text: string; gradient: string }> = {
-  high: { border: 'var(--green)', bg: '#10a37f12', text: 'var(--green)', gradient: 'linear-gradient(135deg, var(--green) 0%, color-mix(in srgb, var(--green) 70%, #000) 100%)' },
-  medium: { border: 'var(--yellow)', bg: '#ffd70012', text: 'var(--yellow)', gradient: 'linear-gradient(135deg, var(--yellow) 0%, #ccad00 100%)' },
-  low: { border: 'var(--text-tertiary)', bg: 'var(--bg-elevated)', text: 'var(--text-tertiary)', gradient: 'linear-gradient(135deg, #999 0%, #666 100%)' },
+  high: { border: 'var(--green)', bg: 'var(--green-muted)', text: 'var(--green)', gradient: 'linear-gradient(135deg, var(--green) 0%, color-mix(in srgb, var(--green) 70%, #000) 100%)' },
+  medium: { border: 'var(--yellow)', bg: 'var(--yellow-muted)', text: 'var(--yellow)', gradient: 'linear-gradient(135deg, var(--yellow) 0%, color-mix(in srgb, var(--yellow) 70%, #000) 100%)' },
+  low: { border: 'var(--text-tertiary)', bg: 'var(--bg-elevated)', text: 'var(--text-tertiary)', gradient: 'linear-gradient(135deg, var(--text-tertiary) 0%, color-mix(in srgb, var(--text-tertiary) 70%, #000) 100%)' },
 };
 
 const DEFAULT_CONFIG: SegmentationConfig = {
@@ -115,7 +115,7 @@ export default function ListSegmentationPage() {
         <div style={{ position: 'absolute', top: -30, right: -30, width: 180, height: 180, borderRadius: '50%', background: 'var(--purple)', opacity: 0.04 }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, var(--purple) 0%, color-mix(in srgb, var(--purple) 70%, #000) 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Layers size={18} style={{ color: 'var(--accent-contrast, #fff)' }} />
+            <Layers size={18} style={{ color: 'var(--accent-contrast)' }} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>List Segmentation</h1>
         </div>
@@ -138,7 +138,7 @@ export default function ListSegmentationPage() {
             </div>
             <button onClick={runSegmentation} disabled={segmenting || !selectedJobId} style={{
               padding: '10px 24px', borderRadius: 10, border: 'none', cursor: 'pointer',
-              background: 'linear-gradient(135deg, var(--purple) 0%, color-mix(in srgb, var(--purple) 70%, #000) 100%)', color: 'var(--accent-contrast, #fff)',
+              background: 'linear-gradient(135deg, var(--purple) 0%, color-mix(in srgb, var(--purple) 70%, #000) 100%)', color: 'var(--accent-contrast)',
               fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6,
               opacity: (segmenting || !selectedJobId) ? 0.5 : 1, boxShadow: '0 4px 14px rgba(139,92,246,0.25)',
             }}>
@@ -294,14 +294,14 @@ export default function ListSegmentationPage() {
                   {/* Gradient Header */}
                   <div style={{ background: pc.gradient, padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-contrast, #fff)' }}>{seg.name}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent-contrast)' }}>{seg.name}</div>
                       <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)' }}>
                         {seg.leadCount} leads · {seg.estimatedResponseRate} est. response
                       </div>
                     </div>
                     <div style={{
                       padding: '4px 10px', borderRadius: 6, fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
-                      background: 'rgba(255,255,255,0.2)', color: 'var(--accent-contrast, #fff)',
+                      background: 'rgba(255,255,255,0.2)', color: 'var(--accent-contrast)',
                     }}>{seg.priority}</div>
                   </div>
 
@@ -406,7 +406,7 @@ export default function ListSegmentationPage() {
         <div style={{
           position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420,
           background: toast.type === 'error' ? 'var(--red)' : toast.type === 'warning' ? 'var(--yellow)' : 'var(--accent)',
-          color: 'var(--accent-contrast, #fff)', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
+          color: 'var(--accent-contrast)', fontSize: 12, fontWeight: 600, boxShadow: 'var(--shadow-lg)',
           animation: 'slideUp 0.25s ease-out', cursor: 'pointer',
         }} onClick={() => setToast(null)}>
           {toast.type === 'error' ? '❌' : toast.type === 'warning' ? '⚠️' : 'ℹ️'} {toast.message}
