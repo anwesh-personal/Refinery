@@ -45,7 +45,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
       required: ['emails'],
     },
     riskLevel: 'write',
-    agents: ['bastion'],
+    agents: ['smtp_specialist'],
     handler: startVerification,
   },
 
@@ -60,7 +60,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
       required: ['job_id'],
     },
     riskLevel: 'read',
-    agents: ['bastion', 'overseer'],
+    agents: ['smtp_specialist', 'supervisor'],
     handler: getVerificationStatus,
   },
 
@@ -78,7 +78,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
       required: ['job_id'],
     },
     riskLevel: 'read',
-    agents: ['bastion', 'cortex', 'litmus'],
+    agents: ['smtp_specialist', 'data_scientist', 'verification_engineer'],
     handler: getVerificationResults,
   },
 
@@ -87,7 +87,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
     description: 'List all verification jobs with their status, email counts, and timestamps.',
     parameters: { type: 'object', properties: {} },
     riskLevel: 'read',
-    agents: ['bastion', 'overseer'],
+    agents: ['smtp_specialist', 'supervisor'],
     handler: listVerificationJobs,
   },
 
@@ -105,7 +105,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
       required: ['query'],
     },
     riskLevel: 'read',
-    agents: ['cortex'],
+    agents: ['data_scientist'],
     handler: queryDatabase,
   },
 
@@ -119,7 +119,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
       },
     },
     riskLevel: 'read',
-    agents: ['cortex'],
+    agents: ['data_scientist'],
     handler: getTableSchema,
   },
 
@@ -130,7 +130,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
     description: 'List all defined segments with their names, descriptions, and row counts.',
     parameters: { type: 'object', properties: {} },
     riskLevel: 'read',
-    agents: ['cortex', 'overseer'],
+    agents: ['data_scientist', 'supervisor'],
     handler: listSegments,
   },
 
@@ -163,7 +163,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
       required: ['name', 'filters'],
     },
     riskLevel: 'write',
-    agents: ['cortex'],
+    agents: ['data_scientist'],
     handler: createSegment,
   },
 
@@ -178,7 +178,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
       required: ['segment_id'],
     },
     riskLevel: 'read',
-    agents: ['cortex'],
+    agents: ['data_scientist'],
     handler: getSegmentCount,
   },
 
@@ -199,7 +199,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
       required: ['type', 'product', 'audience'],
     },
     riskLevel: 'read',
-    agents: ['muse'],
+    agents: ['email_marketer'],
     handler: generateEmailCopy,
   },
 
@@ -210,7 +210,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
     description: 'Check the health status of all connected services — ClickHouse, Supabase, S3, SMTP servers.',
     parameters: { type: 'object', properties: {} },
     riskLevel: 'read',
-    agents: ['overseer'],
+    agents: ['supervisor'],
     handler: getServerHealth,
   },
 
@@ -219,7 +219,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
     description: 'Get platform-wide statistics — total leads, verified/unverified counts, recent verification jobs.',
     parameters: { type: 'object', properties: {} },
     riskLevel: 'read',
-    agents: ['overseer', 'cortex'],
+    agents: ['supervisor', 'data_scientist'],
     handler: getDashboardStats,
   },
 
@@ -230,7 +230,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
     description: 'List configured S3/MinIO data sources for data ingestion.',
     parameters: { type: 'object', properties: {} },
     riskLevel: 'read',
-    agents: ['overseer'],
+    agents: ['supervisor'],
     handler: listS3Sources,
   },
 
@@ -247,7 +247,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
       required: ['source_id', 'files'],
     },
     riskLevel: 'write',
-    agents: ['overseer'],
+    agents: ['supervisor'],
     handler: startIngestion,
   },
 };
