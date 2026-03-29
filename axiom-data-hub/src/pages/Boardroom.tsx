@@ -86,6 +86,52 @@ export default function BoardroomPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // ── Poll and APPEND agent results to existing chat (for follow-ups) ──
+  const pollMeetingAppend = useCallback((meetingId: string, slugs: string[]) => {
+    setPolling(true);
+    // Show typing indicators for invited agents
+    setChatMsgs(prev => [
+      ...prev.filter(m => m.type !== 'typing'),
+      ...slugs.map(s => ({ id: `typing-${s}-${meetingId}`, type: 'typing' as const, slug: s, content: '', ts: new Date().toISOString() })),
+    ]);
+
+    const interval = setInterval(async () => {
+      try {
+        const d = await apiCall<{ meeting: Meeting; reports: Report[] }>(`/api/ai/agents/boardroom/meetings/${meetingId}`);
+        setActiveMeeting(d.meeting);
+
+        // Remove typing indicators and add completed reports
+        setChatMsgs(prev => {
+          const withoutTyping = prev.filter(m => !m.id.startsWith(`typing-`) || !m.id.includes(meetingId));
+          const existingIds = new Set(prev.map(m => m.id));
+          const newMsgs: ChatMsg[] = [];
+
+          for (const r of (d.reports || [])) {
+            if (r.status === 'complete' && r.report_content && !existingIds.has(r.id)) {
+              newMsgs.push({ id: r.id, type: 'agent', slug: r.agent_slug, content: r.report_content, ts: r.created_at });
+            } else if (r.status === 'running' && !existingIds.has(`typing-${r.agent_slug}-${meetingId}`)) {
+              newMsgs.push({ id: `typing-${r.agent_slug}-${meetingId}`, type: 'typing', slug: r.agent_slug, content: '', ts: r.created_at });
+            }
+          }
+
+          // Add executive summary if done
+          if (d.meeting.executive_summary && d.meeting.status === 'complete' && !existingIds.has(`summary-${meetingId}`)) {
+            newMsgs.push({ id: `summary-${meetingId}`, type: 'agent', slug: 'supervisor', content: d.meeting.executive_summary, ts: d.meeting.completed_at || new Date().toISOString() });
+          }
+
+          return [...withoutTyping, ...newMsgs];
+        });
+
+        if (d.meeting.status === 'complete' || d.meeting.status === 'failed') {
+          clearInterval(interval);
+          setPolling(false);
+          apiCall<{ meetings: Meeting[] }>('/api/ai/agents/boardroom/meetings').then(r => setMeetings(r.meetings || []));
+        }
+      } catch { clearInterval(interval); setPolling(false); }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
   // ── Send message ──
   const sendMessage = async () => {
     if (!input.trim() || sending) return;
@@ -120,13 +166,17 @@ export default function BoardroomPage() {
       if (targetSlugs.length === 0) targetSlugs = [...AGENT_SLUGS];
     }
 
+    // Add user message to chat immediately
+    setChatMsgs(prev => [...prev, { id: `user-${Date.now()}`, type: 'user', content: text, ts: new Date().toISOString() }]);
+
     try {
       const d = await apiCall<{ meeting: Meeting }>('/api/ai/agents/boardroom/meetings', {
         method: 'POST',
         body: { question: text, agents: targetSlugs, title: text.slice(0, 80), mode },
       });
       setActiveMeeting(d.meeting);
-      pollMeeting(d.meeting.id, text, targetSlugs);
+      // Poll and APPEND results (don't reset chat)
+      pollMeetingAppend(d.meeting.id, targetSlugs);
     } catch (e: any) {
       setChatMsgs(prev => [...prev, { id: `err-${Date.now()}`, type: 'system', content: `❌ ${e.message}`, ts: new Date().toISOString() }]);
     }
