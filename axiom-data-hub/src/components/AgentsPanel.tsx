@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiCall } from '../lib/api';
 import {
   Send, Loader2, MessageSquare, Plus, Trash2, Pin, X,
-  Save, BookOpen, Sliders, MessageCircle, FileText, ChevronDown
+  Save, BookOpen, Sliders, MessageCircle, FileText
 } from 'lucide-react';
 
 // ── Types ──
