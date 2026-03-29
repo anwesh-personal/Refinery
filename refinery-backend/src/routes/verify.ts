@@ -398,8 +398,23 @@ router.get('/jobs/:id', requireSuperadmin, async (req, res) => {
     // Only parse results if explicitly requested
     if (includeResults && job.status === 'complete' && job.results_json) {
       try {
-        response.results = JSON.parse(job.results_json);
-      } catch { response.results = []; }
+        let allResults = JSON.parse(job.results_json);
+        response.totalResults = allResults.length;
+
+        // Server-side pagination — default 500, max 2000
+        const limit = Math.min(parseInt(req.query.limit as string) || 500, 2000);
+        const offset = parseInt(req.query.offset as string) || 0;
+
+        // Optional classification filter
+        const classFilter = req.query.classification as string;
+        if (classFilter && classFilter !== 'all') {
+          allResults = allResults.filter((r: any) => r.classification === classFilter);
+          response.filteredTotal = allResults.length;
+        }
+
+        response.results = allResults.slice(offset, offset + limit);
+        response.pagination = { limit, offset, total: response.filteredTotal ?? response.totalResults };
+      } catch { response.results = []; response.totalResults = 0; }
       delete response.results_json;
     } else {
       delete response.results_json;

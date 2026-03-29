@@ -85,6 +85,8 @@ interface PipelineResult {
   risky: number;
   rejected: number;
   results: EmailCheckResult[];
+  totalResults?: number;
+  serverOffset?: number;
 }
 
 const DEFAULT_CHECKS: CheckConfig = {
@@ -325,11 +327,13 @@ export default function EmailVerifierPage() {
     }, 2000);
   };
 
-  const loadCompletedJob = async (jobId: string) => {
+  const loadCompletedJob = async (jobId: string, offset = 0, classification?: string) => {
     try {
-      const job = await apiCall<any>(`/api/verify/jobs/${jobId}?include=results`);
+      const params = new URLSearchParams({ include: 'results', limit: '500', offset: String(offset) });
+      if (classification && classification !== 'all') params.set('classification', classification);
+      const job = await apiCall<any>(`/api/verify/jobs/${jobId}?${params}`);
       if (job.status === 'complete' && job.results) {
-        setResult({
+        const newResult: PipelineResult = {
           id: jobId,
           startedAt: job.started_at,
           completedAt: job.completed_at,
@@ -341,13 +345,22 @@ export default function EmailVerifierPage() {
           uncertain: Number(job.uncertain_count),
           risky: Number(job.risky_count),
           rejected: Number(job.rejected_count),
-          results: job.results || [],
-        } as PipelineResult);
+          results: offset > 0 && result?.id === jobId ? [...result.results, ...job.results] : job.results,
+          totalResults: job.totalResults || job.pagination?.total || 0,
+          serverOffset: offset + (job.results?.length || 0),
+        };
+        setResult(newResult);
         setLoadedJobId(jobId);
       }
     } catch (err: any) {
       showToast('error', `Failed to load job: ${err.message}`);
     }
+  };
+
+  const loadMoreResults = () => {
+    if (!loadedJobId || !result?.serverOffset || !result?.totalResults) return;
+    if (result.serverOffset >= result.totalResults) return;
+    loadCompletedJob(loadedJobId, result.serverOffset, filterClass !== 'all' ? filterClass : undefined);
   };
 
   const processedResults = React.useMemo(() => {
@@ -383,6 +396,7 @@ export default function EmailVerifierPage() {
 
   const totalPages = Math.ceil(processedResults.length / rowsPerPage) || 1;
   const paginatedResults = processedResults.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+  const hasMoreOnServer = result?.totalResults && result?.serverOffset ? result.serverOffset < result.totalResults : false;
 
   React.useEffect(() => setPage(1), [filterClass, sortCol, sortDir]);
 
