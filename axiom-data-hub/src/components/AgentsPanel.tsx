@@ -657,9 +657,9 @@ export default function AgentsPanel() {
                   {m.role !== 'user' && <img src={AGENT_IMAGES[selectedAgent.slug]} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover', flexShrink: 0, marginTop: 2 }} />}
                   <div style={{
                     padding: m.role === 'user' ? '12px 16px' : '14px 18px', borderRadius: 14,
-                    background: m.role === 'user' ? color : 'var(--bg-card)',
-                    color: m.role === 'user' ? '#fff' : 'var(--text-primary)',
-                    border: m.role === 'user' ? 'none' : '1px solid var(--border)',
+                    background: m.role === 'user' ? `color-mix(in srgb, ${color} 18%, var(--bg-elevated))` : 'var(--bg-card)',
+                    color: 'var(--text-primary)',
+                    border: m.role === 'user' ? `1px solid ${color}35` : '1px solid var(--border)',
                     fontSize: 13, lineHeight: 1.7, wordBreak: 'break-word',
                     borderBottomRightRadius: m.role === 'user' ? 4 : 14,
                     borderBottomLeftRadius: m.role === 'user' ? 14 : 4,
@@ -710,7 +710,7 @@ export default function AgentsPanel() {
                 <button onClick={sendMessage} disabled={sending || !input.trim()} style={{
                   width: 40, height: 40, borderRadius: 10, border: 'none', cursor: 'pointer',
                   background: input.trim() ? `linear-gradient(135deg, ${color} 0%, ${color}cc 100%)` : 'var(--bg-app)',
-                  color: input.trim() ? '#fff' : 'var(--text-tertiary)',
+                  color: input.trim() ? 'var(--accent-contrast, #fff)' : 'var(--text-tertiary)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   opacity: sending ? 0.5 : 1, flexShrink: 0,
                 }}>{sending ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}</button>

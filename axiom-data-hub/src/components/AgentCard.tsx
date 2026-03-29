@@ -196,9 +196,9 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
                 {m.role !== 'user' && img && <img src={img} alt="" style={{ width: 22, height: 22, borderRadius: 6, objectFit: 'cover', flexShrink: 0, marginTop: 2 }} />}
                 <div style={{
                   padding: m.role === 'user' ? '10px 14px' : '12px 16px', borderRadius: 12,
-                  background: m.role === 'user' ? color : 'var(--bg-app)',
-                  color: m.role === 'user' ? '#fff' : 'var(--text-primary)',
-                  border: m.role === 'user' ? 'none' : '1px solid var(--border)',
+                  background: m.role === 'user' ? `color-mix(in srgb, ${color} 18%, var(--bg-elevated))` : 'var(--bg-app)',
+                  color: 'var(--text-primary)',
+                  border: m.role === 'user' ? `1px solid ${color}35` : '1px solid var(--border)',
                   fontSize: 12, lineHeight: 1.65, wordBreak: 'break-word',
                   borderBottomRightRadius: m.role === 'user' ? 3 : 12,
                   borderBottomLeftRadius: m.role === 'user' ? 12 : 3,
@@ -261,7 +261,7 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
               <button onClick={() => sendMessage()} disabled={sending || !input.trim()} style={{
                 width: 34, height: 34, borderRadius: 9, border: 'none', cursor: 'pointer', flexShrink: 0,
                 background: input.trim() ? `linear-gradient(135deg, ${color} 0%, ${color}cc 100%)` : 'var(--bg-app)',
-                color: input.trim() ? '#fff' : 'var(--text-tertiary)',
+                color: input.trim() ? 'var(--accent-contrast, #fff)' : 'var(--text-tertiary)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 opacity: sending ? 0.5 : 1,
               }}>{sending ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={14} />}</button>
