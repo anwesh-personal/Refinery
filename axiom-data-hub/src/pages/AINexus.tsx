@@ -1,6 +1,6 @@
 import { useSearchParams } from 'react-router-dom';
 import {
-  Sparkles, Target, Layers, Activity, Database, PenTool, Rocket,
+  Sparkles, Target, Layers, Activity, Database, Search, Rocket,
   Brain, Settings2, LayoutDashboard, GitBranch
 } from 'lucide-react';
 
@@ -10,7 +10,7 @@ import ICPAnalysisPage from './ICPAnalysis';
 import ListSegmentationPage from './ListSegmentation';
 import BounceAnalysisPage from './BounceAnalysis';
 import DataEnrichmentPage from './DataEnrichment';
-import ContentGenerationPage from './ContentGeneration';
+import SEOIntelligencePage from './SEOIntelligence';
 import CampaignOptimizerPage from './CampaignOptimizer';
 import AISettingsPage from './AISettings';
 import AgentsPanel from '../components/AgentsPanel';
@@ -24,7 +24,7 @@ const TABS = [
   { key: 'list-segmentation', label: 'Segmentation', icon: Layers },
   { key: 'bounce-analysis', label: 'Bounce', icon: Activity },
   { key: 'data-enrichment', label: 'Enrichment', icon: Database },
-  { key: 'content-generation', label: 'Content', icon: PenTool },
+  { key: 'seo-intelligence', label: 'SEO Intel', icon: Search },
   { key: 'campaign-optimizer', label: 'Optimizer', icon: Rocket },
   { key: 'architecture', label: 'Architecture', icon: GitBranch },
   { key: 'settings', label: 'Settings', icon: Settings2 },
@@ -60,7 +60,7 @@ export default function AINexusPage() {
       {tab === 'list-segmentation' && <ListSegmentationPage />}
       {tab === 'bounce-analysis' && <BounceAnalysisPage />}
       {tab === 'data-enrichment' && <DataEnrichmentPage />}
-      {tab === 'content-generation' && <ContentGenerationPage />}
+      {tab === 'seo-intelligence' && <SEOIntelligencePage />}
       {tab === 'campaign-optimizer' && <CampaignOptimizerPage />}
       {tab === 'architecture' && <AIArchitecture />}
       {tab === 'settings' && <AISettingsPage />}

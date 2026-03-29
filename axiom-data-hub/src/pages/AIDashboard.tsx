@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { apiCall } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
 import {
-  Sparkles, Target, Layers, Activity, Database, PenTool, Rocket,
+  Sparkles, Target, Layers, Activity, Database, Search, Rocket,
   Zap, TrendingUp, Clock, AlertTriangle, CheckCircle, Settings
 } from 'lucide-react';
 
@@ -22,7 +22,7 @@ const FEATURES = [
   { slug: 'list_segmentation', name: 'List Segmentation', desc: 'Intelligent lead grouping with per-segment campaign strategy', icon: Layers, color: 'var(--purple)', gradient: 'linear-gradient(135deg, var(--purple) 0%, color-mix(in srgb, var(--purple) 70%, #000) 100%)', path: '/list-segmentation' },
   { slug: 'bounce_analysis', name: 'Bounce Analysis', desc: 'Pre-send deliverability prediction and domain health scoring', icon: Activity, color: 'var(--red)', gradient: 'linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 70%, #000) 100%)', path: '/bounce-analysis' },
   { slug: 'data_enrichment', name: 'Data Enrichment', desc: 'AI-inferred company, role, industry, tech stack from emails', icon: Database, color: 'var(--green)', gradient: 'linear-gradient(135deg, var(--green) 0%, color-mix(in srgb, var(--green) 70%, #000) 100%)', path: '/data-enrichment' },
-  { slug: 'content_generation', name: 'Content Gen', desc: 'Email copywriting: subject lines, body, follow-ups, spam analysis', icon: PenTool, color: 'var(--red)', gradient: 'linear-gradient(135deg, var(--red) 0%, color-mix(in srgb, var(--red) 70%, #000) 100%)', path: '/content-generation' },
+  { slug: 'seo_intelligence', name: 'SEO Intel', desc: 'Keyword research, domain analytics, competitive intelligence, cross-referencing', icon: Search, color: '#e91e63', gradient: 'linear-gradient(135deg, #e91e63 0%, #9c27b0 100%)', path: '/seo-intelligence' },
   { slug: 'campaign_optimizer', name: 'Campaign Optimizer', desc: 'Send timing, volume pacing, A/B testing, reputation safeguards', icon: Rocket, color: 'var(--yellow)', gradient: 'linear-gradient(135deg, var(--yellow) 0%, color-mix(in srgb, var(--yellow) 70%, #000) 100%)', path: '/campaign-optimizer' },
 ];
 
