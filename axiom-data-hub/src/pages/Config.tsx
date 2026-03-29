@@ -602,7 +602,7 @@ export default function ConfigPage() {
           </div>
         )}
       </div>
-      {/* Bastion AI Agent — Infrastructure Analysis */}
+      {/* Sentinel AI Agent — Infrastructure Analysis */}
       <div style={{ marginTop: 24, marginBottom: 24 }}>
         <AgentCard
           slug="smtp_specialist"

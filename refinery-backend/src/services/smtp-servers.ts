@@ -166,11 +166,13 @@ function smtpHandshake(
 
     let socket: any;
     let buffer = '';
-    let step = 0; // 0=connect, 1=ehlo, 2=starttls, 3=auth, 4=user, 5=pass
+    let step = 0; // 0=banner, 1=ehlo, 2=starttls, 3=auth, 4=user, 5=pass
+    let tlsUpgraded = false;
     const isSSL = protocol === 'smtps' || port === 465;
+    let ehloCapabilities = '';
 
     function send(cmd: string) {
-      socket.write(cmd + '\r\n');
+      try { socket.write(cmd + '\r\n'); } catch {}
     }
 
     function handleLine(line: string) {
@@ -181,43 +183,64 @@ function smtpHandshake(
           if (code === 220) { step = 1; send(`EHLO refinery-nexus`); }
           else finish(false, `Bad banner: ${line}`);
           break;
-        case 1: // EHLO response
-          if (line.startsWith('250 ') || (code === 250 && !line.startsWith('250-'))) {
-            if (!isSSL && port !== 465) {
+
+        case 1: // EHLO response — collect capabilities
+          if (line.startsWith('250-')) {
+            ehloCapabilities += line + '\n';
+            // Wait for final 250 line
+          } else if (line.startsWith('250 ') || (code === 250 && !line.startsWith('250-'))) {
+            ehloCapabilities += line + '\n';
+            // EHLO done — decide next step
+            if (!isSSL && !tlsUpgraded && ehloCapabilities.toUpperCase().includes('STARTTLS')) {
+              // Server supports STARTTLS and we haven't upgraded yet
               step = 2; send('STARTTLS');
             } else {
+              // Already on TLS (or SSL connection, or no STARTTLS support) → AUTH
               step = 3; send('AUTH LOGIN');
             }
           }
-          // 250- continuation lines — wait for final 250
           break;
-        case 2: // STARTTLS
+
+        case 2: // STARTTLS response
           if (code === 220) {
-            // Upgrade to TLS
-            const tlsSocket = tlsConnect({ socket, servername: host, rejectUnauthorized: false }, () => {
+            // Remove old data listener before upgrading
+            socket.removeAllListeners('data');
+            const oldSocket = socket;
+            const tlsSocket = tlsConnect({ socket: oldSocket, servername: host, rejectUnauthorized: false }, () => {
               socket = tlsSocket;
+              tlsUpgraded = true;
               socket.on('data', onData);
-              step = 1; // re-EHLO after TLS
+              ehloCapabilities = '';
+              step = 1; // re-EHLO after TLS upgrade
               send('EHLO refinery-nexus');
             });
-            tlsSocket.on('error', (e: any) => finish(false, `TLS error: ${e.message}`));
+            tlsSocket.on('error', (e: any) => finish(false, `TLS upgrade failed: ${e.message}`));
           } else {
-            // STARTTLS not supported, try AUTH anyway
+            // STARTTLS rejected — try AUTH on plain connection (risky but functional)
             step = 3; send('AUTH LOGIN');
           }
           break;
+
         case 3: // AUTH LOGIN
           if (code === 334) { step = 4; send(Buffer.from(user).toString('base64')); }
+          else if (code === 504 || code === 502) {
+            // AUTH LOGIN not supported — try AUTH PLAIN
+            const plainToken = Buffer.from(`\0${user}\0${pass}`).toString('base64');
+            step = 5; // Next response will be the auth result
+            send(`AUTH PLAIN ${plainToken}`);
+          }
           else finish(false, `AUTH not supported: ${line}`);
           break;
+
         case 4: // Username sent
           if (code === 334) { step = 5; send(Buffer.from(pass).toString('base64')); }
           else finish(false, `Username rejected: ${line}`);
           break;
-        case 5: // Password sent
+
+        case 5: // Password sent (or AUTH PLAIN result)
           if (code === 235) {
             send('QUIT');
-            finish(true, `Authenticated successfully on ${host}:${port}`);
+            finish(true, `Authenticated successfully on ${host}:${port}${tlsUpgraded ? ' (STARTTLS)' : isSSL ? ' (SSL)' : ''}`);
           } else {
             finish(false, `Auth failed: ${line.slice(4)}`);
           }
@@ -242,10 +265,13 @@ function smtpHandshake(
 
     try {
       if (isSSL) {
+        // Direct SSL/TLS connection (port 465)
         socket = tlsConnect({ host, port, rejectUnauthorized: false }, () => {
+          tlsUpgraded = true;
           socket.on('data', onData);
         });
       } else {
+        // Plain TCP connection → will upgrade via STARTTLS if supported
         socket = createConnection({ host, port }, () => {
           socket.on('data', onData);
         });
