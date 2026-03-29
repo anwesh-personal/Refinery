@@ -20,9 +20,9 @@ interface Msg { id: string; role: string; content: string; tokens_used: number; 
 interface KBEntry { id: string; agent_id: string; title: string; content: string; category: string; enabled: boolean; priority: number }
 
 const AGENT_IMAGES: Record<string, string> = {
-  data_scientist: '/agents/cortex.png', smtp_specialist: '/agents/bastion.png',
-  email_marketer: '/agents/muse.png', supervisor: '/agents/overseer.png',
-  verification_engineer: '/agents/litmus.png',
+  data_scientist: '/agents/cipher.png', smtp_specialist: '/agents/sentinel.png',
+  email_marketer: '/agents/calliope.png', supervisor: '/agents/crucible.png',
+  verification_engineer: '/agents/argus.png',
 };
 
 /** Get the agent's display image — custom avatar_url takes priority, then hardcoded fallback */

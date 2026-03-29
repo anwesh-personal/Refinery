@@ -27,9 +27,9 @@ interface Agent {
 interface Msg { id: string; role: string; content: string; tokens_used: number; latency_ms: number; model_used?: string; created_at: string }
 
 const AGENT_IMAGES: Record<string, string> = {
-  data_scientist: '/agents/cortex.png', smtp_specialist: '/agents/bastion.png',
-  email_marketer: '/agents/muse.png', supervisor: '/agents/overseer.png',
-  verification_engineer: '/agents/litmus.png',
+  data_scientist: '/agents/cipher.png', smtp_specialist: '/agents/sentinel.png',
+  email_marketer: '/agents/calliope.png', supervisor: '/agents/crucible.png',
+  verification_engineer: '/agents/argus.png',
 };
 
 function getAgentImage(agent: { slug: string; avatar_url?: string }): string {
