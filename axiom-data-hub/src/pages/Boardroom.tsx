@@ -93,26 +93,37 @@ export default function BoardroomPage() {
     setInput('');
     setSending(true);
 
-    // Parse @mentions
-    const mentionedAll = /@all\b/i.test(text);
-    const mentionedSlugs: string[] = [];
-    if (mentionedAll) {
-      mentionedSlugs.push(...AGENT_SLUGS);
+    // Parse @mentions and detect orchestration mode
+    const lower = text.toLowerCase();
+    let mode: 'parallel' | 'chain' | 'debate' = 'parallel';
+    let targetSlugs: string[] = [];
+
+    // Chain mode: @Cipher then @Sentinel
+    const thenMatch = lower.match(/@(\w+)\s+then\s+@(\w+)/);
+    // Debate mode: @Cipher vs @Oracle
+    const vsMatch = lower.match(/@(\w+)\s+vs\.?\s+@(\w+)/);
+
+    if (thenMatch) {
+      mode = 'chain';
+      const nameToSlug = (n: string) => Object.entries(AGENTS).find(([, m]) => m.name.toLowerCase() === n)?.[0] || n;
+      targetSlugs = [nameToSlug(thenMatch[1]), nameToSlug(thenMatch[2])];
+    } else if (vsMatch) {
+      mode = 'debate';
+      const nameToSlug = (n: string) => Object.entries(AGENTS).find(([, m]) => m.name.toLowerCase() === n)?.[0] || n;
+      targetSlugs = [nameToSlug(vsMatch[1]), nameToSlug(vsMatch[2])];
+    } else if (/@all\b/i.test(text)) {
+      targetSlugs = [...AGENT_SLUGS];
     } else {
       for (const [slug, meta] of Object.entries(AGENTS)) {
-        if (text.toLowerCase().includes(`@${meta.name.toLowerCase()}`)) {
-          mentionedSlugs.push(slug);
-        }
+        if (lower.includes(`@${meta.name.toLowerCase()}`)) targetSlugs.push(slug);
       }
+      if (targetSlugs.length === 0) targetSlugs = [...AGENT_SLUGS];
     }
-
-    // Default to all if no @mention
-    const targetSlugs = mentionedSlugs.length > 0 ? mentionedSlugs : AGENT_SLUGS;
 
     try {
       const d = await apiCall<{ meeting: Meeting }>('/api/ai/agents/boardroom/meetings', {
         method: 'POST',
-        body: { question: text, agents: targetSlugs, title: text.slice(0, 80) },
+        body: { question: text, agents: targetSlugs, title: text.slice(0, 80), mode },
       });
       setActiveMeeting(d.meeting);
       pollMeeting(d.meeting.id, text, targetSlugs);
