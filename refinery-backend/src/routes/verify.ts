@@ -820,6 +820,39 @@ router.delete('/verified-leads', requireSuperadmin, async (req, res) => {
   }
 });
 
+// ─── DELETE /api/verify/jobs/clear ───
+// Delete all failed and cancelled pipeline jobs from ClickHouse.
+
+router.delete('/jobs/clear', requireSuperadmin, async (req, res) => {
+  try {
+    // Count first
+    const [countResult] = await chQuery<{ cnt: string }>(`
+      SELECT count() as cnt FROM pipeline_jobs
+      WHERE status IN ('failed', 'cancelled')
+    `);
+    const count = Number(countResult?.cnt || 0);
+
+    if (count === 0) {
+      return res.json({ deleted: 0, message: 'No failed or cancelled jobs to clear' });
+    }
+
+    await chCommand(`
+      ALTER TABLE pipeline_jobs DELETE
+      WHERE status IN ('failed', 'cancelled')
+    `);
+
+    const user = getRequestUser(req);
+    console.log(`[Pipeline] ${user.name} cleared ${count} failed/cancelled jobs`);
+    res.json({ deleted: count });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+
+// ─── POST /api/verify/jobs/:id/retry ───
+// Retry a failed or cancelled job using stored source emails and config.
 
 router.post('/jobs/:id/retry', requireSuperadmin, async (req, res) => {
   try {

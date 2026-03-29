@@ -1220,7 +1220,22 @@ export default function EmailVerifierPage() {
       {/* ── Recent Jobs ── */}
       {recentJobs.length > 0 && (
         <div style={{ marginTop: 32 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12 }}>Recent Pipeline Jobs</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Recent Pipeline Jobs</h3>
+            {recentJobs.some((j: any) => j.status === 'failed' || j.status === 'cancelled') && (
+              <button onClick={async () => {
+                if (!window.confirm('Clear all failed and cancelled jobs from the list?')) return;
+                try {
+                  const resp = await apiCall<{ deleted: number }>('/api/verify/jobs/clear', { method: 'DELETE' });
+                  showToast('info', `Cleared ${resp.deleted} job(s)`);
+                  fetchRecentJobs();
+                } catch (err: any) { showToast('error', `Clear failed: ${err.message}`); }
+              }} style={{
+                padding: '6px 14px', borderRadius: 8, border: '1px solid var(--red)',
+                background: 'var(--red-muted)', color: 'var(--red)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              }}>🗑 Clear Failed / Cancelled</button>
+            )}
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {recentJobs.map((job: any) => {
               const total = Number(job.total_emails) || 0;
