@@ -3,7 +3,7 @@ import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
 
 interface Props {
-  content: string;
+  content: string | null;
 }
 
 const components: Components = {
@@ -113,6 +113,7 @@ const components: Components = {
 };
 
 export default function MarkdownRenderer({ content }: Props) {
+  if (!content) return null;
   return (
     <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
       {content}
