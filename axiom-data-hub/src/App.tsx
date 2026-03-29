@@ -22,6 +22,10 @@ import AISettingsPage from './pages/AISettings';
 import LeadScoringPage from './pages/LeadScoring';
 import ICPAnalysisPage from './pages/ICPAnalysis';
 import ListSegmentationPage from './pages/ListSegmentation';
+import BounceAnalysisPage from './pages/BounceAnalysis';
+import DataEnrichmentPage from './pages/DataEnrichment';
+import ContentGenerationPage from './pages/ContentGeneration';
+import CampaignOptimizerPage from './pages/CampaignOptimizer';
 import ImpersonationBanner from './components/ImpersonationBanner';
 import { CommandPalette } from './components/CommandPalette';
 import { ServerProvider } from './components/ServerSelector';
@@ -62,6 +66,10 @@ export default function App() {
                     <Route path="/lead-scoring" element={<ProtectedRoute requires="canViewConfig"><LeadScoringPage /></ProtectedRoute>} />
                     <Route path="/icp-analysis" element={<ProtectedRoute requires="canViewConfig"><ICPAnalysisPage /></ProtectedRoute>} />
                     <Route path="/list-segmentation" element={<ProtectedRoute requires="canViewConfig"><ListSegmentationPage /></ProtectedRoute>} />
+                    <Route path="/bounce-analysis" element={<ProtectedRoute requires="canViewConfig"><BounceAnalysisPage /></ProtectedRoute>} />
+                    <Route path="/data-enrichment" element={<ProtectedRoute requires="canViewConfig"><DataEnrichmentPage /></ProtectedRoute>} />
+                    <Route path="/content-generation" element={<ProtectedRoute requires="canViewConfig"><ContentGenerationPage /></ProtectedRoute>} />
+                    <Route path="/campaign-optimizer" element={<ProtectedRoute requires="canViewConfig"><CampaignOptimizerPage /></ProtectedRoute>} />
                     {/* Catch-all 404 for protected routes */}
                     <Route path="*" element={<NotFoundPage />} />
                   </Routes>

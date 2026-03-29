@@ -33,6 +33,10 @@ import aiProvidersRoutes from './routes/ai-providers.js';
 import aiLeadScoringRoutes from './routes/ai-lead-scoring.js';
 import aiICPAnalysisRoutes from './routes/ai-icp-analysis.js';
 import aiListSegmentationRoutes from './routes/ai-list-segmentation.js';
+import aiBounceAnalysisRoutes from './routes/ai-bounce-analysis.js';
+import aiDataEnrichmentRoutes from './routes/ai-data-enrichment.js';
+import aiContentGenerationRoutes from './routes/ai-content-generation.js';
+import aiCampaignOptimizerRoutes from './routes/ai-campaign-optimizer.js';
 import { setupScheduler } from './services/ingestion-rules.js';
 import { ensureEnvServersRegistered } from './services/servers.js';
 
@@ -103,6 +107,10 @@ app.use('/api/ai', aiProvidersRoutes);
 app.use('/api/ai/lead-scoring', aiLeadScoringRoutes);
 app.use('/api/ai/icp-analysis', aiICPAnalysisRoutes);
 app.use('/api/ai/list-segmentation', aiListSegmentationRoutes);
+app.use('/api/ai/bounce-analysis', aiBounceAnalysisRoutes);
+app.use('/api/ai/data-enrichment', aiDataEnrichmentRoutes);
+app.use('/api/ai/content-generation', aiContentGenerationRoutes);
+app.use('/api/ai/campaign-optimizer', aiCampaignOptimizerRoutes);
 
 // ── v1 API (machine-to-machine, API key authenticated) ──
 app.use('/api/v1/keys', v1KeysRoutes);
