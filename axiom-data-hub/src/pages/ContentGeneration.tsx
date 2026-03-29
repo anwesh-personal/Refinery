@@ -3,6 +3,7 @@ import { apiCall } from '../lib/api';
 import {
   Loader2, PenTool, Copy, Check, Mail, Zap
 } from 'lucide-react';
+import AgentCard from '../components/AgentCard';
 
 interface ContentConfig {
   contentType: string; tone: string; length: string;
@@ -244,6 +245,11 @@ export default function ContentGenerationPage() {
 
       {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420, background: toast.type === 'error' ? 'var(--red)' : 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)', animation: 'slideUp 0.25s ease-out', cursor: 'pointer' }} onClick={() => setToast(null)}>{toast.type === 'error' ? '❌' : 'ℹ️'} {toast.message}</div>}
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}`}</style>
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 36 }}>
+        <AgentCard slug="email_marketer" contextLabel="Email Copy & Sequence Writing" />
+      </div>
     </>
   );
 }

@@ -4,6 +4,7 @@ import {
   Loader2, ChevronDown, Settings, Activity, AlertTriangle,
   Zap, Shield, TrendingDown, CheckCircle, XCircle
 } from 'lucide-react';
+import AgentCard from '../components/AgentCard';
 
 interface BounceConfig {
   analysisMode: string; focusAreas: Record<string, boolean>;
@@ -262,6 +263,12 @@ export default function BounceAnalysisPage() {
       {!result && !analyzing && jobs.length === 0 && <EmptyState />}
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}`}</style>
+
+      {/* AI Agents */}
+      <div style={{ marginTop: 36, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <AgentCard slug="verification_engineer" contextLabel="Bounce Pattern Analysis" />
+        <AgentCard slug="smtp_specialist" contextLabel="Deliverability Infrastructure" />
+      </div>
     </>
   );
 }

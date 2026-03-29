@@ -6,6 +6,7 @@ import { Check, X as CloseIcon, Key, LogIn, Mail, Plus, Trash2, Edit2, ShieldAle
 import { supabase } from '../lib/supabase';
 import { apiCall } from '../lib/api';
 import { getAvatarUrl } from '../lib/avatar';
+import AgentCard from '../components/AgentCard';
 
 
 interface CustomRole {
@@ -1398,6 +1399,11 @@ export default function TeamPage() {
           </div>
         </div>
       )}
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 36 }}>
+        <AgentCard slug="supervisor" contextLabel="Team & Access Management" />
+      </div>
     </div>
   );
 }

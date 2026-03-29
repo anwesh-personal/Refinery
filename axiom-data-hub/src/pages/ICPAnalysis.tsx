@@ -4,6 +4,7 @@ import {
   Sparkles, Loader2, ChevronDown, Settings, Target, AlertTriangle,
   TrendingUp, Zap, BarChart3, Users, Globe, Shield, Eye, Lightbulb
 } from 'lucide-react';
+import AgentCard from '../components/AgentCard';
 
 // ─── Types ───
 
@@ -460,6 +461,11 @@ export default function ICPAnalysisPage() {
         @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 36 }}>
+        <AgentCard slug="data_scientist" contextLabel="Ideal Customer Profile Analysis" />
+      </div>
     </>
   );
 }

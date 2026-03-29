@@ -1133,6 +1133,12 @@ export default function VerificationPage() {
           />
         </div>
       )}
+
+      {/* AI Agents — always visible */}
+      <div style={{ marginTop: 36, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <AgentCard slug="verification_engineer" contextLabel="Verification Strategy & Results" />
+        <AgentCard slug="smtp_specialist" contextLabel="SMTP & Deliverability Analysis" />
+      </div>
     </>
   );
 }

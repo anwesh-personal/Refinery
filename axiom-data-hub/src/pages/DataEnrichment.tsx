@@ -4,6 +4,7 @@ import {
   Loader2, ChevronDown, Settings, Database, AlertTriangle,
   Zap, Users, Building2, Briefcase, BarChart3, Download
 } from 'lucide-react';
+import AgentCard from '../components/AgentCard';
 
 interface EnrichConfig {
   enrichmentFields: Record<string, boolean>;
@@ -219,6 +220,11 @@ export default function DataEnrichmentPage() {
       {!result && !enriching && jobs.length === 0 && <div style={{ textAlign: 'center', padding: '60px 20px', background: 'var(--bg-card)', borderRadius: 20, border: '1px dashed var(--border)' }}><AlertTriangle size={32} style={{ color: 'var(--text-tertiary)', marginBottom: 12, opacity: 0.4 }} /><div style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>No verification jobs found</div></div>}
       {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420, background: toast.type === 'error' ? 'var(--red)' : 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)', animation: 'slideUp 0.25s ease-out', cursor: 'pointer' }} onClick={() => setToast(null)}>{toast.type === 'error' ? '❌' : 'ℹ️'} {toast.message}</div>}
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}`}</style>
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 36 }}>
+        <AgentCard slug="data_scientist" contextLabel="Data Enrichment Strategy" />
+      </div>
     </>
   );
 }

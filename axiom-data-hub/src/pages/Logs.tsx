@@ -2,6 +2,7 @@ import { ScrollText, Trash2, RefreshCw, Search, AlertCircle, Loader2, FileText, 
 import { PageHeader, Button } from '../components/UI';
 import { useState, useEffect, useCallback } from 'react';
 import { apiCall } from '../lib/api';
+import AgentCard from '../components/AgentCard';
 
 /* ── Types ── */
 interface LogEntry {
@@ -298,6 +299,11 @@ export default function LogsPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 36 }}>
+        <AgentCard slug="supervisor" contextLabel="System Monitoring — Activity Logs" />
       </div>
     </>
   );

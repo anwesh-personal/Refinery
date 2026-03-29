@@ -4,6 +4,7 @@ import {
   Loader2, ChevronDown, Settings, Layers, AlertTriangle,
   Zap, Mail, Clock, TrendingUp, Download, Users
 } from 'lucide-react';
+import AgentCard from '../components/AgentCard';
 
 // ─── Types ───
 interface SegmentationConfig {
@@ -417,6 +418,11 @@ export default function ListSegmentationPage() {
         @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 36 }}>
+        <AgentCard slug="data_scientist" contextLabel="List Segmentation Strategy" />
+      </div>
     </>
   );
 }

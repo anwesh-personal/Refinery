@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { SectionHeader, Button } from '../components/UI';
 import { Trash2, AlertTriangle, Play, Info } from 'lucide-react';
 import { apiCall } from '../lib/api';
+import AgentCard from '../components/AgentCard';
 
 interface CleanupRule {
   type: 'date_range' | 'missing_email' | 'keyword' | 'source' | 'duplicates' | 'empty_columns';
@@ -331,6 +332,11 @@ export default function JanitorPage() {
           </p>
         </div>
       )}
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 36 }}>
+        <AgentCard slug="data_scientist" contextLabel="Data Cleanup Recommendations" />
+      </div>
     </div>
   );
 }

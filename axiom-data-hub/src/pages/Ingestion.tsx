@@ -4,6 +4,7 @@ import MergePlayground from './MergePlayground';
 import { ServerSelector } from '../components/ServerSelector';
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiCall } from '../lib/api';
+import AgentCard from '../components/AgentCard';
 
 /* ---------------- Interfaces ---------------- */
 interface IngestionStats {
@@ -1842,6 +1843,11 @@ export default function IngestionPage() {
       )}
     </>
     )}
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 36 }}>
+        <AgentCard slug="data_scientist" contextLabel="Data Ingestion — Column Mapping & Quality" />
+      </div>
     </>
   );
 }

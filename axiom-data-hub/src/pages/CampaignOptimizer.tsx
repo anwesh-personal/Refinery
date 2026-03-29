@@ -4,6 +4,7 @@ import {
   Loader2, Settings, Rocket, AlertTriangle, Zap, Clock,
   TrendingUp, Shield, ChevronDown, Calendar
 } from 'lucide-react';
+import AgentCard from '../components/AgentCard';
 
 interface OptimizerConfig {
   optimizationGoals: Record<string, boolean>;
@@ -230,6 +231,11 @@ export default function CampaignOptimizerPage() {
 
       {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 12, maxWidth: 420, background: toast.type === 'error' ? 'var(--red)' : 'var(--accent)', color: '#fff', fontSize: 12, fontWeight: 600, boxShadow: '0 10px 30px rgba(0,0,0,0.3)', animation: 'slideUp 0.25s ease-out', cursor: 'pointer' }} onClick={() => setToast(null)}>{toast.type === 'error' ? '❌' : 'ℹ️'} {toast.message}</div>}
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}`}</style>
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 36 }}>
+        <AgentCard slug="email_marketer" contextLabel="Campaign Optimization Strategy" />
+      </div>
     </>
   );
 }

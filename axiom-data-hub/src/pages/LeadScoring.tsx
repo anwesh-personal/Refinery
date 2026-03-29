@@ -4,6 +4,7 @@ import {
   Sparkles, Loader2, ChevronDown, Settings, Trophy,
   AlertTriangle, TrendingUp, Zap, BarChart3, Target, Download
 } from 'lucide-react';
+import AgentCard from '../components/AgentCard';
 
 // ─── Types ───
 
@@ -476,6 +477,11 @@ export default function LeadScoringPage() {
         @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 36 }}>
+        <AgentCard slug="data_scientist" contextLabel="Lead Scoring Criteria & Methodology" />
+      </div>
     </>
   );
 }

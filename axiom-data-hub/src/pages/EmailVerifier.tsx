@@ -3,6 +3,7 @@ import Papa from 'papaparse';
 import { Network, CheckCircle, XCircle, ShieldAlert, Zap, Database } from 'lucide-react';
 import { PageHeader, SectionHeader, Button, Badge } from '../components/UI';
 import { apiCall } from '../lib/api';
+import AgentCard from '../components/AgentCard';
 
 interface CheckConfig {
   syntax: boolean;
@@ -1709,6 +1710,11 @@ export default function EmailVerifierPage() {
           </div>
         </div>
       )}
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 36 }}>
+        <AgentCard slug="verification_engineer" contextLabel="Email Verification — Standalone Analysis" />
+      </div>
 
     </>
   );

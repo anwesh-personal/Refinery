@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, CheckCircle2, AlertCircle, ChevronRight, ChevronLeft, Search, Download, GitMerge, FileText, X, ArrowUp, ArrowDown, GripVertical, AlertTriangle, Sparkles, Crown, Eye, BarChart3, Clock, Shield } from 'lucide-react';
 import { apiCall } from '../lib/api';
 import { Button } from '../components/UI';
+import AgentCard from '../components/AgentCard';
 
 // ═══════════════════════════════════════════════════════════════
 // MERGE PLAYGROUND — Multi-file selective data consolidation
@@ -1153,6 +1154,11 @@ export default function MergePlayground() {
         }}
       />
     )}
+
+      {/* AI Agent */}
+      <div style={{ marginTop: 36 }}>
+        <AgentCard slug="data_scientist" contextLabel="Merge Strategy — Dedup & Consolidation" />
+      </div>
     </>
   );
 }
