@@ -20,6 +20,7 @@ import JanitorPage from './pages/Janitor';
 import MTAConfigPage from './pages/MTAConfig';
 import AISettingsPage from './pages/AISettings';
 import LeadScoringPage from './pages/LeadScoring';
+import ICPAnalysisPage from './pages/ICPAnalysis';
 import ImpersonationBanner from './components/ImpersonationBanner';
 import { CommandPalette } from './components/CommandPalette';
 import { ServerProvider } from './components/ServerSelector';
@@ -58,6 +59,7 @@ export default function App() {
                     <Route path="/mta-config" element={<ProtectedRoute requires="canViewConfig"><MTAConfigPage /></ProtectedRoute>} />
                     <Route path="/ai-settings" element={<ProtectedRoute requires="canViewConfig"><AISettingsPage /></ProtectedRoute>} />
                     <Route path="/lead-scoring" element={<ProtectedRoute requires="canViewConfig"><LeadScoringPage /></ProtectedRoute>} />
+                    <Route path="/icp-analysis" element={<ProtectedRoute requires="canViewConfig"><ICPAnalysisPage /></ProtectedRoute>} />
                     {/* Catch-all 404 for protected routes */}
                     <Route path="*" element={<NotFoundPage />} />
                   </Routes>
