@@ -1339,6 +1339,22 @@ export default function IngestionPage() {
                               onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--purple)'; }}
                             >Archive</button>
                           )}
+                          {['failed', 'cancelled', 'rolled_back'].includes(job.status) && (
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`Retry ingestion of "${job.file_name}" from the same source?`)) return;
+                                try {
+                                  const r = await apiCall<{ newJobId: string }>(`/api/ingestion/${job.id}/retry`, { method: 'POST' });
+                                  setSuccess(`Retry started for ${job.file_name} → new job ${r.newJobId.slice(0, 8)}...`);
+                                  fetchData();
+                                  setTimeout(() => setSuccess(null), 5000);
+                                } catch (e: any) { setError(e.message); }
+                              }}
+                              style={{ padding: '3px 8px', fontSize: 10, fontWeight: 700, borderRadius: 5, cursor: 'pointer', border: '1px solid var(--green)', background: 'transparent', color: 'var(--green)', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 3 }}
+                              onMouseOver={e => { e.currentTarget.style.background = 'var(--green)'; e.currentTarget.style.color = 'var(--accent-contrast)'; }}
+                              onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--green)'; }}
+                            ><RotateCw size={10} /> Retry</button>
+                          )}
                         </div>
                       </td>
                     </tr>

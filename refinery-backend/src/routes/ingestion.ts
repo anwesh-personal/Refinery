@@ -212,7 +212,30 @@ router.post('/:id/archive', async (req, res) => {
   }
 });
 
-// GET /api/ingestion/:id/data â€” browse rows ingested by this job
+// POST /api/ingestion/:id/retry — re-ingest a failed job from the same source
+router.post('/:id/retry', async (req, res) => {
+  try {
+    const user = getRequestUser(req);
+    // Look up the original job
+    const [job] = await q<{ source_key: string; source_bucket: string; status: string }>(
+      `SELECT source_key, source_bucket, status FROM ingestion_jobs WHERE id = '${esc(req.params.id)}' LIMIT 1`
+    );
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (!['failed', 'cancelled', 'rolled_back'].includes(job.status)) {
+      return res.status(400).json({ error: `Cannot retry a job with status '${job.status}'. Only failed, cancelled, or rolled-back jobs can be retried.` });
+    }
+
+    // Find matching S3 source by bucket
+    const [source] = await q<{ id: string }>(`SELECT id FROM s3_sources WHERE bucket = '${esc(job.source_bucket)}' AND is_active = 1 LIMIT 1`);
+
+    const newJobId = await ingestionService.startIngestionJob(job.source_key, source?.id, user.id, user.name);
+    res.json({ ok: true, newJobId, retried_from: req.params.id });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/ingestion/:id/data — browse rows ingested by this job
 router.get('/:id/data', async (req, res) => {
   try {
     const jobId = req.params.id;

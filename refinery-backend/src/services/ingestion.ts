@@ -632,7 +632,26 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
 
     async function flushBatch(batch: Record<string, unknown>[]) {
       if (batch.length === 0) return;
-      await insertRows('universal_person', batch);
+
+      const MAX_RETRIES = 3;
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          await insertRows('universal_person', batch);
+          break; // success — exit retry loop
+        } catch (err: any) {
+          const msg = String(err.message || '');
+          const isRetryable = msg.includes('EPIPE') || msg.includes('socket hang up') || msg.includes('ECONNRESET') || msg.includes('ETIMEDOUT');
+
+          if (isRetryable && attempt < MAX_RETRIES) {
+            const delay = 2000 * Math.pow(2, attempt - 1); // 2s, 4s, 8s
+            console.warn(`[Ingestion] ${jobId}: Batch insert failed (${msg}), retrying in ${delay / 1000}s (attempt ${attempt}/${MAX_RETRIES})...`);
+            await new Promise(r => setTimeout(r, delay));
+          } else {
+            throw err; // non-retryable or exhausted retries — let the job fail
+          }
+        }
+      }
+
       totalRows += batch.length;
 
       const now = Date.now();
