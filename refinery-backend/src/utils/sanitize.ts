@@ -18,7 +18,11 @@ export function esc(v: string): string {
  * - null/undefined → null
  * - Buffer/Uint8Array → null (binary garbage from corrupted fields)
  * - Strings → null bytes stripped, empty strings → null
+ * - Control characters (ESC, BEL, etc.) → null (binary garbage from INT96 timestamps)
+ *   Excludes tab (0x09), newline (0x0A), carriage return (0x0D) which are valid text.
  */
+const CONTROL_CHARS = /[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/;
+
 export function sanitizeValue(val: unknown): string | null {
   if (val == null) return null;
 
@@ -26,7 +30,12 @@ export function sanitizeValue(val: unknown): string | null {
   if (Buffer.isBuffer(val) || val instanceof Uint8Array) return null;
 
   const str = String(val).replace(/\0/g, '');
-  return str || null;
+  if (!str) return null;
+
+  // Residual control characters after null-stripping = binary garbage (INT96, etc.)
+  if (CONTROL_CHARS.test(str)) return null;
+
+  return str;
 }
 
 /**
