@@ -1334,10 +1334,10 @@ export default function IngestionPage() {
                           {['failed', 'cancelled', 'rolled_back'].includes(job.status) && (
                             <button
                               onClick={async () => {
-                                if (!confirm(`Retry ingestion of "${job.file_name}" from the same source?`)) return;
+                                if (!confirm(`Retry ingestion of "${job.file_name}"?\n\nThis will clean any partial data from the failed attempt and re-run the same job.`)) return;
                                 try {
-                                  const r = await apiCall<{ newJobId: string }>(`/api/ingestion/${job.id}/retry`, { method: 'POST' });
-                                  setSuccess(`Retry started for ${job.file_name} → new job ${r.newJobId.slice(0, 8)}...`);
+                                  const r = await apiCall<{ ok: boolean; jobId: string; cleaned: number }>(`/api/ingestion/${job.id}/retry`, { method: 'POST' });
+                                  setSuccess(`Retrying ${job.file_name}${r.cleaned > 0 ? ` (cleaned ${r.cleaned.toLocaleString()} partial rows)` : ''}`);
                                   fetchData();
                                   setTimeout(() => setSuccess(null), 5000);
                                 } catch (e: any) { setError(e.message); }

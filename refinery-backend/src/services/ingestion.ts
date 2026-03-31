@@ -473,6 +473,49 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string, pe
 }
 
 /**
+ * Retry an existing job — re-run its pipeline using the same job ID.
+ * The caller is responsible for cleaning partial data and resetting status first.
+ */
+export async function retryIngestionJob(jobId: string, sourceKey: string, sourceId?: string): Promise<void> {
+  if (shuttingDown) throw new Error('Server is shutting down — cannot retry jobs.');
+
+  const fileName = sourceKey.split('/').pop() || sourceKey;
+  const format = detectFormat(fileName);
+
+  // Resolve S3 source
+  let sourceBucket: string;
+  let sourceClient: S3Client;
+
+  if (sourceId) {
+    const src = await s3Sources.getSource(sourceId);
+    if (!src) throw new Error(`S3 source '${sourceId}' not found`);
+    sourceBucket = src.bucket;
+    sourceClient = s3Sources.buildClient(src);
+  } else {
+    sourceBucket = env.s3Source.bucket;
+    sourceClient = getSourceClient();
+  }
+
+  // Fire pipeline in background with concurrency control
+  (async () => {
+    await acquirePipelineSlot();
+    console.log(`[Ingestion] ${jobId}: Retry slot acquired (${activeCount}/${MAX_CONCURRENT} active, ${waitQueue.length} queued)`);
+    try {
+      await runIngestionPipeline(jobId, sourceKey, fileName, format, sourceClient, sourceBucket);
+    } catch (err: any) {
+      console.error(`[Ingestion] Retry ${jobId} failed:`, err.message);
+      await command(`
+        ALTER TABLE ingestion_jobs UPDATE 
+          status = 'failed', error_message = '${esc(String(err.message || 'Unknown error'))}'
+        WHERE id = '${esc(jobId)}'
+      `);
+    } finally {
+      releasePipelineSlot();
+    }
+  })();
+}
+
+/**
  * Bulk ingestion — batch-insert all job records in ONE ClickHouse call,
  * then fire background workers. No file count limit.
  * This avoids the socket hang up caused by 500+ sequential insertRows calls.

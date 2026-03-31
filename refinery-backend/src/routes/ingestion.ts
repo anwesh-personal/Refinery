@@ -212,24 +212,48 @@ router.post('/:id/archive', async (req, res) => {
   }
 });
 
-// POST /api/ingestion/:id/retry — re-ingest a failed job from the same source
+// POST /api/ingestion/:id/retry — reset a failed job and re-run it in-place
 router.post('/:id/retry', async (req, res) => {
   try {
     const user = getRequestUser(req);
+    const jobId = req.params.id;
+
     // Look up the original job
-    const [job] = await q<{ source_key: string; source_bucket: string; status: string }>(
-      `SELECT source_key, source_bucket, status FROM ingestion_jobs WHERE id = '${esc(req.params.id)}' LIMIT 1`
+    const [job] = await q<{ source_key: string; source_bucket: string; status: string; rows_ingested: string }>(
+      `SELECT source_key, source_bucket, status, rows_ingested FROM ingestion_jobs WHERE id = '${esc(jobId)}' LIMIT 1`
     );
     if (!job) return res.status(404).json({ error: 'Job not found' });
     if (!['failed', 'cancelled', 'rolled_back'].includes(job.status)) {
       return res.status(400).json({ error: `Cannot retry a job with status '${job.status}'. Only failed, cancelled, or rolled-back jobs can be retried.` });
     }
 
-    // Find matching S3 source by bucket
-    const [source] = await q<{ id: string }>(`SELECT id FROM s3_sources WHERE bucket = '${esc(job.source_bucket)}' AND is_active = 1 LIMIT 1`);
+    // 1. Delete any partial rows from the failed attempt to prevent duplicates
+    const partialRows = Number(job.rows_ingested) || 0;
+    if (partialRows > 0) {
+      await cmd(`ALTER TABLE universal_person DELETE WHERE _ingestion_job_id = '${esc(jobId)}'`);
+      console.log(`[Ingestion] Retry ${jobId}: cleaned ${partialRows} partial rows before retry`);
+    }
 
-    const newJobId = await ingestionService.startIngestionJob(job.source_key, source?.id, user.id, user.name);
-    res.json({ ok: true, newJobId, retried_from: req.params.id });
+    // 2. Reset the job record in-place
+    await cmd(`
+      ALTER TABLE ingestion_jobs UPDATE 
+        status = 'pending', 
+        error_message = NULL, 
+        rows_ingested = 0,
+        started_at = now(),
+        performed_by = '${esc(user.id)}',
+        performed_by_name = '${esc(user.name)}'
+      WHERE id = '${esc(jobId)}'
+    `);
+
+    // 3. Find matching S3 source and re-queue the pipeline
+    const [source] = await q<{ id: string }>(`SELECT id FROM s3_sources WHERE bucket = '${esc(job.source_bucket)}' AND is_active = 1 LIMIT 1`);
+    
+    // Re-run the pipeline using the existing job ID
+    await ingestionService.retryIngestionJob(jobId, job.source_key, source?.id);
+
+    console.log(`[Ingestion] Retry ${jobId}: re-queued by ${user.name}`);
+    res.json({ ok: true, jobId, cleaned: partialRows });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
