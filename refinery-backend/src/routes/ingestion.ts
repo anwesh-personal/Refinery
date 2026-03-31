@@ -41,29 +41,44 @@ router.get('/source-files', async (req, res) => {
   }
 });
 
-// POST /api/ingestion/start  { sourceKey: "..." }
-router.post('/start', async (req, res) => {
+// POST /api/ingestion/check-duplicates  { sourceKeys: ["..."] }
+router.post('/check-duplicates', async (req, res) => {
   try {
-    const { sourceKey, sourceId } = req.body;
-    if (!sourceKey) return res.status(400).json({ error: 'sourceKey is required' });
-    const user = getRequestUser(req);
-    const jobId = await ingestionService.startIngestionJob(sourceKey, sourceId, user.id, user.name);
-    res.json({ jobId });
+    const { sourceKeys } = req.body;
+    if (!sourceKeys || !Array.isArray(sourceKeys)) return res.status(400).json({ error: 'sourceKeys array is required' });
+    const duplicates = await ingestionService.checkDuplicates(sourceKeys);
+    res.json({ duplicates, hasDuplicates: duplicates.length > 0 });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// POST /api/ingestion/start-bulk  { sourceKeys: ["..."], sourceId: "..." }
+// POST /api/ingestion/start  { sourceKey, sourceId?, force? }
+router.post('/start', async (req, res) => {
+  try {
+    const { sourceKey, sourceId, force } = req.body;
+    if (!sourceKey) return res.status(400).json({ error: 'sourceKey is required' });
+    const user = getRequestUser(req);
+    const jobId = await ingestionService.startIngestionJob(sourceKey, sourceId, user.id, user.name, !!force);
+    res.json({ jobId });
+  } catch (e: any) {
+    if (e.code === 'DUPLICATE_INGESTION') {
+      return res.status(409).json({ error: e.message, code: e.code, duplicate: e.duplicate });
+    }
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/ingestion/start-bulk  { sourceKeys, sourceId?, force? }
 router.post('/start-bulk', async (req, res) => {
   try {
-    const { sourceKeys, sourceId } = req.body;
+    const { sourceKeys, sourceId, force } = req.body;
     if (!sourceKeys || !Array.isArray(sourceKeys) || sourceKeys.length === 0) {
       return res.status(400).json({ error: 'sourceKeys array is required' });
     }
     const user = getRequestUser(req);
-    const jobIds = await ingestionService.startBulkIngestion(sourceKeys, sourceId, user.id, user.name);
-    res.json({ jobIds, count: jobIds.length });
+    const result = await ingestionService.startBulkIngestion(sourceKeys, sourceId, user.id, user.name, !!force);
+    res.json({ jobIds: result.jobIds, count: result.jobIds.length, skipped: result.skipped });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -108,7 +123,7 @@ router.get('/preview-file', async (req, res) => {
 // POST /api/ingestion/start-bulk-daterange
 router.post('/start-bulk-daterange', async (req, res) => {
   try {
-    const { sourceId, prefix, startDate, endDate } = req.body;
+    const { sourceId, prefix, startDate, endDate, force } = req.body;
     if (!sourceId) return res.status(400).json({ error: 'sourceId is required' });
     if (!startDate || !endDate) return res.status(400).json({ error: 'startDate and endDate are required' });
 
@@ -128,18 +143,19 @@ router.post('/start-bulk-daterange', async (req, res) => {
     });
 
     if (matchingFiles.length === 0) {
-      return res.json({ jobIds: [], count: 0, message: 'No files found in the specified date range.' });
+      return res.json({ jobIds: [], count: 0, skipped: [], message: 'No files found in the specified date range.' });
     }
 
     const user = getRequestUser(req);
-    const jobIds = await ingestionService.startBulkIngestion(
+    const result = await ingestionService.startBulkIngestion(
       matchingFiles.map(f => f.key),
       sourceId,
       user.id,
       user.name,
+      !!force,
     );
 
-    res.json({ jobIds, count: jobIds.length, filesMatched: matchingFiles.length });
+    res.json({ jobIds: result.jobIds, count: result.jobIds.length, skipped: result.skipped, filesMatched: matchingFiles.length });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

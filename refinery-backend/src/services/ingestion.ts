@@ -401,13 +401,68 @@ export async function getIngestionStats() {
   return { ...stats, queue: getQueueStatus() };
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Duplicate Detection
+// ═══════════════════════════════════════════════════════════════
+
+export interface DuplicateInfo {
+  sourceKey: string;
+  fileName: string;
+  existingJobId: string;
+  status: string;
+  rowsIngested: number;
+  ingestedAt: string;
+}
+
+/**
+ * Check which source keys already have non-failed ingestion jobs.
+ * Returns structured info about each duplicate for UI display.
+ */
+export async function checkDuplicates(sourceKeys: string[]): Promise<DuplicateInfo[]> {
+  if (sourceKeys.length === 0) return [];
+
+  const keyList = sourceKeys.map(k => `'${esc(k)}'`).join(',');
+  const existing = await query<{
+    source_key: string; id: string; status: string; rows_ingested: string; started_at: string;
+  }>(
+    `SELECT source_key, id, status, rows_ingested, started_at
+     FROM ingestion_jobs
+     WHERE source_key IN (${keyList})
+       AND status IN ('complete', 'pending', 'downloading', 'uploading', 'ingesting')
+     ORDER BY started_at DESC`
+  );
+
+  // Deduplicate: keep only the latest job per source_key
+  const seen = new Set<string>();
+  const dupes: DuplicateInfo[] = [];
+  for (const row of existing) {
+    if (seen.has(row.source_key)) continue;
+    seen.add(row.source_key);
+    dupes.push({
+      sourceKey: row.source_key,
+      fileName: row.source_key.split('/').pop() || row.source_key,
+      existingJobId: row.id,
+      status: row.status,
+      rowsIngested: Number(row.rows_ingested) || 0,
+      ingestedAt: row.started_at,
+    });
+  }
+  return dupes;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Single-file Ingestion
+// ═══════════════════════════════════════════════════════════════
+
 /**
  * Start an ingestion job:
  * 1. Download from source S3 to local temp
  * 2. Parse file and insert into ClickHouse
  * 3. Archive raw file to MinIO (background)
+ *
+ * @param force — if true, skip duplicate check and ingest anyway
  */
-export async function startIngestionJob(sourceKey: string, sourceId?: string, performedBy?: string, performedByName?: string): Promise<string> {
+export async function startIngestionJob(sourceKey: string, sourceId?: string, performedBy?: string, performedByName?: string, force = false): Promise<string> {
   if (shuttingDown) throw new Error('Server is shutting down — cannot start new ingestion jobs.');
 
   const jobId = genId();
@@ -432,12 +487,20 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string, pe
     sourceClient = getSourceClient();
   }
 
-  // Duplicate check — warn if this exact source_key already has a non-failed job
-  const [existingJob] = await query<{ id: string; status: string }>(
-    `SELECT id, status FROM ingestion_jobs WHERE source_key = '${esc(sourceKey)}' AND status IN ('complete', 'pending', 'downloading', 'uploading', 'ingesting') ORDER BY started_at DESC LIMIT 1`
-  );
-  if (existingJob) {
-    console.warn(`[Ingestion] ⚠ Duplicate: ${sourceKey} already has job ${existingJob.id} (status: ${existingJob.status}). Proceeding anyway.`);
+  // Duplicate prevention — reject if file already ingested (unless forced)
+  if (!force) {
+    const dupes = await checkDuplicates([sourceKey]);
+    if (dupes.length > 0) {
+      const d = dupes[0];
+      const err: any = new Error(
+        `"${d.fileName}" is already ingested (job ${d.existingJobId}, ${d.rowsIngested.toLocaleString()} rows, status: ${d.status}). Use force=true to re-ingest.`
+      );
+      err.code = 'DUPLICATE_INGESTION';
+      err.duplicate = d;
+      throw err;
+    }
+  } else {
+    console.log(`[Ingestion] Force-ingesting ${sourceKey} (duplicate check bypassed)`);
   }
 
   // Create job record
@@ -520,8 +583,35 @@ export async function retryIngestionJob(jobId: string, sourceKey: string, source
  * then fire background workers. No file count limit.
  * This avoids the socket hang up caused by 500+ sequential insertRows calls.
  */
-export async function startBulkIngestion(sourceKeys: string[], sourceId?: string, performedBy?: string, performedByName?: string): Promise<string[]> {
+export interface BulkIngestionResult {
+  jobIds: string[];
+  skipped: DuplicateInfo[];
+}
+
+export async function startBulkIngestion(
+  sourceKeys: string[],
+  sourceId?: string,
+  performedBy?: string,
+  performedByName?: string,
+  force = false,
+): Promise<BulkIngestionResult> {
   if (shuttingDown) throw new Error('Server is shutting down — cannot start new ingestion jobs.');
+
+  // Duplicate prevention — filter out already-ingested files unless forced
+  let keysToIngest = sourceKeys;
+  let skipped: DuplicateInfo[] = [];
+
+  if (!force) {
+    const dupes = await checkDuplicates(sourceKeys);
+    if (dupes.length > 0) {
+      const dupeKeys = new Set(dupes.map(d => d.sourceKey));
+      keysToIngest = sourceKeys.filter(k => !dupeKeys.has(k));
+      skipped = dupes;
+      console.log(`[Ingestion] Bulk: ${dupes.length} files already ingested (skipped). ${keysToIngest.length} new files to ingest.`);
+    }
+  } else {
+    console.log(`[Ingestion] Bulk: Force mode — skipping duplicate check for ${sourceKeys.length} files.`);
+  }
 
   // Resolve S3 source once (not per file)
   let sourceBucket: string;
@@ -541,7 +631,7 @@ export async function startBulkIngestion(sourceKeys: string[], sourceId?: string
   const jobs: Array<{ id: string; key: string; fileName: string; format: FileFormat }> = [];
   const rows: Array<Record<string, any>> = [];
 
-  for (const key of sourceKeys) {
+  for (const key of keysToIngest) {
     const fileName = key.split('/').pop() || key;
     const format = detectFormat(fileName);
     if (format === 'unknown') continue; // skip unsupported files silently
@@ -559,8 +649,13 @@ export async function startBulkIngestion(sourceKeys: string[], sourceId?: string
     });
   }
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && skipped.length === 0) {
     throw new Error('No supported files found in the provided list.');
+  }
+
+  if (rows.length === 0 && skipped.length > 0) {
+    // All files were already ingested
+    return { jobIds: [], skipped };
   }
 
   // Single batch insert — all jobs at once
@@ -589,7 +684,7 @@ export async function startBulkIngestion(sourceKeys: string[], sourceId?: string
     })();
   }
 
-  return jobs.map(j => j.id);
+  return { jobIds: jobs.map(j => j.id), skipped };
 }
 
 async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: string, format: FileFormat, sourceClient: S3Client, sourceBucket: string) {

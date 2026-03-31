@@ -448,12 +448,13 @@ export default function IngestionPage() {
 
   const browseFiles = (overridePrefix?: string) => browseFilesForSource(selectedSourceId, overridePrefix);
 
-  const startIngestion = async (sourceKey: string) => {
+  const startIngestion = async (sourceKey: string, force = false) => {
     setIngesting(sourceKey);
     setError(null);
     try {
-      const body: { sourceKey: string; sourceId?: string } = { sourceKey };
+      const body: { sourceKey: string; sourceId?: string; force?: boolean } = { sourceKey };
       if (selectedSourceId) body.sourceId = selectedSourceId;
+      if (force) body.force = true;
 
       const res = await apiCall<{ jobId: string }>('/api/ingestion/start', {
         method: 'POST',
@@ -462,26 +463,54 @@ export default function IngestionPage() {
       setSuccess(`Job started: ${res.jobId}`);
       setTimeout(() => setSuccess(null), 3000);
       fetchData();
-    } catch (e) {
-      setError(`Ingestion failed: ${e instanceof Error ? e.message : String(e)}`);
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      // Handle duplicate conflict — ask user to force
+      if (msg.includes('already ingested') && !force) {
+        const fileName = sourceKey.split('/').pop() || sourceKey;
+        if (confirm(`⚠️ "${fileName}" is already ingested in ClickHouse.\n\nThis will create DUPLICATE data. Are you sure you want to re-ingest?`)) {
+          setIngesting(null);
+          return startIngestion(sourceKey, true);
+        }
+      } else {
+        setError(`Ingestion failed: ${msg}`);
+      }
     }
     setIngesting(null);
   };
 
-  const startBulkIngestion = async () => {
+  const startBulkIngestion = async (force = false) => {
     if (selectedFiles.size === 0) return;
     setIngestingBulk(true);
     setError(null);
     try {
-      const res = await apiCall<{ jobIds: string[], count: number }>('/api/ingestion/start-bulk', {
+      const res = await apiCall<{ jobIds: string[]; count: number; skipped?: Array<{ fileName: string; rowsIngested: number }> }>('/api/ingestion/start-bulk', {
         method: 'POST',
         body: {
           sourceKeys: Array.from(selectedFiles),
-          sourceId: selectedSourceId
+          sourceId: selectedSourceId,
+          force,
         },
       });
-      setSuccess(`Started ${res.count} bulk ingestion jobs.`);
-      setTimeout(() => setSuccess(null), 3000);
+
+      const skippedCount = res.skipped?.length || 0;
+
+      if (res.count === 0 && skippedCount > 0 && !force) {
+        // All files already ingested — ask user
+        const skippedNames = res.skipped!.map(s => `  • ${s.fileName} (${s.rowsIngested.toLocaleString()} rows)`).join('\n');
+        setIngestingBulk(false);
+        if (confirm(`⚠️ All ${skippedCount} selected files are already ingested:\n\n${skippedNames}\n\nRe-ingesting will create DUPLICATE data. Force re-ingest all?`)) {
+          return startBulkIngestion(true);
+        }
+        return;
+      }
+
+      let msg = `Started ${res.count} ingestion jobs.`;
+      if (skippedCount > 0) {
+        msg += ` ${skippedCount} already-ingested files skipped.`;
+      }
+      setSuccess(msg);
+      setTimeout(() => setSuccess(null), 5000);
       setSelectedFiles(new Set());
       fetchData();
     } catch (e) {
@@ -530,7 +559,7 @@ export default function IngestionPage() {
     setDateRangeIngesting(true);
     setError(null);
     try {
-      const res = await apiCall<{ jobIds: string[]; count: number; filesMatched?: number; message?: string }>(
+      const res = await apiCall<{ jobIds: string[]; count: number; skipped?: Array<{ fileName: string }>; filesMatched?: number; message?: string }>(
         '/api/ingestion/start-bulk-daterange',
         {
           method: 'POST',
@@ -542,10 +571,13 @@ export default function IngestionPage() {
           },
         }
       );
-      if (res.count === 0) {
+      const skippedCount = res.skipped?.length || 0;
+      if (res.count === 0 && skippedCount === 0) {
         setError(res.message || 'No files found in the specified date range.');
       } else {
-        setSuccess(`Started ${res.count} ingestion jobs from ${res.filesMatched || res.count} matching files.`);
+        let msg = `Started ${res.count} ingestion jobs from ${res.filesMatched || res.count} matching files.`;
+        if (skippedCount > 0) msg += ` ${skippedCount} already-ingested files skipped.`;
+        setSuccess(msg);
         setTimeout(() => setSuccess(null), 5000);
         fetchData();
       }
@@ -861,7 +893,7 @@ export default function IngestionPage() {
             </div>
           </div>
           {selectedFiles.size > 0 && (
-            <Button variant="primary" icon={ingestingBulk ? <Loader2 size={14} className="spin" /> : <Layers size={14} />} onClick={startBulkIngestion} disabled={ingestingBulk}>
+            <Button variant="primary" icon={ingestingBulk ? <Loader2 size={14} className="spin" /> : <Layers size={14} />} onClick={() => startBulkIngestion()} disabled={ingestingBulk}>
               Ingest {selectedFiles.size} Files
             </Button>
           )}
