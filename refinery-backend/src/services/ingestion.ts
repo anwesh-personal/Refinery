@@ -24,8 +24,13 @@ import { esc, sanitizeValue, toClickHouseDateTime } from '../utils/sanitize.js';
 // Limits parallel pipelines to MAX_CONCURRENT to prevent OOM,
 // bandwidth saturation, and ClickHouse write contention.
 // Queue depth is unlimited — submit 5,000 files if you want.
+//
+// Memory budget: ~4GB heap (--max-old-space-size=4096)
+//   - Each Parquet pipeline: ~500MB–1.3GB (ParquetReader decodes row groups)
+//   - Each CSV pipeline: ~50KB (pure streaming)
+//   - 3 concurrent = safe headroom for API, agents, and GC overhead
 // ═══════════════════════════════════════════════════════════════
-const MAX_CONCURRENT = 5;
+const MAX_CONCURRENT = 3;
 let activeCount = 0;
 const waitQueue: Array<{ resolve: () => void }> = [];
 
