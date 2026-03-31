@@ -90,7 +90,7 @@ export async function recoverStaleIngestionJobs(): Promise<number> {
   try {
     const tmpBase = os.tmpdir();
     const entries = await fs.promises.readdir(tmpBase);
-    const orphaned = entries.filter(e => e.startsWith('refinery-ingest-'));
+    const orphaned = entries.filter(e => e.startsWith('refinery-ingest-') || e.startsWith('refinery-preview-'));
     for (const dir of orphaned) {
       await fs.promises.rm(path.join(tmpBase, dir), { recursive: true, force: true }).catch(() => {});
     }
