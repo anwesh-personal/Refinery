@@ -161,7 +161,7 @@ router.post('/start-bulk-daterange', async (req, res) => {
   }
 });
 
-// POST /api/ingestion/clear-jobs  { status: "failed" | "complete" | "all" }
+// POST /api/ingestion/clear-jobs  { status: "failed" | "complete" | "cancelled" | "rolled_back" | "all" }
 router.post('/clear-jobs', async (req, res) => {
   try {
     const { status } = req.body;
@@ -173,10 +173,12 @@ router.post('/clear-jobs', async (req, res) => {
       condition = "status = 'complete'";
     } else if (status === 'cancelled') {
       condition = "status = 'cancelled'";
+    } else if (status === 'rolled_back') {
+      condition = "status = 'rolled_back'";
     } else if (status === 'all') {
-      condition = "status IN ('failed', 'complete', 'cancelled')";
+      condition = "status IN ('failed', 'complete', 'cancelled', 'rolled_back')";
     } else {
-      return res.status(400).json({ error: 'status must be "failed", "complete", "cancelled", or "all"' });
+      return res.status(400).json({ error: 'status must be "failed", "complete", "cancelled", "rolled_back", or "all"' });
     }
 
     const [{ cnt }] = await q<{ cnt: string }>(`SELECT count() as cnt FROM ingestion_jobs WHERE ${condition}`);

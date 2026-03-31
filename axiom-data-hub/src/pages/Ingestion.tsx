@@ -1224,6 +1224,17 @@ export default function IngestionPage() {
                 } catch (e: any) { alert(e.message); }
               }}>Clear Cancelled</Button>
           )}
+          {jobs.some(j => j.status === 'rolled_back') && (
+            <Button variant="secondary" style={{ padding: '5px 10px', fontSize: 11 }} icon={<Trash2 size={12} />}
+              onClick={async () => {
+                if (!confirm(`Delete all ${jobs.filter(j => j.status === 'rolled_back').length} rolled-back job records?`)) return;
+                try {
+                  const r = await apiCall<{ deleted: number }>('/api/ingestion/clear-jobs', { method: 'POST', body: { status: 'rolled_back' } });
+                  alert(`Cleared ${r.deleted} rolled-back job(s)`);
+                  fetchData();
+                } catch (e: any) { alert(e.message); }
+              }}>Clear Rolled Back</Button>
+          )}
           {jobs.some(j => j.status === 'failed') && (
             <Button variant="secondary" style={{ padding: '5px 10px', fontSize: 11 }} icon={<Trash2 size={12} />}
               onClick={async () => {
