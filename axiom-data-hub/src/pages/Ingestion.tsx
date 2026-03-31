@@ -4,6 +4,7 @@ import MergePlayground from './MergePlayground';
 import { ServerSelector } from '../components/ServerSelector';
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiCall } from '../lib/api';
+import { timeAgo } from '../lib/timeAgo';
 import AgentCard from '../components/AgentCard';
 
 /* ---------------- Interfaces ---------------- */
@@ -102,16 +103,7 @@ function formatNumber(n: string | number): string {
   return Number(n).toLocaleString();
 }
 
-function timeAgo(dateStr: string): string {
-  if (!dateStr) return '';
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
+
 
 const statusColors: Record<string, string> = {
   complete: 'var(--green)', ingesting: 'var(--blue)', downloading: 'var(--yellow)',

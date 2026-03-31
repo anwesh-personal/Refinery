@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, CheckCircle2, AlertCircle, ChevronRight, ChevronLeft, Search, Download, GitMerge, FileText, X, ArrowUp, ArrowDown, GripVertical, AlertTriangle, Sparkles, Crown, Eye, BarChart3, Clock, Shield } from 'lucide-react';
 import { apiCall } from '../lib/api';
+import { timeAgo } from '../lib/timeAgo';
 import { Button } from '../components/UI';
 import AgentCard from '../components/AgentCard';
 
@@ -85,15 +86,7 @@ const REC_COLORS: Record<string, { bg: string; text: string; label: string }> = 
   poor: { bg: 'var(--red-muted)', text: 'var(--red)', label: 'Poor' },
 };
 
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
+
 
 export default function MergePlayground() {
   // ── Step state ──

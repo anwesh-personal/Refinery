@@ -3,6 +3,7 @@ import { ShieldCheck, CheckCircle, XCircle, Clock, Upload, RefreshCw, Activity, 
 import { PageHeader, StatCard, SectionHeader, DataTable, Button, Input, Badge } from '../components/UI';
 import { ServerSelector, useServers } from '../components/ServerSelector';
 import { apiCall } from '../lib/api';
+import { timeAgo } from '../lib/timeAgo';
 import AgentCard from '../components/AgentCard';
 
 interface VerifyStats {
@@ -824,15 +825,7 @@ export default function VerificationPage() {
           const total = b.total_leads || 1;
           const pct = Math.min(100, Math.round((done / total) * 100));
           const isRunning = ['pending', 'submitting', 'processing'].includes(b.status);
-          const timeAgo = b.started_at ? (() => {
-            const diff = Date.now() - new Date(b.started_at).getTime();
-            const mins = Math.floor(diff / 60000);
-            if (mins < 1) return 'just now';
-            if (mins < 60) return `${mins}m ago`;
-            const hrs = Math.floor(mins / 60);
-            if (hrs < 24) return `${hrs}h ago`;
-            return `${Math.floor(hrs / 24)}d ago`;
-          })() : '—';
+          const batchTimeAgo = b.started_at ? timeAgo(b.started_at) : '—';
           return {
             id: <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{b.id.substring(0, 8)}…</span>,
             engine: <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: (!b.engine || b.engine === 'verify550') ? 'var(--purple-muted, rgba(168,85,247,.15))' : 'var(--blue-muted)', color: (!b.engine || b.engine === 'verify550') ? 'var(--purple)' : 'var(--blue)' }}>{(!b.engine || b.engine === 'verify550') ? 'Verify550' : 'Native SMTP'}</span>,
@@ -852,7 +845,7 @@ export default function VerificationPage() {
               {getStatusBadge(b.status)}
               {b.error_message && <span style={{ fontSize: 11, color: 'var(--red)', maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={b.error_message}>{b.error_message}</span>}
             </div>,
-            time: <span style={{ fontSize: 11, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{timeAgo}</span>,
+            time: <span style={{ fontSize: 11, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{batchTimeAgo}</span>,
             action: isRunning ? (
               <Button variant="danger" style={{ padding: '6px 12px', fontSize: 11 }} onClick={(e) => { e.stopPropagation(); handleCancel(b.id); }} icon={<StopCircle size={12} />}>Halt</Button>
             ) : ['complete', 'cancelled'].includes(b.status) ? (

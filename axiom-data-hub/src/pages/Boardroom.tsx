@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiCall } from '../lib/api';
+import { timeAgo } from '../lib/timeAgo';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import { Send, Loader2, Users, Trash2 } from 'lucide-react';
 
@@ -249,13 +250,7 @@ export default function BoardroomPage() {
     inputRef.current?.focus();
   };
 
-  const timeAgo = (d: string) => {
-    const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
-    if (s < 60) return 'just now';
-    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-    return `${Math.floor(s / 86400)}d ago`;
-  };
+
 
   const filteredMentions = [{ slug: 'all', name: 'all', role: 'Everyone responds' }, ...AGENT_SLUGS.map(s => ({ slug: s, name: AGENTS[s].name, role: AGENTS[s].role }))].filter(a => a.name.toLowerCase().includes(mentionFilter));
 

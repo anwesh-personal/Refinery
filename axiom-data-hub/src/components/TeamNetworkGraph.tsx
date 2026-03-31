@@ -16,6 +16,7 @@ import '@xyflow/react/dist/style.css';
 import { supabase } from '../lib/supabase';
 import { getAvatarUrl } from '../lib/avatar';
 import { Activity, Database, Zap, Send, Clock, User, ShieldCheck, X, Mail, Calendar, Award } from 'lucide-react';
+import { timeAgo } from '../lib/timeAgo';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -72,14 +73,6 @@ const TEAM_COLORS = ['var(--purple)', 'var(--blue)', 'var(--green)', '#f59e0b', 
 
 const getRoleColor = (role: string) => ROLE_COLORS[role] || 'var(--purple)';
 const formatNum = (n: number) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : n.toString();
-const timeAgo = (d: string | null) => {
-  if (!d) return 'Never';
-  const mins = Math.floor((Date.now() - new Date(d).getTime()) / 60000);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-};
 
 // ─── Custom Node ────────────────────────────────────────────────────────────
 
