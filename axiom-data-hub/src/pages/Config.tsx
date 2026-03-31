@@ -68,12 +68,16 @@ export default function ConfigPage() {
   const [newConfigValue, setNewConfigValue] = useState('');
 
   // Known config keys with human-readable labels and descriptions
-  const KNOWN_CONFIGS: { key: string; label: string; description: string; type: 'number' | 'string' | 'secret' }[] = [
+  const KNOWN_CONFIGS: { key: string; label: string; description: string; type: 'number' | 'string' | 'secret'; unit?: string; requiresRestart?: boolean }[] = [
+    // ── Ingestion Tuning ──
+    { key: 'ingestion.max_concurrent', label: 'Ingestion Concurrency', description: 'Max parallel ingestion pipelines (higher = faster, but uses more memory)', type: 'number' },
+    { key: 'ingestion.batch_size', label: 'Ingestion Batch Size', description: 'Rows per ClickHouse insert batch (lower = less memory, slower ingestion)', type: 'number' },
+    { key: 'node.heap_size_mb', label: 'Node.js Heap Size', description: 'V8 max heap size — requires PM2 restart to take effect', type: 'number', unit: 'MB', requiresRestart: true },
     // ── Pipeline Settings ──
     { key: 'pipeline.max_emails_per_job', label: 'Pipeline Max Emails', description: 'Maximum emails per Pipeline Studio job', type: 'number' },
     { key: 'pipeline.smtp_concurrency', label: 'Pipeline SMTP Concurrency', description: 'Concurrent SMTP connections during verification', type: 'number' },
     { key: 'segment.export_limit', label: 'Segment Export Limit', description: 'Max leads returned when exporting a segment', type: 'number' },
-    { key: 'clickhouse.max_query_size', label: 'ClickHouse Max Query Size', description: 'Max bytes for a single ClickHouse query string (default 512MB)', type: 'number' },
+    { key: 'clickhouse.max_query_size', label: 'ClickHouse Max Query Size', description: 'Max size for a single ClickHouse query string', type: 'number', unit: 'MB' },
     // ── Third-Party Integrations ──
     { key: 'semrush_api_key', label: 'SEMRush API Key', description: 'API key for SEMRush — powers Oracle\'s keyword research, domain analytics, and competitor analysis', type: 'secret' },
   ];
@@ -90,7 +94,10 @@ export default function ConfigPage() {
           draft[kc.key] = kc.key === 'pipeline.max_emails_per_job' ? '200000'
             : kc.key === 'pipeline.smtp_concurrency' ? '10'
             : kc.key === 'segment.export_limit' ? '200000'
-            : kc.key === 'clickhouse.max_query_size' ? '536870912' : '';
+            : kc.key === 'clickhouse.max_query_size' ? '512'
+            : kc.key === 'ingestion.max_concurrent' ? '5'
+            : kc.key === 'ingestion.batch_size' ? '10000'
+            : kc.key === 'node.heap_size_mb' ? '12288' : '';
         }
       }
       setSysConfigDraft(draft);
@@ -527,18 +534,22 @@ export default function ConfigPage() {
                   <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: "'JetBrains Mono', monospace", marginTop: 4, opacity: 0.7 }}>{kc.key}</div>
                 </div>
                 <Can do="canEditConfig">
-                  <input
-                    type={kc.type === 'number' ? 'number' : kc.type === 'secret' ? 'password' : 'text'}
-                    value={sysConfigDraft[kc.key] ?? ''}
-                    onChange={e => setSysConfigDraft(prev => ({ ...prev, [kc.key]: e.target.value }))}
-                    placeholder={kc.type === 'secret' ? '••••••••' : ''}
-                    style={{
-                      width: kc.type === 'secret' ? 220 : 160, padding: '10px 14px', borderRadius: 8,
-                      border: (sysConfigDraft[kc.key] ?? '') !== (sysConfig[kc.key] ?? '') ? '2px solid var(--accent)' : '1px solid var(--border)',
-                      background: 'var(--bg-input)', color: 'var(--text-primary)',
-                      fontSize: 14, fontFamily: "'JetBrains Mono', monospace", textAlign: 'right',
-                    }}
-                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type={kc.type === 'number' ? 'number' : kc.type === 'secret' ? 'password' : 'text'}
+                      value={sysConfigDraft[kc.key] ?? ''}
+                      onChange={e => setSysConfigDraft(prev => ({ ...prev, [kc.key]: e.target.value }))}
+                      placeholder={kc.type === 'secret' ? '••••••••' : ''}
+                      style={{
+                        width: kc.type === 'secret' ? 220 : 160, padding: '10px 14px', borderRadius: 8,
+                        border: (sysConfigDraft[kc.key] ?? '') !== (sysConfig[kc.key] ?? '') ? '2px solid var(--accent)' : '1px solid var(--border)',
+                        background: 'var(--bg-input)', color: 'var(--text-primary)',
+                        fontSize: 14, fontFamily: "'JetBrains Mono', monospace", textAlign: 'right',
+                      }}
+                    />
+                    {kc.unit && <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 600, minWidth: 24 }}>{kc.unit}</span>}
+                    {kc.requiresRestart && <span style={{ fontSize: 10, background: 'rgba(255,180,0,0.15)', color: '#f0a000', padding: '2px 8px', borderRadius: 4, fontWeight: 700, whiteSpace: 'nowrap' }}>Restart Required</span>}
+                  </div>
                 </Can>
               </div>
             ))}

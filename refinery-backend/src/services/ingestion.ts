@@ -25,14 +25,23 @@ import { esc, sanitizeValue, toClickHouseDateTime } from '../utils/sanitize.js';
 // bandwidth saturation, and ClickHouse write contention.
 // Queue depth is unlimited — submit 5,000 files if you want.
 //
-// Memory budget: ~4GB heap (--max-old-space-size=4096)
-//   - Each Parquet pipeline: ~500MB–1.3GB (ParquetReader decodes row groups)
-//   - Each CSV pipeline: ~50KB (pure streaming)
-//   - 3 concurrent = safe headroom for API, agents, and GC overhead
+// Configurable from Server Config → System Settings:
+//   ingestion.max_concurrent  (default: 5)
+//   ingestion.batch_size      (default: 10,000)
+//   node.heap_size_mb         (requires PM2 restart)
 // ═══════════════════════════════════════════════════════════════
-const MAX_CONCURRENT = 3;
+let MAX_CONCURRENT = 5; // default — overridden by system_config on startup
+let BATCH_SIZE = 10_000;
 let activeCount = 0;
 const waitQueue: Array<{ resolve: () => void }> = [];
+
+/** Load ingestion tuning from system_config (call on startup + config change) */
+export async function loadIngestionConfig(): Promise<void> {
+  const { getConfigInt } = await import('./config.js');
+  MAX_CONCURRENT = await getConfigInt('ingestion.max_concurrent', 5);
+  BATCH_SIZE = await getConfigInt('ingestion.batch_size', 10_000);
+  console.log(`[Ingestion] Config loaded: max_concurrent=${MAX_CONCURRENT}, batch_size=${BATCH_SIZE}`);
+}
 
 async function acquirePipelineSlot(): Promise<void> {
   if (activeCount < MAX_CONCURRENT) {
@@ -56,8 +65,8 @@ function releasePipelineSlot(): void {
 }
 
 /** Get current queue status — useful for monitoring */
-export function getQueueStatus(): { active: number; queued: number; maxConcurrent: number } {
-  return { active: activeCount, queued: waitQueue.length, maxConcurrent: MAX_CONCURRENT };
+export function getQueueStatus(): { active: number; queued: number; maxConcurrent: number; batchSize: number } {
+  return { active: activeCount, queued: waitQueue.length, maxConcurrent: MAX_CONCURRENT, batchSize: BATCH_SIZE };
 }
 
 /**
@@ -542,7 +551,6 @@ export async function startBulkIngestion(sourceKeys: string[], sourceId?: string
 
 async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: string, format: FileFormat, sourceClient: S3Client, sourceBucket: string) {
   const storageClient = getStorageClient();
-  const BATCH_SIZE = 10000;
   let totalRows = 0;
 
   // ─── Step 1: Download from S3 to temp file ───

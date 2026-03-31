@@ -5,7 +5,10 @@ const CONFIG_DEFAULTS: Record<string, number> = {
   'pipeline.max_emails_per_job': 200_000,
   'pipeline.smtp_concurrency': 10,
   'segment.export_limit': 200_000,
-  'clickhouse.max_query_size': 536_870_912, // 512MB
+  'clickhouse.max_query_size': 512, // 512 MB
+  'ingestion.max_concurrent': 5,
+  'ingestion.batch_size': 10_000,
+  'node.heap_size_mb': 12_288, // 12 GB
 };
 
 /** Get a config value */
@@ -88,4 +91,9 @@ export const CONFIG_KEYS = {
   SEGMENT_EXPORT_LIMIT: 'segment.export_limit',
   // ClickHouse tuning
   CH_MAX_QUERY_SIZE: 'clickhouse.max_query_size',
+  // Ingestion tuning
+  INGESTION_MAX_CONCURRENT: 'ingestion.max_concurrent',
+  INGESTION_BATCH_SIZE: 'ingestion.batch_size',
+  // Node.js tuning
+  NODE_HEAP_SIZE_MB: 'node.heap_size_mb',
 } as const;

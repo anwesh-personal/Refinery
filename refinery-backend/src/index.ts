@@ -5,7 +5,7 @@ import morgan from 'morgan';
 import { env, validateEnv } from './config/env.js';
 import { initDatabase } from './db/init.js';
 import { recoverOrphanedBatches } from './services/verification.js';
-import { recoverStaleIngestionJobs, startArchiveCleanupScheduler, startGracefulShutdown } from './services/ingestion.js';
+import { recoverStaleIngestionJobs, startArchiveCleanupScheduler, startGracefulShutdown, loadIngestionConfig } from './services/ingestion.js';
 import { recoverOrphanedJobs } from './routes/verify.js';
 
 // Routes
@@ -175,6 +175,9 @@ async function start() {
     if (staleJobs > 0) {
       console.log(`[Server] ✓ Recovered ${staleJobs} stale ingestion job(s)`);
     }
+
+    // Load ingestion tuning from system_config (max_concurrent, batch_size)
+    await loadIngestionConfig();
 
     // Recover orphaned pipeline jobs from prior crash/restart
     await recoverOrphanedJobs();

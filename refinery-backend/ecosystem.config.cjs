@@ -17,9 +17,9 @@ module.exports = {
       script: './dist/index.js',
 
       // ── Memory ──
-      // 32GB server: 24GB ClickHouse, ~4GB OS/MinIO, 4GB for Node.js
-      // Default V8 heap is 1.7GB — far too low for Parquet ingestion.
-      node_args: '--max-old-space-size=4096',
+      // 32GB server: 16GB ClickHouse, ~4GB OS/MinIO, 12GB for Node.js
+      // Configurable from Server Config → System Settings → node.heap_size_mb
+      node_args: '--max-old-space-size=12288',
 
       // ── Restart Policy ──
       // Auto-restart on crash, but with exponential backoff to prevent
