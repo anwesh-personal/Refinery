@@ -250,13 +250,12 @@ router.post('/:id/retry', async (req, res) => {
       console.log(`[Ingestion] Retry ${jobId}: cleaned ${partialRows} partial rows before retry`);
     }
 
-    // 2. Reset the job record in-place
+    // 2. Reset the job record in-place (started_at is a key column — cannot be updated)
     await cmd(`
       ALTER TABLE ingestion_jobs UPDATE 
         status = 'pending', 
         error_message = NULL, 
         rows_ingested = 0,
-        started_at = now(),
         performed_by = '${esc(user.id)}',
         performed_by_name = '${esc(user.name)}'
       WHERE id = '${esc(jobId)}'

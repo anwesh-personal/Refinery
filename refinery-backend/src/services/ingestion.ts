@@ -774,7 +774,7 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
       const MAX_RETRIES = 3;
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-          await insertRows('universal_person', batch);
+          await insertRows('universal_person', batch, { timeoutMs: 300_000 }); // 5 min — matches CH max_execution_time
           break; // success — exit retry loop
         } catch (err: any) {
           const msg = String(err.message || '');
