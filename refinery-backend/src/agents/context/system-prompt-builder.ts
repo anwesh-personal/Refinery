@@ -55,7 +55,7 @@ export async function buildSystemPrompt(options: PromptBuildOptions): Promise<st
   }
 
   // 5. Behavioral guardrails (dynamic — from DB capabilities, not hardcoded slugs)
-  sections.push(await buildGuardrails(options.agentSlug));
+  sections.push(await buildGuardrailsBlock(options.agentSlug));
 
   return sections.join('\n\n');
 }
@@ -65,7 +65,7 @@ export async function buildSystemPrompt(options: PromptBuildOptions): Promise<st
  * Common rules are always applied.
  * Agent-specific rules are pulled from the agent's `capabilities` array in the DB.
  */
-async function buildGuardrails(agentSlug: string): Promise<string> {
+export async function buildGuardrailsBlock(agentSlug: string): Promise<string> {
   const sections: string[] = ['## Operating Guidelines'];
 
   try {

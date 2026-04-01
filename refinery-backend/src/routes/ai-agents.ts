@@ -11,6 +11,8 @@ import { getPromptContext } from "../agents/context/schema-registry.js";
 import { buildIngestionContext } from "../agents/context/context-builder.js";
 import { parseIntent, buildChainPrompt, buildDebatePrompt } from "../agents/orchestration.js";
 import { getRequestUser } from '../types/auth.js';
+import { embedKBEntry, reembedAll, embedQuery } from '../services/embeddings.js';
+import { fetchKBEntriesSemantic, buildGuardrailsBlock } from '../agents/context/system-prompt-builder.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -110,13 +112,31 @@ router.post('/conversations/:convId/messages', async (req: Request, res: Respons
     const manifest = buildSystemManifest(agent.slug);
     const customBlock = agent.custom_instructions ? `\n=== CUSTOM INSTRUCTIONS ===\n${agent.custom_instructions}` : '';
 
+    // 4.5. Semantic KB retrieval — embed user query, find relevant KB entries
+    let kbBlock = '';
+    try {
+      const queryEmbedding = await embedQuery(message);
+      const kbEntries = await fetchKBEntriesSemantic(agent.id, queryEmbedding, 5, 0.65);
+      if (kbEntries.length > 0) {
+        kbBlock = `\n\n=== KNOWLEDGE BASE (${kbEntries.length} relevant entries) ===\n${kbEntries.join('\n\n')}`;
+      }
+    } catch (e: any) {
+      console.warn('[Chat] KB semantic search failed:', e.message);
+    }
+
+    // 4.6. Guardrails from DB
+    let guardrailsBlock = '';
+    try {
+      guardrailsBlock = await buildGuardrailsBlock(agent.slug);
+    } catch (e: any) {
+      console.warn('[Chat] Guardrails fetch failed:', e.message);
+    }
+
     // 5. Build the full system prompt with manifest
-    const systemPrompt = `${manifest}\n\n${agent.system_prompt}${customBlock}\n\n=== LIVE SYSTEM CONTEXT ===\n${systemContext}\n\n=== CONVERSATION RULES ===
-- You are chatting with a user. Be conversational but expert.
-- If the user asks you to DO something, USE YOUR TOOLS to actually do it.
-- Reference the system context when relevant.
-- Keep responses focused and actionable. No filler.
-- Use markdown formatting for clarity (bold, lists, code blocks, tables).`;
+    // Behavioral rules come from ai_agent_guardrails table via buildGuardrailsBlock().
+    // KB entries come from semantic search via fetchKBEntriesSemantic().
+    // Do NOT add hardcoded rules here.
+    const systemPrompt = `${manifest}\n\n${agent.system_prompt}${customBlock}\n\n=== LIVE SYSTEM CONTEXT ===\n${systemContext}${kbBlock}\n\n${guardrailsBlock}`;
 
     // 6. Get tools for this agent
     const agentTools = getToolsForAgent(agent.slug);
@@ -443,6 +463,8 @@ router.post('/admin/:agentId/knowledge', async (req: Request, res: Response) => 
       .insert({ agent_id: req.params.agentId, title, content, category: category || 'general', priority: priority || 0 })
       .select().single();
     if (error) throw error;
+    // Auto-embed (fire-and-forget — don't block the response)
+    if (data?.id) embedKBEntry(data.id).catch(() => {});
     res.json({ entry: data });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -455,6 +477,10 @@ router.put('/admin/knowledge/:id', async (req: Request, res: Response) => {
     }
     const { data, error } = await supabaseAdmin.from('ai_agent_knowledge').update(updates).eq('id', req.params.id).select().single();
     if (error) throw error;
+    // Re-embed if title or content changed (fire-and-forget)
+    if (data?.id && (req.body.title !== undefined || req.body.content !== undefined)) {
+      embedKBEntry(data.id).catch(() => {});
+    }
     res.json({ entry: data });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -463,6 +489,14 @@ router.delete('/admin/knowledge/:id', async (req: Request, res: Response) => {
   try {
     await supabaseAdmin.from('ai_agent_knowledge').delete().eq('id', req.params.id);
     res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Re-embed all KB entries for an agent ──
+router.post('/admin/:agentId/knowledge/reembed', async (req: Request, res: Response) => {
+  try {
+    const result = await reembedAll(String(req.params.agentId));
+    res.json(result);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
@@ -603,17 +637,8 @@ INFRASTRUCTURE:
 - AI Nexus: This system — 5 specialist agents + provider management
 `);
 
-  // ── Knowledge Base entries ──
-  try {
-    const { data: kb } = await supabaseAdmin.from('ai_agent_knowledge')
-      .select('title, content, category').eq('agent_id', agentId).eq('enabled', true)
-      .order('priority', { ascending: false });
-    if (kb && kb.length > 0) {
-      parts.push('=== YOUR KNOWLEDGE BASE ===');
-      kb.forEach(k => parts.push(`[${k.category.toUpperCase()}] ${k.title}:\n${k.content}`));
-      parts.push('');
-    }
-  } catch {}
+  // NOTE: KB entries are now injected via semantic search (fetchKBEntriesSemantic)
+  // in the chat handler, NOT here. This avoids double-injection.
 
   // ── Live System Data ──
 
@@ -686,15 +711,9 @@ INFRASTRUCTURE:
 
   // ── Live Schema Context (from Schema Registry) ──
   try { const schemaCtx = await getPromptContext(); parts.push("=== DATA SCHEMA ===", schemaCtx); } catch {}
-  // ── Anti-hallucination rules ──
-  parts.push(`
-=== IMPORTANT RULES ===
-- NEVER make up data. If you don't have specific numbers, say "I don't have that data in my current context."
-- ALWAYS base your analysis on the SYSTEM CONTEXT provided above.
-- If the user asks about something not in your context, tell them which page to check.
-- When recommending actions, be specific about which page/feature in Refinery Nexus to use.
-- You are an expert in your domain. Be confident but honest about limitations.
-- Use the data above to give precise, actionable insights — not generic advice.`);
+  // Anti-hallucination & behavioral rules are now in ai_agent_guardrails table.
+  // They're injected by buildSystemPrompt() → buildGuardrails().
+  // Do NOT add hardcoded rules here.
 
   return parts.join('\n') || 'No system data available.';
 }

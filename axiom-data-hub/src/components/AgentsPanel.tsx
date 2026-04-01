@@ -137,6 +137,8 @@ export default function AgentsPanel() {
   const [editAccentColor, setEditAccentColor] = useState('');
   const [editAvatarUrl, setEditAvatarUrl] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [pendingToolIds, setPendingToolIds] = useState<string[]>([]);
+  const [approvingTools, setApprovingTools] = useState(false);
   const [newKBTitle, setNewKBTitle] = useState('');
   const [newKBContent, setNewKBContent] = useState('');
   const [newKBCategory, setNewKBCategory] = useState('general');
@@ -289,8 +291,11 @@ export default function AgentsPanel() {
     const userMsg: Msg = { id: `t-${Date.now()}`, role: 'user', content: msg, tokens_used: 0, latency_ms: 0, created_at: new Date().toISOString() };
     setMessages(prev => [...prev, userMsg]);
     try {
-      const data = await apiCall<{ reply: string; latencyMs: number; tokensUsed?: number; provider?: string; model?: string }>(`/api/ai/agents/conversations/${activeConv}/messages`, { method: 'POST', body: { message: msg } });
-      setMessages(prev => [...prev, { id: `r-${Date.now()}`, role: 'assistant', content: data.reply, tokens_used: data.tokensUsed || 0, latency_ms: data.latencyMs, provider_used: data.provider, model_used: data.model, created_at: new Date().toISOString() }]);
+      const data = await apiCall<{ reply: string; latencyMs: number; tokensUsed?: number; provider?: string; model?: string; pendingApproval?: boolean; pendingToolIds?: string[] }>(`/api/ai/agents/conversations/${activeConv}/messages`, { method: 'POST', body: { message: msg } });
+      if (data.pendingApproval && data.pendingToolIds?.length) {
+        setPendingToolIds(data.pendingToolIds);
+      }
+      setMessages(prev => [...prev, { id: `r-${Date.now()}`, role: 'assistant', content: data.reply, tokens_used: data.tokensUsed || 0, latency_ms: data.latencyMs, provider_used: data.provider, model_used: data.model, created_at: new Date().toISOString(), tool_name: data.pendingApproval ? '_pending_approval' : undefined }]);
       if (selectedAgent) loadConversations(selectedAgent.slug);
     } catch (e: any) {
       setMessages(prev => [...prev, { id: `e-${Date.now()}`, role: 'assistant', content: `❌ ${e.message}`, tokens_used: 0, latency_ms: 0, created_at: new Date().toISOString() }]);
@@ -302,6 +307,25 @@ export default function AgentsPanel() {
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}><Loader2 size={24} style={{ animation: 'spin 1s linear infinite', color: 'var(--accent)' }} /></div>;
 
   const color = selectedAgent?.accent_color || 'var(--purple)';
+
+  const handleToolDecision = async (approved: boolean) => {
+    if (!activeConv || pendingToolIds.length === 0) return;
+    setApprovingTools(true);
+    try {
+      const endpoint = approved ? 'approve-tools' : 'deny-tools';
+      const data = await apiCall<{ reply?: string; message?: string }>(`/api/ai/agents/conversations/${activeConv}/${endpoint}`, {
+        method: 'POST', body: { pendingIds: pendingToolIds, reason: approved ? undefined : 'User denied' },
+      });
+      setPendingToolIds([]);
+      if (approved && data.reply) {
+        setMessages(prev => [...prev, { id: `r-${Date.now()}`, role: 'assistant', content: String(data.reply), tokens_used: 0, latency_ms: 0, created_at: new Date().toISOString() }]);
+      } else if (!approved) {
+        setMessages(prev => [...prev, { id: `d-${Date.now()}`, role: 'user', content: String(data.message || '❌ Tool use denied.'), tokens_used: 0, latency_ms: 0, created_at: new Date().toISOString() }]);
+      }
+    } catch (e: any) {
+      setMessages(prev => [...prev, { id: `e-${Date.now()}`, role: 'assistant', content: `❌ ${e.message}`, tokens_used: 0, latency_ms: 0, created_at: new Date().toISOString() }]);
+    } finally { setApprovingTools(false); }
+  };
 
   // ═══ Agent Selection Grid ═══
   if (!selectedAgent || showModal) {
@@ -727,6 +751,26 @@ export default function AgentsPanel() {
               {loadingMsgs && <div style={{ textAlign: 'center', padding: 20 }}><Loader2 size={18} style={{ animation: 'spin 1s linear infinite', color: 'var(--text-tertiary)' }} /></div>}
               {messages.map(m => {
                 // Tool messages → inline timeline chip (no bubble)
+                if (m.tool_name === '_pending_approval') {
+                  return (
+                    <div key={m.id} style={{ display: 'flex', gap: 10, maxWidth: '95%', alignSelf: 'flex-start' }}>
+                      <img src={getAgentImage(selectedAgent)} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover', flexShrink: 0, marginTop: 2 }} />
+                      <div style={{ padding: '14px 18px', borderRadius: 14, background: 'var(--bg-card)', border: `1px solid ${color}40`, borderBottomLeftRadius: 4 }}>
+                        <MarkdownRenderer content={m.content} />
+                        {pendingToolIds.length > 0 && (
+                          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                            <button onClick={() => handleToolDecision(true)} disabled={approvingTools} style={{ padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer', background: 'var(--green)', color: '#fff', fontSize: 12, fontWeight: 700, opacity: approvingTools ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {approvingTools ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={13} />} Approve
+                            </button>
+                            <button onClick={() => handleToolDecision(false)} disabled={approvingTools} style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid var(--red)', cursor: 'pointer', background: 'transparent', color: 'var(--red)', fontSize: 12, fontWeight: 700, opacity: approvingTools ? 0.5 : 1 }}>
+                              Deny
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
                 if (m.tool_name) {
                   return (
                     <div key={m.id} style={{
