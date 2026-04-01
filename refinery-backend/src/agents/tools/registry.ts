@@ -13,6 +13,7 @@ import { getServerHealth, getDashboardStats } from './handlers/system.js';
 import { listSegments, createSegment, getSegmentCount } from './handlers/segments.js';
 import { generateEmailCopy } from './handlers/content.js';
 import { listS3Sources, startIngestion } from './handlers/ingestion.js';
+import { searchKeywords, getDomainAnalytics, findRankingDomains, crossReferenceDomains, getCompetitorKeywords } from './handlers/seo.js';
 import { analysisTools } from './analysis/index.js';
 
 // ─── Tool Definitions ───────────────────────────────────
@@ -200,8 +201,92 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
       required: ['type', 'product', 'audience'],
     },
     riskLevel: 'read',
-    agents: ['email_marketer'],
+    agents: ['supervisor'],
     handler: generateEmailCopy,
+  },
+
+  // ══════ SEO (Oracle) ══════
+
+  search_keywords: {
+    name: 'search_keywords',
+    description: 'Search for related keywords using SEMrush. Returns search volume, CPC, competition, and trends. Requires SEMrush API key in server config.',
+    parameters: {
+      type: 'object',
+      properties: {
+        keyword: { type: 'string', description: 'Seed keyword to research' },
+        limit: { type: 'number', description: 'Max results (default 20)' },
+        database: { type: 'string', description: 'Country code: us, uk, de, etc. Default: us' },
+      },
+      required: ['keyword'],
+    },
+    riskLevel: 'read',
+    agents: ['seo_strategist'],
+    handler: searchKeywords,
+  },
+
+  get_domain_analytics: {
+    name: 'get_domain_analytics',
+    description: 'Get comprehensive domain analytics — organic rank, traffic, top keywords, paid data. Uses SEMrush API.',
+    parameters: {
+      type: 'object',
+      properties: {
+        domain: { type: 'string', description: 'Domain to analyze (e.g. "competitor.com")' },
+        database: { type: 'string', description: 'Country code. Default: us' },
+      },
+      required: ['domain'],
+    },
+    riskLevel: 'read',
+    agents: ['seo_strategist'],
+    handler: getDomainAnalytics,
+  },
+
+  find_ranking_domains: {
+    name: 'find_ranking_domains',
+    description: 'Find all domains ranking for a keyword. Shows position, traffic share, and URL. Uses SEMrush API.',
+    parameters: {
+      type: 'object',
+      properties: {
+        keyword: { type: 'string', description: 'Keyword to check rankings for' },
+        limit: { type: 'number', description: 'Max results (default 20)' },
+        database: { type: 'string', description: 'Country code. Default: us' },
+      },
+      required: ['keyword'],
+    },
+    riskLevel: 'read',
+    agents: ['seo_strategist'],
+    handler: findRankingDomains,
+  },
+
+  cross_reference_domains: {
+    name: 'cross_reference_domains',
+    description: 'Check if specific domains exist in our ClickHouse lead database. Shows lead count, verification status, and companies per domain. Does NOT require SEMrush — uses internal data.',
+    parameters: {
+      type: 'object',
+      properties: {
+        domains: { type: 'array', items: { type: 'string' }, description: 'List of domains to look up' },
+      },
+      required: ['domains'],
+    },
+    riskLevel: 'read',
+    agents: ['seo_strategist', 'data_scientist'],
+    handler: crossReferenceDomains,
+  },
+
+  get_competitor_keywords: {
+    name: 'get_competitor_keywords',
+    description: 'Compare keyword overlap between two domains, or find organic competitors for a domain. Uses SEMrush API.',
+    parameters: {
+      type: 'object',
+      properties: {
+        domain: { type: 'string', description: 'Your domain' },
+        competitor_domain: { type: 'string', description: 'Optional. Competitor to compare against. If omitted, finds top organic competitors.' },
+        database: { type: 'string', description: 'Country code. Default: us' },
+      },
+      required: ['domain'],
+    },
+    riskLevel: 'read',
+    agents: ['seo_strategist'],
+    handler: getCompetitorKeywords,
   },
 
   // ══════ SYSTEM ══════
@@ -251,6 +336,7 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
     agents: ['supervisor'],
     handler: startIngestion,
   },
+
 };
 
 // ── Auto-register analysis tools ──

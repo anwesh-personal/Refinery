@@ -801,6 +801,19 @@ router.post("/boardroom/meetings", async (req: Request, res: Response) => {
           const systemContext = await gatherContext(ag.id, ag.capabilities || []);
           const manifest = buildSystemManifest(ag.slug);
           const customBlock = ag.custom_instructions ? "\n=== CUSTOM INSTRUCTIONS ===\n" + ag.custom_instructions : "";
+
+          // Semantic KB for this agent (same as chat handler)
+          let kbBlock = '';
+          try {
+            const qEmb = await embedQuery(question);
+            const kbEntries = await fetchKBEntriesSemantic(ag.id, qEmb, 5, 0.65);
+            if (kbEntries.length > 0) kbBlock = "\n\n=== KNOWLEDGE BASE (" + kbEntries.length + " relevant entries) ===\n" + kbEntries.join("\n\n");
+          } catch {}
+
+          // Guardrails from DB (same as chat handler)
+          let guardrailsBlock = '';
+          try { guardrailsBlock = await buildGuardrailsBlock(ag.slug); } catch {}
+
           // Build mode-aware prompt
           let boardroomBlock = "\n=== BOARDROOM MEETING MODE ===\nYou are in a boardroom meeting. Answer the question from YOUR department perspective.\n- Use your tools to get REAL data.\n- Be structured: headers, bullets, numbers.\n- Focus on YOUR domain only.\n- Start with a 1-line summary, then detail.\n- End with recommendations or flags.\n\nTHE QUESTION: \"" + question + "\"";
 
@@ -816,7 +829,7 @@ router.post("/boardroom/meetings", async (req: Request, res: Response) => {
             boardroomBlock += "\n\n=== DEBATE MODE ===\n" + prev.name + " argued:\n---\n" + prev.report + "\n---\nCounter their arguments. Use data and evidence. Be constructive but challenge weak points. Present YOUR domain\'s perspective.";
           };
 
-          const systemPrompt = manifest + "\n\n" + ag.system_prompt + customBlock + "\n\n" + systemContext + "\n\n" + boardroomBlock;
+          const systemPrompt = manifest + "\n\n" + ag.system_prompt + customBlock + "\n\n" + systemContext + kbBlock + "\n\n" + boardroomBlock + "\n\n" + guardrailsBlock;
           const agentTools = getToolsForAgent(ag.slug);
           const openAITools = toOpenAITools(agentTools);
           const chatMessages: ChatMessage[] = [{ role: "system", content: systemPrompt }, { role: "user", content: question }];

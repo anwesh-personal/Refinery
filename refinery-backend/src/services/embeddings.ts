@@ -70,11 +70,13 @@ async function resolveProvider(): Promise<EmbeddingProvider | null> {
     }
   }
 
-  // Tier 2: First enabled provider — ANY type that supports embeddings
+  // Tier 2: First enabled provider that supports embeddings (skip anthropic — no embedding API)
+  const EMBEDDING_CAPABLE = ['gemini', 'openai', 'mistral', 'private_vps', 'ollama'];
   const { data: providers } = await supabaseAdmin
     .from('ai_providers')
     .select('api_key, provider_type, endpoint, selected_model')
     .eq('enabled', true)
+    .in('provider_type', EMBEDDING_CAPABLE)
     .order('created_at', { ascending: true })
     .limit(1);
 
@@ -224,6 +226,15 @@ export async function generateEmbedding(text: string): Promise<EmbeddingResult> 
   }
 }
 
+/** Normalize embedding to exactly 1536 dimensions (our pgvector column width) */
+function normalizeDimensions(embedding: number[]): number[] {
+  const TARGET = 1536;
+  if (embedding.length === TARGET) return embedding;
+  if (embedding.length > TARGET) return embedding.slice(0, TARGET); // Truncate
+  // Pad with zeros (rare — most models produce >= 768 dims)
+  return [...embedding, ...new Array(TARGET - embedding.length).fill(0)];
+}
+
 /**
  * Embed a KB entry and store the vector in Supabase.
  * Called after KB entry create/update.
@@ -248,7 +259,7 @@ export async function embedKBEntry(entryId: string): Promise<boolean> {
   const { error } = await supabaseAdmin
     .from('ai_agent_knowledge')
     .update({
-      embedding: result.embedding,
+      embedding: normalizeDimensions(result.embedding),
       embedding_model: result.model || 'unknown',
       token_count: result.tokensUsed || 0,
       last_embedded_at: new Date().toISOString(),
@@ -269,7 +280,7 @@ export async function embedKBEntry(entryId: string): Promise<boolean> {
  */
 export async function embedQuery(query: string): Promise<number[] | null> {
   const result = await generateEmbedding(query);
-  return result.success ? result.embedding! : null;
+  return result.success ? normalizeDimensions(result.embedding!) : null;
 }
 
 /**
