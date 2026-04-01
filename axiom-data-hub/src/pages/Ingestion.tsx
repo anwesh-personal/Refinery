@@ -138,6 +138,7 @@ export default function IngestionPage() {
   const [selectedSourceId, setSelectedSourceId] = useState<string>(''); // empty means use legacy env
   const [prefix, setPrefix] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [fileStatusMap, setFileStatusMap] = useState<Record<string, { status: string; rowsIngested: number }>>({}); // ingestion status per source key
 
   // Sort & filter state
   const [fileSortKey, setFileSortKey] = useState<FileSortKey>('date');
@@ -440,6 +441,16 @@ export default function IngestionPage() {
       setSourceFiles(res.files || []);
       setPrefix(res.prefix || '');
       setSelectedFiles(new Set());
+
+      // Fetch ingestion statuses for these files (non-blocking)
+      if (res.files && res.files.length > 0) {
+        apiCall<{ statuses: Record<string, { status: string; rowsIngested: number }> }>('/api/ingestion/file-statuses', {
+          method: 'POST',
+          body: { sourceKeys: res.files.map(f => f.key) },
+        }).then(r => setFileStatusMap(r.statuses || {})).catch(() => {});
+      } else {
+        setFileStatusMap({});
+      }
     } catch (e) {
       setError(`Failed to browse: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -1036,6 +1047,25 @@ export default function IngestionPage() {
                             padding: '2px 6px', borderRadius: 4,
                             color: FORMAT_COLORS[format], background: FORMAT_COLORS[format] + '18',
                           }}>{format === 'gz' ? 'GZ' : format.toUpperCase()}</span>
+                          {fileStatusMap[f.key] && (() => {
+                            const st = fileStatusMap[f.key];
+                            const cfg = st.status === 'complete'
+                              ? { label: '✓ Ingested', color: '#22c55e', bg: 'rgba(34,197,94,0.12)' }
+                              : st.status === 'rolled_back'
+                              ? { label: '↩ Rolled Back', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' }
+                              : st.status === 'failed'
+                              ? { label: '✗ Failed', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' }
+                              : ['pending', 'downloading', 'uploading', 'ingesting'].includes(st.status)
+                              ? { label: '⟳ In Progress', color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' }
+                              : null;
+                            if (!cfg) return null;
+                            return (
+                              <span title={`${st.rowsIngested.toLocaleString()} rows`} style={{
+                                fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                color: cfg.color, background: cfg.bg, letterSpacing: '0.03em',
+                              }}>{cfg.label}</span>
+                            );
+                          })()}
                         </div>
                         <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
                           {formatBytes(f.size)} · {new Date(f.modified).toLocaleDateString()} {new Date(f.modified).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

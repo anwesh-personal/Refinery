@@ -402,6 +402,48 @@ export async function getIngestionStats() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// File Status Lookup (for browser badges)
+// ═══════════════════════════════════════════════════════════════
+
+export interface FileStatus {
+  sourceKey: string;
+  status: string;       // complete, rolled_back, failed, pending, etc.
+  rowsIngested: number;
+  jobId: string;
+}
+
+/**
+ * Get the latest ingestion job status for each source key.
+ * Used by the file browser to show "already ingested" / "rolled back" badges.
+ */
+export async function getFileStatuses(sourceKeys: string[]): Promise<Record<string, FileStatus>> {
+  if (sourceKeys.length === 0) return {};
+
+  const keyList = sourceKeys.map(k => `'${esc(k)}'`).join(',');
+  const rows = await query<{
+    source_key: string; id: string; status: string; rows_ingested: string;
+  }>(
+    `SELECT source_key, id, status, rows_ingested
+     FROM ingestion_jobs
+     WHERE source_key IN (${keyList})
+     ORDER BY started_at DESC`
+  );
+
+  // Keep the latest job per source_key
+  const result: Record<string, FileStatus> = {};
+  for (const row of rows) {
+    if (result[row.source_key]) continue;
+    result[row.source_key] = {
+      sourceKey: row.source_key,
+      status: row.status,
+      rowsIngested: Number(row.rows_ingested) || 0,
+      jobId: row.id,
+    };
+  }
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Duplicate Detection
 // ═══════════════════════════════════════════════════════════════
 

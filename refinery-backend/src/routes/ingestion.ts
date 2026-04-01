@@ -53,6 +53,18 @@ router.post('/check-duplicates', async (req, res) => {
   }
 });
 
+// POST /api/ingestion/file-statuses  { sourceKeys: ["..."] }
+router.post('/file-statuses', async (req, res) => {
+  try {
+    const { sourceKeys } = req.body;
+    if (!sourceKeys || !Array.isArray(sourceKeys)) return res.status(400).json({ error: 'sourceKeys array is required' });
+    const statuses = await ingestionService.getFileStatuses(sourceKeys);
+    res.json({ statuses });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/ingestion/start  { sourceKey, sourceId?, force? }
 router.post('/start', async (req, res) => {
   try {
