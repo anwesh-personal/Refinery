@@ -57,6 +57,8 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [pendingToolIds, setPendingToolIds] = useState<string[]>([]);
+  const [approvingTools, setApprovingTools] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -107,8 +109,11 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
     try {
       const cid = await ensureConversation();
       if (!cid) throw new Error('Failed to create conversation');
-      const data = await apiCall<{ reply: string; latencyMs: number; tokensUsed?: number; model?: string }>(`/api/ai/agents/conversations/${cid}/messages`, { method: 'POST', body: { message: msg } });
-      setMessages(prev => [...prev, { id: `r-${Date.now()}`, role: 'assistant', content: data.reply, tokens_used: data.tokensUsed || 0, latency_ms: data.latencyMs, model_used: data.model, created_at: new Date().toISOString() }]);
+      const data = await apiCall<{ reply: string; latencyMs: number; tokensUsed?: number; model?: string; pendingApproval?: boolean; pendingToolIds?: string[] }>(`/api/ai/agents/conversations/${cid}/messages`, { method: 'POST', body: { message: msg } });
+      if (data.pendingApproval && data.pendingToolIds?.length) {
+        setPendingToolIds(data.pendingToolIds);
+      }
+      setMessages(prev => [...prev, { id: `r-${Date.now()}`, role: 'assistant', content: data.reply, tokens_used: data.tokensUsed || 0, latency_ms: data.latencyMs, model_used: data.model, created_at: new Date().toISOString(), tool_name: data.pendingApproval ? '_pending_approval' : undefined }]);
     } catch (e: any) {
       setMessages(prev => [...prev, { id: `e-${Date.now()}`, role: 'assistant', content: `❌ ${e.message}`, tokens_used: 0, latency_ms: 0, created_at: new Date().toISOString() }]);
     } finally { setSending(false); inputRef.current?.focus(); }
@@ -131,6 +136,25 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
   };
 
   if (loading || !agent) return null;
+
+  const handleToolDecision = async (approved: boolean) => {
+    if (!convId || pendingToolIds.length === 0) return;
+    setApprovingTools(true);
+    try {
+      const endpoint = approved ? 'approve-tools' : 'deny-tools';
+      const data = await apiCall<{ reply?: string; message?: string }>(`/api/ai/agents/conversations/${convId}/${endpoint}`, {
+        method: 'POST', body: { pendingIds: pendingToolIds, reason: approved ? undefined : 'User denied' },
+      });
+      setPendingToolIds([]);
+      if (approved && data.reply) {
+        setMessages(prev => [...prev, { id: `r-${Date.now()}`, role: 'assistant', content: String(data.reply), tokens_used: 0, latency_ms: 0, created_at: new Date().toISOString() }]);
+      } else if (!approved) {
+        setMessages(prev => [...prev, { id: `d-${Date.now()}`, role: 'user', content: String(data.message || '❌ Tool use denied.'), tokens_used: 0, latency_ms: 0, created_at: new Date().toISOString() }]);
+      }
+    } catch (e: any) {
+      setMessages(prev => [...prev, { id: `e-${Date.now()}`, role: 'assistant', content: `❌ ${e.message}`, tokens_used: 0, latency_ms: 0, created_at: new Date().toISOString() }]);
+    } finally { setApprovingTools(false); }
+  };
 
   const color = agent.accent_color;
   const img = getAgentImage(agent);
@@ -215,6 +239,32 @@ export default function AgentCard({ slug, context, contextLabel, compact = true 
                 }}>
                   {m.role === 'user' ? (
                     <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
+                  ) : m.tool_name === '_pending_approval' ? (
+                    <div>
+                      <MarkdownRenderer content={m.content} />
+                      {pendingToolIds.length > 0 && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                          <button
+                            onClick={() => handleToolDecision(true)}
+                            disabled={approvingTools}
+                            style={{
+                              padding: '6px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                              background: 'var(--green)', color: '#fff', fontSize: 11, fontWeight: 700,
+                              opacity: approvingTools ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4,
+                            }}
+                          >{approvingTools ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Check size={12} />} Approve</button>
+                          <button
+                            onClick={() => handleToolDecision(false)}
+                            disabled={approvingTools}
+                            style={{
+                              padding: '6px 16px', borderRadius: 8, border: '1px solid var(--red)', cursor: 'pointer',
+                              background: 'transparent', color: 'var(--red)', fontSize: 11, fontWeight: 700,
+                              opacity: approvingTools ? 0.5 : 1,
+                            }}
+                          >Deny</button>
+                        </div>
+                      )}
+                    </div>
                   ) : m.tool_name ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', color: 'var(--text-tertiary)', fontSize: 11 }}>
                       <Wrench size={11} color="var(--accent)" />
