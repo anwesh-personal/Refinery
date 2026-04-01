@@ -633,7 +633,7 @@ export default function EmailVerifierPage() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 24, alignItems: 'flex-start' }}>
+      <div className="pipeline-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 24, alignItems: 'flex-start' }}>
 
         {/* Left Column - Input and Results */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -744,6 +744,133 @@ export default function EmailVerifierPage() {
               </Button>
             </div>
           </div>
+
+          {/* ═══ Recent Pipeline Jobs — right under input ═══ */}
+          {recentJobs.length > 0 && (
+            <div style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', padding: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Database size={18} style={{ color: 'var(--accent)' }} />
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Recent Pipeline Jobs</h3>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', background: 'var(--bg-elevated)', padding: '2px 8px', borderRadius: 6 }}>{recentJobs.length}</span>
+                </div>
+                {recentJobs.some((j: any) => j.status === 'failed' || j.status === 'cancelled') && (
+                  <button onClick={async () => {
+                    if (!window.confirm('Clear all failed and cancelled jobs from the list?')) return;
+                    try {
+                      const resp = await apiCall<{ deleted: number }>('/api/verify/jobs/clear', { method: 'DELETE' });
+                      showToast('info', `Cleared ${resp.deleted} job(s)`);
+                      fetchRecentJobs();
+                    } catch (err: any) { showToast('error', `Clear failed: ${err.message}`); }
+                  }} style={{
+                    padding: '6px 14px', borderRadius: 8, border: '1px solid var(--red)',
+                    background: 'var(--red-muted)', color: 'var(--red)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  }}>🗑 Clear Failed</button>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {recentJobs.map((job: any) => {
+                  const total = Number(job.total_emails) || 0;
+                  const processed = Number(job.processed_count) || 0;
+                  const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
+                  const isActive = activeJobId === job.id;
+                  const isProcessing = job.status === 'processing';
+                  const isComplete = job.status === 'complete';
+                  const isFailed = job.status === 'failed';
+                  const isCancelled = job.status === 'cancelled';
+                  return (
+                    <div key={job.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+                      background: isActive ? 'var(--accent-muted)' : 'var(--bg-app)',
+                      borderRadius: 12, border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
+                      flexWrap: 'wrap',
+                    }}>
+                      <div style={{
+                        width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+                        background: isComplete ? 'var(--green)' : (isFailed || isCancelled) ? 'var(--red)' : isProcessing ? 'var(--yellow)' : 'var(--text-tertiary)',
+                      }} />
+                      <div style={{ flex: 1, minWidth: 120 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {total.toLocaleString()} emails
+                          <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: 8, fontSize: 11 }}>{job.id.slice(0, 8)}…</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                          {new Date(job.started_at).toLocaleString()}
+                          {isProcessing && ` — ${pct}% (${processed.toLocaleString()}/${total.toLocaleString()})`}
+                          {isComplete && job.completed_at && ` — completed ${new Date(job.completed_at).toLocaleTimeString()}`}
+                          {isFailed && ` — failed`}
+                          {isCancelled && ` — cancelled`}
+                        </div>
+                      </div>
+                      <span style={{
+                        fontSize: 10, fontWeight: 700, textTransform: 'uppercase', padding: '3px 8px', borderRadius: 6,
+                        background: isComplete ? 'var(--green-muted)' : (isFailed || isCancelled) ? 'var(--red-muted)' : 'var(--yellow-muted)',
+                        color: isComplete ? 'var(--green)' : (isFailed || isCancelled) ? 'var(--red)' : 'var(--yellow)',
+                      }}>{job.status}</span>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {isComplete && (
+                          <>
+                            <button onClick={() => loadCompletedJob(job.id)} style={{
+                              padding: '5px 12px', borderRadius: 8, border: '1px solid var(--border)',
+                              background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                            }}>View</button>
+                            <button onClick={() => setDownloadJobId(job.id)} style={{
+                              padding: '5px 12px', borderRadius: 8, border: '1px solid var(--green)',
+                              background: 'var(--green-muted)', color: 'var(--green)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                            }}>CSV</button>
+                            <button onClick={() => { setVaultJobId(job.id); setVaultResult(null); setVaultCustomName(''); }} style={{
+                              padding: '5px 12px', borderRadius: 8, border: '1px solid var(--blue)',
+                              background: 'var(--blue-muted)', color: 'var(--blue)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                            }}>Vault</button>
+                          </>
+                        )}
+                        {isProcessing && !isActive && (
+                          <button onClick={() => { setActiveJobId(job.id); setLoading(true); sessionStorage.setItem('pipeline_active_job', job.id); startPolling(job.id); }} style={{
+                            padding: '5px 12px', borderRadius: 8, border: '1px solid var(--accent)',
+                            background: 'var(--accent-muted)', color: 'var(--accent)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                          }}>Reconnect</button>
+                        )}
+                        {(isProcessing || isActive) && (
+                          <button onClick={async () => {
+                            if (!window.confirm('Cancel this verification job?')) return;
+                            try {
+                              await apiCall<any>(`/api/verify/jobs/${job.id}/cancel`, { method: 'POST' });
+                              if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+                              sessionStorage.removeItem('pipeline_active_job');
+                              setActiveJobId(null);
+                              setLoading(false);
+                              setJobStatus('');
+                              fetchRecentJobs();
+                              showToast('info', 'Job cancelled');
+                            } catch (err: any) { showToast('error', `Cancel failed: ${err.message}`); }
+                          }} style={{
+                            padding: '5px 12px', borderRadius: 8, border: '1px solid var(--red)',
+                            background: 'var(--red-muted)', color: 'var(--red)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                          }}>Cancel</button>
+                        )}
+                        {(isFailed || isCancelled) && (
+                          <button onClick={async () => {
+                            try {
+                              const resp = await apiCall<any>(`/api/verify/jobs/${job.id}/retry`, { method: 'POST' });
+                              showToast('info', `Retry started — new job ${resp.jobId}`);
+                              setActiveJobId(resp.jobId);
+                              setLoading(true);
+                              sessionStorage.setItem('pipeline_active_job', resp.jobId);
+                              startPolling(resp.jobId);
+                              fetchRecentJobs();
+                            } catch (err: any) { showToast('error', `Retry failed: ${err.message}`); }
+                          }} style={{
+                            padding: '5px 12px', borderRadius: 8, border: '1px solid var(--accent)',
+                            background: 'var(--accent-muted)', color: 'var(--accent)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                          }}>⟳ Retry</button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* ═══ Animated Pipeline Progress ═══ */}
           {loading && activeJobId && (() => {
@@ -1262,127 +1389,7 @@ export default function EmailVerifierPage() {
       </div>
 
         </div>
-      {/* ── Recent Jobs ── */}
-      {recentJobs.length > 0 && (
-        <div style={{ marginTop: 32 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Recent Pipeline Jobs</h3>
-            {recentJobs.some((j: any) => j.status === 'failed' || j.status === 'cancelled') && (
-              <button onClick={async () => {
-                if (!window.confirm('Clear all failed and cancelled jobs from the list?')) return;
-                try {
-                  const resp = await apiCall<{ deleted: number }>('/api/verify/jobs/clear', { method: 'DELETE' });
-                  showToast('info', `Cleared ${resp.deleted} job(s)`);
-                  fetchRecentJobs();
-                } catch (err: any) { showToast('error', `Clear failed: ${err.message}`); }
-              }} style={{
-                padding: '6px 14px', borderRadius: 8, border: '1px solid var(--red)',
-                background: 'var(--red-muted)', color: 'var(--red)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
-              }}>🗑 Clear Failed / Cancelled</button>
-            )}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {recentJobs.map((job: any) => {
-              const total = Number(job.total_emails) || 0;
-              const processed = Number(job.processed_count) || 0;
-              const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
-              const isActive = activeJobId === job.id;
-              const isProcessing = job.status === 'processing';
-              const isComplete = job.status === 'complete';
-              const isFailed = job.status === 'failed';
-              const isCancelled = job.status === 'cancelled';
-              return (
-                <div key={job.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px',
-                  background: isActive ? 'var(--accent-muted)' : 'var(--bg-card)',
-                  borderRadius: 10, border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
-                }}>
-                  <div style={{
-                    width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-                    background: isComplete ? 'var(--green)' : (isFailed || isCancelled) ? 'var(--red)' : isProcessing ? 'var(--yellow)' : 'var(--text-tertiary)',
-                  }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {total.toLocaleString()} emails
-                      <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: 8, fontSize: 11 }}>{job.id}</span>
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                      {new Date(job.started_at).toLocaleString()}
-                      {isProcessing && ` — ${pct}% (${processed.toLocaleString()}/${total.toLocaleString()})`}
-                      {isComplete && job.completed_at && ` — completed ${new Date(job.completed_at).toLocaleTimeString()}`}
-                      {isFailed && ` — failed`}
-                      {isCancelled && ` — cancelled`}
-                    </div>
-                  </div>
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, textTransform: 'uppercase', padding: '3px 8px', borderRadius: 6,
-                    background: isComplete ? 'var(--green-muted)' : (isFailed || isCancelled) ? 'var(--red-muted)' : 'var(--yellow-muted)',
-                    color: isComplete ? 'var(--green)' : (isFailed || isCancelled) ? 'var(--red)' : 'var(--yellow)',
-                  }}>{job.status}</span>
-                  {isComplete && (
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => loadCompletedJob(job.id)} style={{
-                        padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)',
-                        background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      }}>View Results</button>
-                      <button onClick={() => setDownloadJobId(job.id)} style={{
-                        padding: '6px 14px', borderRadius: 8, border: '1px solid var(--green)',
-                        background: 'var(--green-muted)', color: 'var(--green)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      }}>Download CSV</button>
-                      <button onClick={() => { setVaultJobId(job.id); setVaultResult(null); setVaultCustomName(''); }} style={{
-                        padding: '6px 14px', borderRadius: 8, border: '1px solid var(--blue)',
-                        background: 'var(--blue-muted)', color: 'var(--blue)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      }}>Save to Vault</button>
-                    </div>
-                  )}
-                  {isProcessing && !isActive && (
-                    <button onClick={() => { setActiveJobId(job.id); setLoading(true); sessionStorage.setItem('pipeline_active_job', job.id); startPolling(job.id); }} style={{
-                      padding: '6px 14px', borderRadius: 8, border: '1px solid var(--accent)',
-                      background: 'var(--accent-muted)', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                    }}>Reconnect</button>
-                  )}
-                  {(isProcessing || isActive) && (
-                    <button onClick={async () => {
-                      if (!window.confirm('Cancel this verification job?')) return;
-                      try {
-                        await apiCall<any>(`/api/verify/jobs/${job.id}/cancel`, { method: 'POST' });
-                        if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
-                        sessionStorage.removeItem('pipeline_active_job');
-                        setActiveJobId(null);
-                        setLoading(false);
-                        setJobStatus('');
-                        fetchRecentJobs();
-                        showToast('info', 'Job cancelled');
-                      } catch (err: any) { showToast('error', `Cancel failed: ${err.message}`); }
-                    }} style={{
-                      padding: '6px 14px', borderRadius: 8, border: '1px solid var(--red)',
-                      background: 'var(--red-muted)', color: 'var(--red)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                    }}>Cancel</button>
-                  )}
-                  {(isFailed || isCancelled) && (
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={async () => {
-                        try {
-                          const resp = await apiCall<any>(`/api/verify/jobs/${job.id}/retry`, { method: 'POST' });
-                          showToast('info', `Retry started — new job ${resp.jobId}`);
-                          setActiveJobId(resp.jobId);
-                          setLoading(true);
-                          sessionStorage.setItem('pipeline_active_job', resp.jobId);
-                          startPolling(resp.jobId);
-                          fetchRecentJobs();
-                        } catch (err: any) { showToast('error', `Retry failed: ${err.message}`); }
-                      }} style={{
-                        padding: '6px 14px', borderRadius: 8, border: '1px solid var(--accent)',
-                        background: 'var(--accent-muted)', color: 'var(--accent)', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                      }}>⟳ Retry</button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+
 
       {/* ── Save to Vault Modal ── */}
       {vaultJobId && (
