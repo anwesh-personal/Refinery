@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiCall } from '../lib/api';
 import {
   Send, Loader2, MessageSquare, Plus, Trash2, Pin, X,
-  Save, BookOpen, Sliders, MessageCircle, FileText, Copy, Check
+  Save, BookOpen, Sliders, MessageCircle, FileText, Copy, Check, Shield
 } from 'lucide-react';
 import MarkdownRenderer, { MARKDOWN_STYLES } from './MarkdownRenderer';
 
@@ -13,11 +13,13 @@ interface Agent {
   system_prompt?: string; temperature?: number; max_tokens?: number;
   custom_instructions?: string; avatar_url?: string;
   provider_id?: string | null; model_id?: string;
+  tool_approval_mode?: string; max_tool_rounds?: number;
 }
 interface ProviderOption { id: string; label: string; provider_type: string; selected_model: string; cached_models: string[] }
 interface Conversation { id: string; title: string; pinned: boolean; created_at: string; updated_at: string }
 interface Msg { id: string; role: string; content: string; tool_name?: string; tool_input?: any; tool_output?: any; tokens_used: number; latency_ms: number; provider_used?: string; model_used?: string; created_at: string }
 interface KBEntry { id: string; agent_id: string; title: string; content: string; category: string; enabled: boolean; priority: number }
+interface Guardrail { id: string; agent_id: string | null; category: string; rule_text: string; priority: number; enabled: boolean }
 
 const AGENT_IMAGES: Record<string, string> = {
   data_scientist: '/agents/cipher.jpg', smtp_specialist: '/agents/sentinel.jpg',
@@ -120,7 +122,7 @@ export default function AgentsPanel() {
   const [sending, setSending] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   // Modal state
-  const [modalTab, setModalTab] = useState<'core' | 'prompts' | 'kb' | 'config'>('core');
+  const [modalTab, setModalTab] = useState<'core' | 'prompts' | 'kb' | 'guardrails' | 'config'>('core');
   const [agentDetails, setAgentDetails] = useState<Agent | null>(null);
   const [kbEntries, setKBEntries] = useState<KBEntry[]>([]);
   const [saving, setSaving] = useState(false);
@@ -139,6 +141,11 @@ export default function AgentsPanel() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [pendingToolIds, setPendingToolIds] = useState<string[]>([]);
   const [approvingTools, setApprovingTools] = useState(false);
+  const [guardrails, setGuardrails] = useState<Guardrail[]>([]);
+  const [newRuleText, setNewRuleText] = useState('');
+  const [newRuleCategory, setNewRuleCategory] = useState('behavior');
+  const [editToolApproval, setEditToolApproval] = useState('always_ask');
+  const [editMaxToolRounds, setEditMaxToolRounds] = useState(3);
   const [newKBTitle, setNewKBTitle] = useState('');
   const [newKBContent, setNewKBContent] = useState('');
   const [newKBCategory, setNewKBCategory] = useState('general');
@@ -177,6 +184,8 @@ export default function AgentsPanel() {
         setEditRole(full.role || '');
         setEditAccentColor(full.accent_color || 'var(--purple)');
         setEditAvatarUrl(full.avatar_url || '');
+        setEditToolApproval(full.tool_approval_mode || 'always_ask');
+        setEditMaxToolRounds(full.max_tool_rounds || 3);
       }
     } catch {}
     // Fetch providers for override selector
@@ -188,6 +197,11 @@ export default function AgentsPanel() {
     try {
       const kb = await apiCall<{ entries: KBEntry[] }>(`/api/ai/agents/admin/${agent.id}/knowledge`);
       setKBEntries(kb.entries || []);
+    } catch {}
+    // Fetch guardrails
+    try {
+      const gr = await apiCall<{ guardrails: Guardrail[] }>(`/api/ai/agents/admin/guardrails?agentId=${agent.id}`);
+      setGuardrails(gr.guardrails || []);
     } catch {}
   };
 
@@ -207,6 +221,8 @@ export default function AgentsPanel() {
           model_id: editModelId || '',
           name: editName, role: editRole, accent_color: editAccentColor,
           avatar_url: editAvatarUrl || null,
+          tool_approval_mode: editToolApproval,
+          max_tool_rounds: editMaxToolRounds,
         },
       });
       // Refresh
@@ -457,6 +473,7 @@ export default function AgentsPanel() {
                   { key: 'core', label: 'Core Prompt', icon: FileText },
                   { key: 'prompts', label: 'Prompt Stack', icon: Sliders },
                   { key: 'kb', label: 'Knowledge Base', icon: BookOpen },
+                  { key: 'guardrails', label: 'Guardrails', icon: Shield },
                   { key: 'config', label: 'Settings', icon: Sliders },
                 ] as const).map(t => (
                   <button key={t.key} onClick={() => setModalTab(t.key)} style={{
@@ -565,6 +582,64 @@ export default function AgentsPanel() {
                   </div>
                 )}
 
+                {/* GUARDRAILS TAB */}
+                {modalTab === 'guardrails' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div style={{ padding: 14, borderRadius: 10, background: `color-mix(in srgb, ${color} 8%, var(--bg-app))`, border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: color, marginBottom: 4 }}>Behavioral Guardrails</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.5 }}>Rules injected into every conversation. Global rules (no agent) apply to ALL agents. Agent-specific rules only apply to this agent.</div>
+                    </div>
+
+                    {/* Add new guardrail */}
+                    <div style={{ padding: 16, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-app)' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 10 }}>Add Guardrail</div>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                        <select value={newRuleCategory} onChange={e => setNewRuleCategory(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 11 }}>
+                          {['behavior', 'output_format', 'tool_policy', 'safety', 'persona', 'training'].map(c => <option key={c} value={c}>{c.replace('_', ' ')}</option>)}
+                        </select>
+                      </div>
+                      <textarea value={newRuleText} onChange={e => setNewRuleText(e.target.value)} rows={2} placeholder="e.g. Never fabricate data. Always cite your source." style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12, fontFamily: 'inherit', lineHeight: 1.5, resize: 'vertical', boxSizing: 'border-box', marginBottom: 8 }} />
+                      <button onClick={async () => {
+                        if (!newRuleText.trim() || !agentDetails) return;
+                        try {
+                          await apiCall('/api/ai/agents/admin/guardrails', { method: 'POST', body: { agent_id: agentDetails.id, category: newRuleCategory, rule_text: newRuleText, priority: 0 } });
+                          const gr = await apiCall<{ guardrails: Guardrail[] }>(`/api/ai/agents/admin/guardrails?agentId=${agentDetails.id}`);
+                          setGuardrails(gr.guardrails || []);
+                          setNewRuleText('');
+                        } catch {}
+                      }} disabled={!newRuleText.trim()} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', background: color, color: 'var(--accent-contrast, #fff)', fontSize: 11, fontWeight: 700, opacity: !newRuleText.trim() ? 0.4 : 1 }}><Plus size={12} style={{ verticalAlign: 'middle', marginRight: 3 }} />Add Rule</button>
+                    </div>
+
+                    {/* Existing guardrails */}
+                    {guardrails.length === 0 && <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-tertiary)', fontSize: 11 }}>No guardrails configured</div>}
+                    {guardrails.map(g => (
+                      <div key={g.id} style={{ padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: g.enabled ? 'var(--bg-card)' : 'var(--bg-app)', opacity: g.enabled ? 1 : 0.5 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', padding: '2px 6px', borderRadius: 4, background: `color-mix(in srgb, ${color} 15%, var(--bg-elevated))`, color }}>{g.category.replace('_', ' ')}</span>
+                            {!g.agent_id && <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'var(--accent-muted)', color: 'var(--accent)' }}>GLOBAL</span>}
+                          </div>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button onClick={async () => {
+                              try {
+                                await apiCall(`/api/ai/agents/admin/guardrails/${g.id}`, { method: 'PUT', body: { enabled: !g.enabled } });
+                                setGuardrails(prev => prev.map(x => x.id === g.id ? { ...x, enabled: !x.enabled } : x));
+                              } catch {}
+                            }} style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', background: g.enabled ? `color-mix(in srgb, ${color} 15%, var(--bg-elevated))` : 'var(--bg-app)', color: g.enabled ? color : 'var(--text-tertiary)', fontSize: 9, fontWeight: 600, cursor: 'pointer' }}>{g.enabled ? 'ON' : 'OFF'}</button>
+                            <button onClick={async () => {
+                              try {
+                                await apiCall(`/api/ai/agents/admin/guardrails/${g.id}`, { method: 'DELETE' });
+                                setGuardrails(prev => prev.filter(x => x.id !== g.id));
+                              } catch {}
+                            }} style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-app)', color: 'var(--red)', fontSize: 9, cursor: 'pointer' }}><Trash2 size={10} /></button>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{g.rule_text}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 {/* CONFIG TAB */}
                 {modalTab === 'config' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -611,6 +686,33 @@ export default function AgentsPanel() {
                           </div>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Tool Approval Mode */}
+                    <div style={{ padding: 16, background: 'var(--bg-app)', borderRadius: 12, border: '1px solid var(--border)' }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 8 }}>Tool Approval Mode</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.5 }}>
+                        Controls whether this agent can execute tools automatically or must ask permission first.
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div>
+                          <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>Approval Mode</label>
+                          <select value={editToolApproval} onChange={e => setEditToolApproval(e.target.value)} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12, cursor: 'pointer' }}>
+                            <option value="always_ask">🔒 Always Ask (safest)</option>
+                            <option value="ask_write">⚠️ Ask for Write/Destructive</option>
+                            <option value="auto">⚡ Auto-Execute (no approval)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', marginBottom: 4, display: 'block' }}>Max Tool Rounds</label>
+                          <input type="number" min={1} max={10} value={editMaxToolRounds} onChange={e => setEditMaxToolRounds(parseInt(e.target.value) || 3)} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 12, boxSizing: 'border-box' }} />
+                        </div>
+                      </div>
+                      {editToolApproval === 'auto' && (
+                        <div style={{ marginTop: 8, fontSize: 10, color: 'var(--red)', fontWeight: 600 }}>
+                          ⚠️ Agents will execute ALL tools without asking. Use with caution.
+                        </div>
+                      )}
                     </div>
 
                     {/* Generation Params */}

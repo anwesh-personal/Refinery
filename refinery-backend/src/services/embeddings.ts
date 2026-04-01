@@ -134,7 +134,6 @@ export async function embedKBEntry(entryId: string): Promise<boolean> {
 
   if (!entry) return false;
 
-  const config = await resolveEmbeddingConfig();
   const text = `${entry.title}\n\n${entry.content}`;
   const result = await generateEmbedding(text);
 
@@ -143,10 +142,13 @@ export async function embedKBEntry(entryId: string): Promise<boolean> {
     return false;
   }
 
+  // Resolve config just for model name metadata (cheap — cached in practice)
+  const config = await resolveEmbeddingConfig();
+
   const { error } = await supabaseAdmin
     .from('ai_agent_knowledge')
     .update({
-      embedding: JSON.stringify(result.embedding),
+      embedding: result.embedding,  // Raw array — Supabase JS handles pgvector serialization
       embedding_model: config?.model || 'unknown',
       token_count: result.tokensUsed || 0,
       last_embedded_at: new Date().toISOString(),
