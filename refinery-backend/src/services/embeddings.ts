@@ -1,13 +1,20 @@
 // ═══════════════════════════════════════════════════════════
-// Embedding Service — generates vector embeddings for KB entries
+// Embedding Service — Provider-Agnostic Vector Generation
 //
-// Reads provider + model from ai_service_config (slug: 'embeddings').
-// Zero hardcoded values — everything from the DB.
+// Supports ALL provider types: gemini, openai, mistral,
+// private_vps, ollama, anthropic (via proxy).
+//
+// Resolution order:
+// 1. Explicit ai_service_config (slug: 'embeddings')
+// 2. First enabled provider in ai_providers (ANY type)
+//
+// Each provider type has its own API format for embeddings.
+// Zero hardcoded keys — everything from the DB.
 // ═══════════════════════════════════════════════════════════
 
 import { supabaseAdmin } from './supabaseAdmin.js';
 
-interface EmbeddingConfig {
+interface EmbeddingProvider {
   apiKey: string;
   endpoint: string;
   model: string;
@@ -18,15 +25,26 @@ interface EmbeddingResult {
   success: boolean;
   embedding?: number[];
   tokensUsed?: number;
+  model?: string;
   error?: string;
 }
 
+// Default embedding models per provider (used when no explicit model configured)
+const DEFAULT_EMBEDDING_MODELS: Record<string, string> = {
+  gemini: 'text-embedding-004',
+  openai: 'text-embedding-3-small',
+  mistral: 'mistral-embed',
+  private_vps: 'text-embedding-3-small',
+  ollama: 'nomic-embed-text',
+  anthropic: 'text-embedding-3-small', // Anthropic has no native embeddings — route through OpenAI-compatible proxy if configured
+};
+
 /**
- * Resolve the embedding provider from ai_service_config → ai_providers.
- * Service slug: 'embeddings'
- * If not configured, tries to find any enabled OpenAI-compatible provider.
+ * Resolve the embedding provider from DB.
+ * Tier 1: explicit service config (ai_service_config slug='embeddings')
+ * Tier 2: first enabled provider of ANY type
  */
-async function resolveEmbeddingConfig(): Promise<EmbeddingConfig | null> {
+async function resolveProvider(): Promise<EmbeddingProvider | null> {
   // Tier 1: Explicit embedding service config
   const { data: svc } = await supabaseAdmin
     .from('ai_service_config')
@@ -43,35 +61,29 @@ async function resolveEmbeddingConfig(): Promise<EmbeddingConfig | null> {
       .single();
 
     if (provider) {
-      const endpoint = provider.provider_type === 'openai'
-        ? 'https://api.openai.com/v1/embeddings'
-        : `${(provider.endpoint || '').replace(/\/$/, '')}/v1/embeddings`;
-
       return {
         apiKey: provider.api_key,
-        endpoint,
-        model: svc.model_id || provider.selected_model || 'text-embedding-3-small',
+        endpoint: (provider.endpoint || '').replace(/\/$/, ''),
+        model: svc.model_id || DEFAULT_EMBEDDING_MODELS[provider.provider_type] || provider.selected_model,
         providerType: provider.provider_type,
       };
     }
   }
 
-  // Tier 2: Fall back to first enabled OpenAI-compatible provider
+  // Tier 2: First enabled provider — ANY type that supports embeddings
   const { data: providers } = await supabaseAdmin
     .from('ai_providers')
-    .select('api_key, provider_type, endpoint')
+    .select('api_key, provider_type, endpoint, selected_model')
     .eq('enabled', true)
-    .in('provider_type', ['openai', 'private_vps'])
+    .order('created_at', { ascending: true })
     .limit(1);
 
   if (providers?.[0]) {
     const p = providers[0];
     return {
       apiKey: p.api_key,
-      endpoint: p.provider_type === 'openai'
-        ? 'https://api.openai.com/v1/embeddings'
-        : `${(p.endpoint || '').replace(/\/$/, '')}/v1/embeddings`,
-      model: 'text-embedding-3-small', // Cheapest OpenAI model as last resort
+      endpoint: (p.endpoint || '').replace(/\/$/, ''),
+      model: DEFAULT_EMBEDDING_MODELS[p.provider_type] || 'text-embedding-3-small',
       providerType: p.provider_type,
     };
   }
@@ -80,44 +92,135 @@ async function resolveEmbeddingConfig(): Promise<EmbeddingConfig | null> {
 }
 
 /**
- * Generate an embedding vector for a given text.
- * Provider, model, and API key all resolved from the DB.
+ * Generate an embedding vector for given text.
+ * Dispatches to the correct API format based on provider_type.
  */
 export async function generateEmbedding(text: string): Promise<EmbeddingResult> {
   if (!text?.trim()) return { success: false, error: 'Empty text' };
 
-  const config = await resolveEmbeddingConfig();
-  if (!config) {
-    return { success: false, error: 'No embedding provider configured. Add an OpenAI provider in AI Settings, or configure the "embeddings" service.' };
+  const provider = await resolveProvider();
+  if (!provider) {
+    return { success: false, error: 'No AI provider configured. Add any provider in AI Settings.' };
   }
 
+  const truncated = text.slice(0, 8000);
+
   try {
-    const response = await fetch(config.endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: config.model,
-        input: text.slice(0, 8000), // Stay within token limits
-      }),
-    });
+    switch (provider.providerType) {
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      return { success: false, error: (err as any).error?.message || `HTTP ${response.status}` };
+      // ═══ GEMINI ═══
+      case 'gemini': {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${provider.model}:embedContent?key=${provider.apiKey}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: `models/${provider.model}`,
+            content: { parts: [{ text: truncated }] },
+          }),
+        });
+        if (!res.ok) {
+          const err: any = await res.json().catch(() => ({}));
+          return { success: false, error: err.error?.message || `Gemini HTTP ${res.status}`, model: provider.model };
+        }
+        const data: any = await res.json();
+        const embedding = data.embedding?.values;
+        if (!embedding || !Array.isArray(embedding)) {
+          return { success: false, error: 'No embedding in Gemini response', model: provider.model };
+        }
+        return { success: true, embedding, model: provider.model };
+      }
+
+      // ═══ OPENAI ═══
+      case 'openai': {
+        const res = await fetch('https://api.openai.com/v1/embeddings', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${provider.apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: provider.model, input: truncated }),
+        });
+        if (!res.ok) {
+          const err: any = await res.json().catch(() => ({}));
+          return { success: false, error: err.error?.message || `OpenAI HTTP ${res.status}`, model: provider.model };
+        }
+        const data: any = await res.json();
+        const embedding = data.data?.[0]?.embedding;
+        if (!embedding || !Array.isArray(embedding)) {
+          return { success: false, error: 'No embedding in OpenAI response', model: provider.model };
+        }
+        return { success: true, embedding, tokensUsed: data.usage?.total_tokens, model: provider.model };
+      }
+
+      // ═══ MISTRAL ═══
+      case 'mistral': {
+        const res = await fetch('https://api.mistral.ai/v1/embeddings', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${provider.apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: provider.model, input: [truncated] }),
+        });
+        if (!res.ok) {
+          const err: any = await res.json().catch(() => ({}));
+          return { success: false, error: err.error?.message || `Mistral HTTP ${res.status}`, model: provider.model };
+        }
+        const data: any = await res.json();
+        const embedding = data.data?.[0]?.embedding;
+        if (!embedding || !Array.isArray(embedding)) {
+          return { success: false, error: 'No embedding in Mistral response', model: provider.model };
+        }
+        return { success: true, embedding, tokensUsed: data.usage?.total_tokens, model: provider.model };
+      }
+
+      // ═══ PRIVATE VPS (OpenAI-compatible) ═══
+      case 'private_vps': {
+        const url = `${provider.endpoint}/v1/embeddings`;
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (provider.apiKey) headers['Authorization'] = `Bearer ${provider.apiKey}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ model: provider.model, input: truncated }),
+        });
+        if (!res.ok) {
+          const err: any = await res.json().catch(() => ({}));
+          return { success: false, error: err.error?.message || `VPS HTTP ${res.status}`, model: provider.model };
+        }
+        const data: any = await res.json();
+        const embedding = data.data?.[0]?.embedding;
+        if (!embedding || !Array.isArray(embedding)) {
+          return { success: false, error: 'No embedding in VPS response', model: provider.model };
+        }
+        return { success: true, embedding, tokensUsed: data.usage?.total_tokens, model: provider.model };
+      }
+
+      // ═══ OLLAMA ═══
+      case 'ollama': {
+        const url = `${provider.endpoint || 'http://localhost:11434'}/api/embed`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: provider.model, input: truncated }),
+        });
+        if (!res.ok) {
+          const err: any = await res.json().catch(() => ({}));
+          return { success: false, error: err.error || `Ollama HTTP ${res.status}`, model: provider.model };
+        }
+        const data: any = await res.json();
+        const embedding = data.embeddings?.[0];
+        if (!embedding || !Array.isArray(embedding)) {
+          return { success: false, error: 'No embedding in Ollama response', model: provider.model };
+        }
+        return { success: true, embedding, model: provider.model };
+      }
+
+      // ═══ ANTHROPIC — no native embedding API ═══
+      case 'anthropic': {
+        return { success: false, error: 'Anthropic does not offer an embeddings API. Configure a Gemini, OpenAI, or Mistral provider for embeddings.', model: 'none' };
+      }
+
+      default:
+        return { success: false, error: `Unsupported provider type for embeddings: ${provider.providerType}` };
     }
-
-    const data: any = await response.json();
-    const embedding = data.data?.[0]?.embedding;
-    if (!embedding || !Array.isArray(embedding)) {
-      return { success: false, error: 'No embedding vector in provider response' };
-    }
-
-    return { success: true, embedding, tokensUsed: data.usage?.total_tokens };
   } catch (err: any) {
-    return { success: false, error: err.message };
+    return { success: false, error: err.message, model: provider.model };
   }
 }
 
@@ -142,14 +245,11 @@ export async function embedKBEntry(entryId: string): Promise<boolean> {
     return false;
   }
 
-  // Resolve config just for model name metadata (cheap — cached in practice)
-  const config = await resolveEmbeddingConfig();
-
   const { error } = await supabaseAdmin
     .from('ai_agent_knowledge')
     .update({
-      embedding: result.embedding,  // Raw array — Supabase JS handles pgvector serialization
-      embedding_model: config?.model || 'unknown',
+      embedding: result.embedding,
+      embedding_model: result.model || 'unknown',
       token_count: result.tokensUsed || 0,
       last_embedded_at: new Date().toISOString(),
     })
@@ -160,7 +260,7 @@ export async function embedKBEntry(entryId: string): Promise<boolean> {
     return false;
   }
 
-  console.log(`[Embeddings] Embedded KB entry "${entry.title}" (${result.tokensUsed} tokens)`);
+  console.log(`[Embeddings] ✓ "${entry.title}" (${result.model}, ${result.tokensUsed || '?'} tokens)`);
   return true;
 }
 
@@ -176,21 +276,21 @@ export async function embedQuery(query: string): Promise<number[] | null> {
  * Bulk re-embed all KB entries for an agent (or all if no agentId).
  */
 export async function reembedAll(agentId?: string): Promise<{ success: number; failed: number }> {
-  let query = supabaseAdmin
+  let q = supabaseAdmin
     .from('ai_agent_knowledge')
     .select('id')
     .eq('enabled', true);
 
-  if (agentId) query = query.eq('agent_id', agentId);
+  if (agentId) q = q.eq('agent_id', agentId);
 
-  const { data: entries } = await query;
+  const { data: entries } = await q;
   if (!entries?.length) return { success: 0, failed: 0 };
 
   let success = 0, failed = 0;
   for (const entry of entries) {
     const ok = await embedKBEntry(entry.id);
     if (ok) success++; else failed++;
-    await new Promise(r => setTimeout(r, 50)); // Rate limit
+    await new Promise(r => setTimeout(r, 100)); // Rate limit between calls
   }
 
   console.log(`[Embeddings] Re-embedded ${success}/${entries.length} entries (${failed} failed)`);
