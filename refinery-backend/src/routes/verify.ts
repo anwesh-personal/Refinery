@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth, requireSuperadmin } from '../middleware/auth.js';
 import { getRequestUser } from '../types/auth.js';
+import type { AuthenticatedRequest } from '../types/auth.js';
+import { supabaseAdmin } from '../services/supabaseAdmin.js';
 import {
   runPipeline,
   PipelineCancelledError,
@@ -352,19 +354,57 @@ export async function recoverOrphanedJobs(): Promise<void> {
 }
 
 // ─── GET /api/verify/jobs ───
-// List recent pipeline jobs.
+// User-scoped job listing:
+//   superadmin → all jobs
+//   others → own jobs + jobs shared with them
 
-router.get('/jobs', requireSuperadmin, async (_req, res) => {
+router.get('/jobs', async (req, res) => {
   try {
-    const jobs = await chQuery(`
+    const user = getRequestUser(req);
+    const authReq = req as any;
+    const role = authReq.authUser?.role || 'member';
+
+    // Fetch all recent jobs from ClickHouse
+    const allJobs = await chQuery<any>(`
       SELECT id, total_emails, processed_count, safe_count, risky_count, rejected_count,
              uncertain_count, duplicates_removed, typos_fixed, status, error_message,
-             started_at, completed_at
+             started_at, completed_at, performed_by, performed_by_name
       FROM pipeline_jobs
       ORDER BY started_at DESC
-      LIMIT 20
+      LIMIT 50
     `);
-    res.json(jobs);
+
+    if (role === 'superadmin') {
+      // Superadmins see everything — mark ownership
+      const enriched = allJobs.map((j: any) => ({
+        ...j,
+        _access: j.performed_by === user.id ? 'owner' : 'superadmin',
+        _owner_name: j.performed_by_name || 'Unknown',
+      }));
+      return res.json(enriched);
+    }
+
+    // Non-superadmin: filter to own jobs + shared jobs
+    // 1. Get job IDs shared with this user
+    const { data: shares } = await supabaseAdmin
+      .from('pipeline_job_shares')
+      .select('job_id, permission')
+      .eq('shared_with_id', user.id);
+
+    const sharedJobIds = new Set((shares || []).map(s => s.job_id));
+    const sharedPermissions = new Map((shares || []).map(s => [s.job_id, s.permission]));
+
+    // 2. Filter: own jobs + shared jobs
+    const filtered = allJobs
+      .filter((j: any) => j.performed_by === user.id || sharedJobIds.has(j.id))
+      .map((j: any) => ({
+        ...j,
+        _access: j.performed_by === user.id ? 'owner' : 'shared',
+        _permission: sharedPermissions.get(j.id) || null,
+        _owner_name: j.performed_by_name || 'Unknown',
+      }));
+
+    res.json(filtered);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -374,8 +414,15 @@ router.get('/jobs', requireSuperadmin, async (_req, res) => {
 // Get job status and progress. Results only included when ?include=results.
 // For 100K+ jobs, results_json can be 100MB+ — never load it unless needed.
 
-router.get('/jobs/:id', requireSuperadmin, async (req, res) => {
+router.get('/jobs/:id', async (req, res) => {
   try {
+    // Access check: owner, shared, or superadmin
+    const user = getRequestUser(req);
+    const authReq = req as any;
+    const role = authReq.authUser?.role || 'member';
+    const access = await canAccessJob(user.id, role, req.params.id);
+    if (!access) return res.status(403).json({ error: 'No access to this job' });
+
     const includeResults = (req.query.include as string)?.includes('results');
 
     const columns = [
@@ -1087,4 +1134,182 @@ router.post('/push-to-db', requireSuperadmin, async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// SHARING — Google Drive-style per-job access control
+// ═══════════════════════════════════════════════════════════════
+
+
+
+/**
+ * Check if a user can access a specific pipeline job.
+ * Access granted if: superadmin, job owner, or shared-with.
+ */
+async function canAccessJob(userId: string, role: string, jobId: string): Promise<'owner' | 'shared' | 'superadmin' | false> {
+  if (role === 'superadmin') return 'superadmin';
+
+  // Check ownership (ClickHouse)
+  const [job] = await chQuery<{ performed_by: string }>(`
+    SELECT performed_by FROM pipeline_jobs WHERE id = '${jobId}' LIMIT 1
+  `);
+  if (job?.performed_by === userId) return 'owner';
+
+  // Check shares (Supabase)
+  const { data: share } = await supabaseAdmin
+    .from('pipeline_job_shares')
+    .select('id')
+    .eq('job_id', jobId)
+    .eq('shared_with_id', userId)
+    .maybeSingle();
+  if (share) return 'shared';
+
+  return false;
+}
+
+// ─── GET /api/verify/team ───
+// List team members for the share picker (all profiles except current user).
+
+router.get('/team', async (req, res) => {
+  try {
+    const user = getRequestUser(req);
+    const { data: profiles } = await supabaseAdmin
+      .from('profiles')
+      .select('id, full_name, email, role, avatar_url')
+      .neq('id', user.id)
+      .order('full_name');
+
+    res.json(profiles || []);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── GET /api/verify/jobs/:id/shares ───
+// List who has access to a specific job.
+
+router.get('/jobs/:id/shares', async (req, res) => {
+  try {
+    const user = getRequestUser(req);
+    const authReq = req as unknown as AuthenticatedRequest;
+    const access = await canAccessJob(user.id, authReq.authUser?.role || '', req.params.id);
+    if (!access) return res.status(403).json({ error: 'No access to this job' });
+
+    const { data: shares } = await supabaseAdmin
+      .from('pipeline_job_shares')
+      .select('id, shared_with_id, permission, created_at, shared_by')
+      .eq('job_id', req.params.id)
+      .order('created_at');
+
+    if (!shares || shares.length === 0) return res.json([]);
+
+    // Enrich with profile info
+    const userIds = [...new Set(shares.map(s => s.shared_with_id))];
+    const { data: profiles } = await supabaseAdmin
+      .from('profiles')
+      .select('id, full_name, email, avatar_url')
+      .in('id', userIds);
+
+    const profileMap = new Map((profiles || []).map(p => [p.id, p]));
+
+    const enriched = shares.map(s => ({
+      ...s,
+      user: profileMap.get(s.shared_with_id) || { id: s.shared_with_id, full_name: 'Unknown', email: '' },
+    }));
+
+    res.json(enriched);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── POST /api/verify/jobs/:id/share ───
+// Share a job with one or more users.
+// Body: { userIds: string[], permission?: 'view' | 'manage' }
+
+router.post('/jobs/:id/share', async (req, res) => {
+  try {
+    const user = getRequestUser(req);
+    const authReq = req as unknown as AuthenticatedRequest;
+    const jobId = req.params.id;
+
+    // Only owner or superadmin can share
+    const access = await canAccessJob(user.id, authReq.authUser?.role || '', jobId);
+    if (access !== 'owner' && access !== 'superadmin') {
+      return res.status(403).json({ error: 'Only the job owner or superadmin can share' });
+    }
+
+    const { userIds, permission = 'view' } = req.body as { userIds: string[]; permission?: string };
+    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ error: 'userIds array is required' });
+    }
+    if (!['view', 'manage'].includes(permission)) {
+      return res.status(400).json({ error: 'permission must be "view" or "manage"' });
+    }
+
+    // Get the owner ID from ClickHouse
+    const [job] = await chQuery<{ performed_by: string }>(`
+      SELECT performed_by FROM pipeline_jobs WHERE id = '${jobId}' LIMIT 1
+    `);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+
+    const ownerId = job.performed_by;
+
+    // Upsert shares (skip if already shared)
+    const inserts = userIds
+      .filter(uid => uid !== ownerId) // Can't share with yourself
+      .map(uid => ({
+        job_id: jobId,
+        owner_id: ownerId,
+        shared_with_id: uid,
+        permission,
+        shared_by: user.id,
+      }));
+
+    if (inserts.length === 0) {
+      return res.json({ shared: 0 });
+    }
+
+    const { error } = await supabaseAdmin
+      .from('pipeline_job_shares')
+      .upsert(inserts, { onConflict: 'job_id,shared_with_id' });
+
+    if (error) throw error;
+
+    console.log(`[Share] ${user.name} shared job ${jobId} with ${inserts.length} user(s)`);
+    res.json({ shared: inserts.length });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── DELETE /api/verify/jobs/:id/share/:userId ───
+// Revoke a user's access to a job.
+
+router.delete('/jobs/:id/share/:userId', async (req, res) => {
+  try {
+    const user = getRequestUser(req);
+    const authReq = req as unknown as AuthenticatedRequest;
+    const jobId = req.params.id;
+    const targetUserId = req.params.userId;
+
+    const access = await canAccessJob(user.id, authReq.authUser?.role || '', jobId);
+    if (access !== 'owner' && access !== 'superadmin') {
+      return res.status(403).json({ error: 'Only the job owner or superadmin can revoke access' });
+    }
+
+    const { error } = await supabaseAdmin
+      .from('pipeline_job_shares')
+      .delete()
+      .eq('job_id', jobId)
+      .eq('shared_with_id', targetUserId);
+
+    if (error) throw error;
+
+    console.log(`[Share] ${user.name} revoked access for ${targetUserId} on job ${jobId}`);
+    res.json({ revoked: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
+

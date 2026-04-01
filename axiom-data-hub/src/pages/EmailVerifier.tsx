@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import Papa from 'papaparse';
-import { Network, CheckCircle, XCircle, ShieldAlert, Zap, Database } from 'lucide-react';
+import { Network, CheckCircle, XCircle, ShieldAlert, Zap, Database, Share2, Users, X } from 'lucide-react';
 import { PageHeader, SectionHeader, Button, Badge } from '../components/UI';
 import { apiCall } from '../lib/api';
 import AgentCard from '../components/AgentCard';
@@ -192,6 +192,12 @@ export default function EmailVerifierPage() {
   const [downloadJobId, setDownloadJobId] = useState<string | null>(null);
   const [downloadClassifications, setDownloadClassifications] = useState<Record<string, boolean>>({ safe: true, uncertain: true, risky: true, reject: true });
   const [downloadMaxRisk, setDownloadMaxRisk] = useState<number>(100);
+
+  // Share modal
+  const [shareJobId, setShareJobId] = useState<string | null>(null);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [jobShares, setJobShares] = useState<any[]>([]);
+  const [shareLoading, setShareLoading] = useState(false);
 
   // Track which job's results we're currently viewing (for header actions)
   const [loadedJobId, setLoadedJobId] = useState<string | null>(null);
@@ -402,6 +408,41 @@ export default function EmailVerifierPage() {
 
   // Stats for the textarea
   const lineCount = emailsRaw.split('\n').filter(l => l.trim()).length;
+
+  const openShareModal = async (jobId: string) => {
+    setShareJobId(jobId);
+    setShareLoading(true);
+    try {
+      const [team, shares] = await Promise.all([
+        apiCall<any[]>('/api/verify/team'),
+        apiCall<any[]>(`/api/verify/jobs/${jobId}/shares`),
+      ]);
+      setTeamMembers(team || []);
+      setJobShares(shares || []);
+    } catch { /* ignore */ }
+    setShareLoading(false);
+  };
+
+  const handleShare = async (userId: string) => {
+    if (!shareJobId) return;
+    setShareLoading(true);
+    try {
+      await apiCall('/api/verify/jobs/' + shareJobId + '/share', { method: 'POST', body: { userIds: [userId] } });
+      const shares = await apiCall<any[]>(`/api/verify/jobs/${shareJobId}/shares`);
+      setJobShares(shares || []);
+    } catch (err: any) { showToast('error', `Share failed: ${err.message}`); }
+    setShareLoading(false);
+  };
+
+  const handleRevoke = async (userId: string) => {
+    if (!shareJobId) return;
+    setShareLoading(true);
+    try {
+      await apiCall(`/api/verify/jobs/${shareJobId}/share/${userId}`, { method: 'DELETE' });
+      setJobShares(prev => prev.filter(s => s.shared_with_id !== userId));
+    } catch (err: any) { showToast('error', `Revoke failed: ${err.message}`); }
+    setShareLoading(false);
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -793,6 +834,11 @@ export default function EmailVerifierPage() {
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
                           {total.toLocaleString()} emails
                           <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: 8, fontSize: 11 }}>{job.id.slice(0, 8)}…</span>
+                          {job._access === 'shared' && (
+                            <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 600, color: 'var(--purple)', background: 'var(--purple-muted)', padding: '1px 6px', borderRadius: 4 }}>
+                              Shared by {job._owner_name}
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
                           {new Date(job.started_at).toLocaleString()}
@@ -822,6 +868,13 @@ export default function EmailVerifierPage() {
                               padding: '5px 12px', borderRadius: 8, border: '1px solid var(--blue)',
                               background: 'var(--blue-muted)', color: 'var(--blue)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
                             }}>Vault</button>
+                            {job._access === 'owner' && (
+                              <button onClick={() => openShareModal(job.id)} style={{
+                                padding: '5px 12px', borderRadius: 8, border: '1px solid var(--purple)',
+                                background: 'var(--purple-muted)', color: 'var(--purple)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                                display: 'flex', alignItems: 'center', gap: 4,
+                              }}><Share2 size={12} />Share</button>
+                            )}
                           </>
                         )}
                         {isProcessing && !isActive && (
@@ -1755,6 +1808,98 @@ export default function EmailVerifierPage() {
                 opacity: !Object.values(downloadClassifications).some(Boolean) ? 0.4 : 1,
               }}>📥 Download Custom CSV</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Share Modal ── */}
+      {shareJobId && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={(e) => { if (e.target === e.currentTarget) setShareJobId(null); }}>
+          <div style={{
+            width: 460, maxHeight: '80vh', overflow: 'auto',
+            background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)',
+            boxShadow: '0 25px 50px rgba(0,0,0,0.4)', padding: 28,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Users size={20} style={{ color: 'var(--purple)' }} />
+                <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Share Job</h3>
+              </div>
+              <button onClick={() => setShareJobId(null)} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 4 }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 16 }}>
+              Job <code style={{ background: 'var(--bg-elevated)', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{shareJobId.slice(0, 12)}…</code> — grant view access to team members.
+            </p>
+
+            {/* Current shares */}
+            {jobShares.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>Shared with</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {jobShares.map((s: any) => (
+                    <div key={s.id} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '8px 12px', background: 'var(--bg-app)', borderRadius: 10, border: '1px solid var(--border)',
+                    }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{s.user?.full_name || 'Unknown'}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{s.user?.email}</div>
+                      </div>
+                      <button onClick={() => handleRevoke(s.shared_with_id)} disabled={shareLoading} style={{
+                        padding: '4px 10px', borderRadius: 6, border: '1px solid var(--red)',
+                        background: 'var(--red-muted)', color: 'var(--red)', fontSize: 10, fontWeight: 600,
+                        cursor: shareLoading ? 'not-allowed' : 'pointer', opacity: shareLoading ? 0.5 : 1,
+                      }}>Revoke</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Add team members */}
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
+              {jobShares.length > 0 ? 'Add more people' : 'Add people'}
+            </div>
+            {shareLoading && teamMembers.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 20, color: 'var(--text-tertiary)', fontSize: 12 }}>Loading team…</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto' }}>
+                {teamMembers
+                  .filter(m => !jobShares.some((s: any) => s.shared_with_id === m.id))
+                  .map((m: any) => (
+                    <div key={m.id} style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '8px 12px', background: 'var(--bg-app)', borderRadius: 10, border: '1px solid var(--border)',
+                      transition: 'border-color 0.2s',
+                    }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{m.full_name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                          {m.email}
+                          <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', background: 'var(--bg-elevated)', padding: '1px 6px', borderRadius: 4 }}>{m.role}</span>
+                        </div>
+                      </div>
+                      <button onClick={() => handleShare(m.id)} disabled={shareLoading} style={{
+                        padding: '5px 14px', borderRadius: 8, border: '1px solid var(--purple)',
+                        background: 'var(--purple-muted)', color: 'var(--purple)', fontSize: 11, fontWeight: 600,
+                        cursor: shareLoading ? 'not-allowed' : 'pointer', opacity: shareLoading ? 0.5 : 1,
+                      }}>Share</button>
+                    </div>
+                  ))}
+                {teamMembers.filter(m => !jobShares.some((s: any) => s.shared_with_id === m.id)).length === 0 && !shareLoading && (
+                  <div style={{ textAlign: 'center', padding: 16, color: 'var(--text-tertiary)', fontSize: 12 }}>
+                    {teamMembers.length === 0 ? 'No other team members found' : 'Shared with everyone'}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
