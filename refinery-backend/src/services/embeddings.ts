@@ -31,7 +31,7 @@ interface EmbeddingResult {
 
 // Default embedding models per provider (used when no explicit model configured)
 const DEFAULT_EMBEDDING_MODELS: Record<string, string> = {
-  gemini: 'text-embedding-004',
+  gemini: 'gemini-embedding-001',
   openai: 'text-embedding-3-small',
   mistral: 'mistral-embed',
   private_vps: 'text-embedding-3-small',
@@ -115,8 +115,8 @@ export async function generateEmbedding(text: string): Promise<EmbeddingResult> 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: `models/${provider.model}`,
             content: { parts: [{ text: truncated }] },
+            outputDimensionality: 1536,
           }),
         });
         if (!res.ok) {
