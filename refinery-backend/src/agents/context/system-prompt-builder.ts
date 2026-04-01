@@ -66,36 +66,75 @@ export async function buildSystemPrompt(options: PromptBuildOptions): Promise<st
  * Agent-specific rules are pulled from the agent's `capabilities` array in the DB.
  */
 async function buildGuardrails(agentSlug: string): Promise<string> {
-  const common = [
-    '## Operating Guidelines',
-    '- Always reference actual data from your tools — never fabricate numbers.',
-    '- When presenting data, use markdown tables for structured output.',
-    '- For code blocks, specify the language (sql, json, etc.).',
-    '- If you need data you do not have, use your tools to fetch it.',
-    '- Be concise but thorough. Executives read your reports.',
-  ];
+  const sections: string[] = ['## Operating Guidelines'];
 
-  // Fetch agent capabilities from DB to generate dynamic guardrails
   try {
+    // Fetch agent ID from slug
     const { data: agent } = await supabaseAdmin
       .from('ai_agents')
-      .select('capabilities')
+      .select('id, capabilities, max_response_length')
       .eq('slug', agentSlug)
       .single();
 
-    if (agent?.capabilities && Array.isArray(agent.capabilities)) {
-      common.push(`- Your capabilities: ${agent.capabilities.join(', ')}.`);
-      common.push('- Only operate within your defined capabilities. Defer to other agents for domains outside your scope.');
+    if (!agent) {
+      sections.push('- Operate within your defined role. Be helpful and accurate.');
+      return sections.join('\n');
     }
-  } catch {
-    // Non-fatal — proceed with common rules only
+
+    // Fetch guardrails: global (agent_id IS NULL) + agent-specific
+    const { data: guardrails } = await supabaseAdmin
+      .from('ai_agent_guardrails')
+      .select('category, rule_text, priority')
+      .or(`agent_id.is.null,agent_id.eq.${agent.id}`)
+      .eq('enabled', true)
+      .order('priority', { ascending: false });
+
+    if (guardrails && guardrails.length > 0) {
+      // Group by category for clean formatting
+      const byCategory = new Map<string, string[]>();
+      for (const g of guardrails) {
+        if (!byCategory.has(g.category)) byCategory.set(g.category, []);
+        byCategory.get(g.category)!.push(g.rule_text);
+      }
+
+      const categoryLabels: Record<string, string> = {
+        behavior: 'Behavior',
+        output_format: 'Output Format',
+        tool_policy: 'Tool Usage Policy',
+        safety: 'Safety Rules',
+        persona: 'Persona',
+        training: 'Domain Training',
+      };
+
+      for (const [cat, rules] of byCategory) {
+        sections.push(`\n### ${categoryLabels[cat] || cat}`);
+        for (const rule of rules) {
+          sections.push(`- ${rule}`);
+        }
+      }
+    }
+
+    // Inject capabilities
+    if (agent.capabilities && Array.isArray(agent.capabilities) && agent.capabilities.length > 0) {
+      sections.push(`\n### Your Capabilities`);
+      sections.push(`- Your tools: ${agent.capabilities.join(', ')}.`);
+      sections.push('- Only operate within your defined capabilities. Defer to other agents for domains outside your scope.');
+    }
+
+    // Inject response length limit
+    if (agent.max_response_length) {
+      sections.push(`\n- Keep responses under ${agent.max_response_length} characters unless the user explicitly asks for detailed output.`);
+    }
+  } catch (e: any) {
+    console.warn('[PromptBuilder] Guardrails fetch failed:', e.message);
+    sections.push('- Be helpful, accurate, and concise.');
   }
 
-  return common.join('\n');
+  return sections.join('\n');
 }
 
 /**
- * Fetch KB entries for an agent from Supabase
+ * Fetch KB entries for an agent — priority-based (fallback)
  */
 export async function fetchKBEntries(agentId: string): Promise<string[]> {
   const { data } = await supabaseAdmin
@@ -103,9 +142,47 @@ export async function fetchKBEntries(agentId: string): Promise<string[]> {
     .select('title, content')
     .eq('agent_id', agentId)
     .eq('enabled', true)
-    .order('priority', { ascending: false });
+    .order('priority', { ascending: false })
+    .limit(20);
 
   if (!data || data.length === 0) return [];
-
   return data.map(e => `### ${e.title}\n${e.content}`);
 }
+
+/**
+ * Fetch KB entries using semantic vector search.
+ * Requires: query embedding (1536-dim float array from OpenAI embeddings API).
+ * Falls back to priority-based if no embeddings exist or RPC fails.
+ */
+export async function fetchKBEntriesSemantic(
+  agentId: string,
+  queryEmbedding: number[] | null,
+  topK = 5,
+  threshold = 0.7
+): Promise<string[]> {
+  // If no embedding provided, fall back to priority-based
+  if (!queryEmbedding || queryEmbedding.length === 0) {
+    return fetchKBEntries(agentId);
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin.rpc('match_agent_knowledge', {
+      p_agent_id: agentId,
+      p_query_embedding: queryEmbedding,
+      p_match_count: topK,
+      p_match_threshold: threshold,
+    });
+
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      // No semantic matches — fall back to priority-based
+      return fetchKBEntries(agentId);
+    }
+
+    return data.map((e: any) => `### ${e.title} (relevance: ${(e.similarity * 100).toFixed(0)}%)\n${e.content}`);
+  } catch (e: any) {
+    console.warn('[PromptBuilder] Semantic KB search failed, falling back:', e.message);
+    return fetchKBEntries(agentId);
+  }
+}
+

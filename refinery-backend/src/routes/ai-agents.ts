@@ -145,6 +145,9 @@ router.post('/conversations/:convId/messages', async (req: Request, res: Respons
       return res.json({ reply: '⚠️ No AI provider configured. Go to AI Settings → activate a provider and choose a model.', latencyMs: Date.now() - start });
     }
 
+    // 8.5 Determine tool approval mode
+    const toolApprovalMode: string = agent.tool_approval_mode || 'always_ask';
+
     // 9. Call AI with tools
     let aiResult = await callAIWithTools(resolved.serviceSlug, chatMessages, openAITools, {
       maxTokens: agent.max_tokens || 4096,
@@ -152,25 +155,71 @@ router.post('/conversations/:convId/messages', async (req: Request, res: Respons
       userId,
     });
 
-    // 10. Handle tool calls (multi-turn loop — max 3 rounds)
+    // 10. Handle tool calls (multi-turn loop — max rounds from DB)
+    const maxRounds = agent.max_tool_rounds || 3;
     let toolRounds = 0;
-    while (aiResult.success && aiResult.toolCalls?.length && toolRounds < 3) {
+    while (aiResult.success && aiResult.toolCalls?.length && toolRounds < maxRounds) {
       toolRounds++;
 
-      // Add assistant's tool-calling message to context
+      // Check if ANY tool call needs approval
+      const needsApproval = aiResult.toolCalls.some(tc => {
+        if (toolApprovalMode === 'always_ask') return true;
+        if (toolApprovalMode === 'ask_write') {
+          const toolDef = agentTools.find(t => t.name === tc.name);
+          return toolDef ? toolDef.riskLevel !== 'read' : true;
+        }
+        return false; // 'auto' mode
+      });
+
+      if (needsApproval) {
+        // Save pending tool calls for user approval
+        const pendingIds: string[] = [];
+        for (const tc of aiResult.toolCalls) {
+          const { data: pending } = await supabaseAdmin.from('ai_agent_pending_tools').insert({
+            conversation_id: convId,
+            agent_slug: agent.slug,
+            tool_name: tc.name,
+            tool_arguments: tc.arguments,
+            user_id: userId,
+          }).select('id').single();
+          if (pending) pendingIds.push(pending.id);
+        }
+
+        // Save assistant message explaining what it wants to do
+        const toolDescriptions = aiResult.toolCalls.map(tc =>
+          `**${tc.name}** — ${JSON.stringify(tc.arguments, null, 2)}`
+        ).join('\n\n');
+        const approvalMsg = `🔧 I'd like to use the following tool${aiResult.toolCalls.length > 1 ? 's' : ''}:\n\n${toolDescriptions}\n\nPlease **approve** or **deny** to continue.`;
+
+        await supabaseAdmin.from('ai_agent_messages').insert({
+          conversation_id: convId, role: 'assistant',
+          content: approvalMsg,
+          tool_name: '_pending_approval',
+          tool_input: { pendingIds, toolCalls: aiResult.toolCalls },
+          latency_ms: Date.now() - start,
+        });
+
+        return res.json({
+          reply: approvalMsg,
+          latencyMs: Date.now() - start,
+          pendingApproval: true,
+          pendingToolIds: pendingIds,
+          toolCalls: aiResult.toolCalls.map(tc => ({ name: tc.name, arguments: tc.arguments })),
+        });
+      }
+
+      // Auto-execute mode — same as before
       chatMessages.push({
         role: 'assistant',
         content: aiResult.response || `Calling tool: ${aiResult.toolCalls[0].name}`,
       });
 
-      // Execute each tool call
       for (const tc of aiResult.toolCalls) {
         const toolResult = await executeTool(
           { id: tc.id, name: tc.name, arguments: tc.arguments },
           { userId: String(userId), agentSlug: agent.slug, conversationId: String(convId), accessToken }
         );
 
-        // Save tool execution to messages
         await supabaseAdmin.from('ai_agent_messages').insert({
           conversation_id: convId, role: 'assistant',
           content: `🔧 Used tool: **${tc.name}**`,
@@ -179,7 +228,6 @@ router.post('/conversations/:convId/messages', async (req: Request, res: Respons
           tool_output: toolResult.data || toolResult.error,
         });
 
-        // Add tool result to conversation for LLM
         chatMessages.push({
           role: 'tool',
           content: JSON.stringify(toolResult),
@@ -188,7 +236,6 @@ router.post('/conversations/:convId/messages', async (req: Request, res: Respons
         });
       }
 
-      // Call LLM again with tool results
       aiResult = await callAIWithTools(resolved.serviceSlug, chatMessages, openAITools, {
         maxTokens: agent.max_tokens || 4096,
         temperature: parseFloat(agent.temperature) || 0.5,
@@ -238,6 +285,110 @@ router.delete('/conversations/:convId', async (req: Request, res: Response) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Approve pending tool calls ──
+router.post('/conversations/:convId/approve-tools', async (req: Request, res: Response) => {
+  const start = Date.now();
+  try {
+    const userId = getRequestUser(req).id;
+    const accessToken = String(req.headers.authorization || '').replace('Bearer ', '');
+    const convId = String(req.params.convId);
+    const { pendingIds } = req.body;
+    if (!pendingIds?.length) return res.status(400).json({ error: 'pendingIds required' });
+
+    // Fetch pending tools
+    const { data: pendingTools } = await supabaseAdmin
+      .from('ai_agent_pending_tools')
+      .select('*').in('id', pendingIds).eq('status', 'pending');
+    if (!pendingTools?.length) return res.status(400).json({ error: 'No pending tools found' });
+
+    // Mark as approved
+    await supabaseAdmin.from('ai_agent_pending_tools').update({ status: 'approved', decided_at: new Date().toISOString() }).in('id', pendingIds);
+
+    // Resolve conversation → agent
+    const { data: conv } = await supabaseAdmin.from('ai_agent_conversations').select('id, agent_id').eq('id', convId).single();
+    if (!conv) return res.status(404).json({ error: 'Conversation not found' });
+    const { data: agent } = await supabaseAdmin.from('ai_agents').select('*').eq('id', conv.agent_id).single();
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+    // Execute each approved tool
+    const toolResults: { name: string; result: any }[] = [];
+    for (const pt of pendingTools) {
+      const toolResult = await executeTool(
+        { id: String(pt.id), name: pt.tool_name, arguments: pt.tool_arguments },
+        { userId: String(userId), agentSlug: String(pt.agent_slug), conversationId: convId, accessToken }
+      );
+      await supabaseAdmin.from('ai_agent_messages').insert({
+        conversation_id: convId, role: 'assistant',
+        content: `✅ Tool approved & executed: **${pt.tool_name}**`,
+        tool_name: pt.tool_name, tool_input: pt.tool_arguments,
+        tool_output: toolResult.data || toolResult.error,
+      });
+      toolResults.push({ name: pt.tool_name, result: toolResult });
+    }
+
+    // Rebuild conversation context and call LLM with tool results
+    const { data: history } = await supabaseAdmin.from('ai_agent_messages')
+      .select('role, content, tool_name, tool_input, tool_output')
+      .eq('conversation_id', convId).order('created_at', { ascending: true }).limit(40);
+
+    const systemContext = await gatherContext(agent.id, agent.capabilities || []);
+    const manifest = buildSystemManifest(agent.slug);
+    const customBlock = agent.custom_instructions ? `\n=== CUSTOM INSTRUCTIONS ===\n${agent.custom_instructions}` : '';
+    const systemPrompt = `${manifest}\n\n${agent.system_prompt}${customBlock}\n\n=== LIVE SYSTEM CONTEXT ===\n${systemContext}`;
+
+    const chatMessages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
+    for (const m of (history || [])) {
+      if (m.role === 'user' || m.role === 'assistant') {
+        chatMessages.push({ role: m.role as 'user' | 'assistant', content: m.content });
+      }
+    }
+
+    // Add tool results
+    for (const tr of toolResults) {
+      chatMessages.push({ role: 'tool', content: JSON.stringify(tr.result), tool_call_id: tr.name, name: tr.name });
+    }
+
+    const resolved = await resolveAgentProvider(agent);
+    if (!resolved) return res.status(500).json({ error: 'No AI provider' });
+
+    const aiResult = await callAIWithTools(resolved.serviceSlug, chatMessages, [], {
+      maxTokens: agent.max_tokens || 4096,
+      temperature: parseFloat(agent.temperature) || 0.5,
+      userId,
+    });
+
+    const latency = Date.now() - start;
+    const reply = aiResult.success ? aiResult.response : `⚠️ Error: ${aiResult.error}`;
+
+    await supabaseAdmin.from('ai_agent_messages').insert({
+      conversation_id: convId, role: 'assistant', content: reply,
+      tokens_used: aiResult.tokensUsed || 0, latency_ms: latency,
+      provider_used: aiResult.providerLabel, model_used: aiResult.model,
+    });
+
+    res.json({ reply, latencyMs: latency, tokensUsed: aiResult.tokensUsed });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Deny pending tool calls ──
+router.post('/conversations/:convId/deny-tools', async (req: Request, res: Response) => {
+  try {
+    const { pendingIds, reason } = req.body;
+    if (!pendingIds?.length) return res.status(400).json({ error: 'pendingIds required' });
+
+    await supabaseAdmin.from('ai_agent_pending_tools')
+      .update({ status: 'denied', decided_at: new Date().toISOString() })
+      .in('id', pendingIds);
+
+    const denyMsg = `❌ Tool use denied${reason ? `: ${reason}` : '.'}`;
+    await supabaseAdmin.from('ai_agent_messages').insert({
+      conversation_id: req.params.convId, role: 'user', content: denyMsg,
+    });
+
+    res.json({ success: true, message: denyMsg });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Update conversation (title, pin) ──
 router.put('/conversations/:convId', async (req: Request, res: Response) => {
   try {
@@ -267,7 +418,7 @@ router.get('/admin/all', async (_req: Request, res: Response) => {
 router.put('/admin/:id', async (req: Request, res: Response) => {
   try {
     const updates: Record<string, any> = {};
-    const allowed = ['name', 'role', 'avatar_emoji', 'accent_color', 'system_prompt', 'greeting', 'capabilities', 'enabled', 'temperature', 'max_tokens', 'custom_instructions', 'avatar_url', 'provider_id', 'model_id'];
+    const allowed = ['name', 'role', 'avatar_emoji', 'accent_color', 'system_prompt', 'greeting', 'capabilities', 'enabled', 'temperature', 'max_tokens', 'custom_instructions', 'avatar_url', 'provider_id', 'model_id', 'tool_approval_mode', 'max_tool_rounds', 'max_response_length'];
     for (const k of allowed) { if (req.body[k] !== undefined) updates[k] = req.body[k]; }
     const { data, error } = await supabaseAdmin.from('ai_agents').update(updates).eq('id', req.params.id).select().single();
     if (error) throw error;
@@ -311,6 +462,50 @@ router.put('/admin/knowledge/:id', async (req: Request, res: Response) => {
 router.delete('/admin/knowledge/:id', async (req: Request, res: Response) => {
   try {
     await supabaseAdmin.from('ai_agent_knowledge').delete().eq('id', req.params.id);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Guardrails CRUD ──
+router.get('/admin/guardrails', async (req: Request, res: Response) => {
+  try {
+    const agentId = req.query.agentId as string | undefined;
+    let query = supabaseAdmin.from('ai_agent_guardrails').select('*').order('priority', { ascending: false });
+    if (agentId) {
+      query = query.or(`agent_id.is.null,agent_id.eq.${agentId}`);
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json({ guardrails: data || [] });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/guardrails', async (req: Request, res: Response) => {
+  try {
+    const { agent_id, category, rule_text, priority, enabled } = req.body;
+    const { data, error } = await supabaseAdmin.from('ai_agent_guardrails')
+      .insert({ agent_id: agent_id || null, category: category || 'behavior', rule_text, priority: priority || 0, enabled: enabled !== false })
+      .select().single();
+    if (error) throw error;
+    res.json({ guardrail: data });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.put('/admin/guardrails/:id', async (req: Request, res: Response) => {
+  try {
+    const updates: Record<string, any> = {};
+    for (const k of ['agent_id', 'category', 'rule_text', 'priority', 'enabled']) {
+      if (req.body[k] !== undefined) updates[k] = req.body[k];
+    }
+    const { data, error } = await supabaseAdmin.from('ai_agent_guardrails').update(updates).eq('id', req.params.id).select().single();
+    if (error) throw error;
+    res.json({ guardrail: data });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/admin/guardrails/:id', async (req: Request, res: Response) => {
+  try {
+    await supabaseAdmin.from('ai_agent_guardrails').delete().eq('id', req.params.id);
     res.json({ success: true });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
