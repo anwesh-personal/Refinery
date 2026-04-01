@@ -11,8 +11,7 @@ CREATE TABLE IF NOT EXISTS pipeline_job_shares (
   job_id          TEXT NOT NULL,                          -- ClickHouse pipeline_jobs.id
   owner_id        UUID NOT NULL REFERENCES auth.users(id),-- user who owns the job
   shared_with_id  UUID NOT NULL REFERENCES auth.users(id),-- user gaining access
-  permission      TEXT NOT NULL DEFAULT 'view'            -- 'view' | 'manage'
-    CHECK (permission IN ('view', 'manage')),
+  permissions     JSONB NOT NULL DEFAULT '{"can_read": true, "can_vault": false, "can_download": false}'::jsonb,
   shared_by       UUID NOT NULL REFERENCES auth.users(id),-- who performed the share action
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );

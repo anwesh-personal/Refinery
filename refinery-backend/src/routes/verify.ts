@@ -380,29 +380,37 @@ router.get('/jobs', async (req, res) => {
         ...j,
         _access: j.performed_by === user.id ? 'owner' : 'superadmin',
         _owner_name: j.performed_by_name || 'Unknown',
+        _permissions: { can_read: true, can_vault: true, can_download: true },
       }));
       return res.json(enriched);
     }
 
     // Non-superadmin: filter to own jobs + shared jobs
-    // 1. Get job IDs shared with this user
+    // 1. Get job IDs shared with this user (with granular permissions)
     const { data: shares } = await supabaseAdmin
       .from('pipeline_job_shares')
-      .select('job_id, permission')
+      .select('job_id, permissions')
       .eq('shared_with_id', user.id);
 
     const sharedJobIds = new Set((shares || []).map(s => s.job_id));
-    const sharedPermissions = new Map((shares || []).map(s => [s.job_id, s.permission]));
+    const sharedPermsMap = new Map((shares || []).map(s => [s.job_id, s.permissions]));
 
     // 2. Filter: own jobs + shared jobs
     const filtered = allJobs
       .filter((j: any) => j.performed_by === user.id || sharedJobIds.has(j.id))
-      .map((j: any) => ({
-        ...j,
-        _access: j.performed_by === user.id ? 'owner' : 'shared',
-        _permission: sharedPermissions.get(j.id) || null,
-        _owner_name: j.performed_by_name || 'Unknown',
-      }));
+      .map((j: any) => {
+        const isOwner = j.performed_by === user.id;
+        const sharePerms = sharedPermsMap.get(j.id) || {};
+        return {
+          ...j,
+          _access: isOwner ? 'owner' : 'shared',
+          _owner_name: j.performed_by_name || 'Unknown',
+          // Owners get full permissions; shared users get what was granted
+          _permissions: isOwner
+            ? { can_read: true, can_vault: true, can_download: true }
+            : { can_read: sharePerms.can_read ?? true, can_vault: sharePerms.can_vault ?? false, can_download: sharePerms.can_download ?? false },
+        };
+      });
 
     res.json(filtered);
   } catch (e: any) {
@@ -1134,6 +1142,110 @@ router.post('/push-to-db', requireSuperadmin, async (req, res) => {
   }
 });
 
+// ─── POST /api/verify/jobs/:id/push-to-mta ───
+// Push verified results to the active MTA as a subscriber list.
+// Provider-agnostic — works with any MTAAdapter (MailWizz, SendGrid, etc.)
+// Body: { listName?: string, existingListId?: string, classifications?: string[], maxRiskScore?: number }
+
+import { getMtaAdapter } from '../services/mta/index.js';
+
+router.post('/jobs/:id/push-to-mta', async (req, res) => {
+  try {
+    const user = getRequestUser(req);
+    const authReq = req as any;
+    const role = authReq.authUser?.role || 'member';
+    const access = await canAccessJob(user.id, role, req.params.id);
+    if (!access) return res.status(403).json({ error: 'No access to this job' });
+
+    // Get the MTA adapter (provider-agnostic)
+    const adapter = await getMtaAdapter();
+    if (!adapter) {
+      return res.status(400).json({ error: 'No MTA provider configured. Go to Server Config → MTA Providers to set one up.' });
+    }
+
+    // Load job results
+    const [job] = await chQuery<any>(`
+      SELECT id, results_json, status, total_emails
+      FROM pipeline_jobs
+      WHERE id = '${req.params.id}'
+      LIMIT 1
+    `);
+    if (!job) return res.status(404).json({ error: 'Job not found' });
+    if (job.status !== 'complete') return res.status(400).json({ error: 'Job not complete yet' });
+    if (!job.results_json) return res.status(404).json({ error: 'No results stored' });
+
+    let allResults: any[];
+    try { allResults = JSON.parse(job.results_json); } catch { return res.status(500).json({ error: 'Corrupt results data' }); }
+
+    const { listName, existingListId, classifications, maxRiskScore } = req.body || {};
+    const allowedClassifications = classifications || ['safe', 'uncertain'];
+    const maxRisk = typeof maxRiskScore === 'number' ? maxRiskScore : Infinity;
+
+    // Filter results
+    const filtered = allResults.filter((r: any) =>
+      allowedClassifications.includes(r.classification) &&
+      (r.riskScore ?? 0) <= maxRisk
+    );
+
+    if (filtered.length === 0) {
+      return res.status(400).json({ error: 'No results match the selected filters — nothing to push' });
+    }
+
+    // Create or reuse list
+    let listId = existingListId;
+    let listCreated = false;
+    if (!listId) {
+      if (!listName || typeof listName !== 'string' || listName.trim().length === 0) {
+        return res.status(400).json({ error: 'Provide either listName (new list) or existingListId' });
+      }
+      const newList = await adapter.createList(listName.trim());
+      listId = newList.id;
+      listCreated = true;
+      console.log(`[MTA Push] Created list "${listName}" → ${listId}`);
+    }
+
+    // Build subscribers
+    const subscribers = filtered.map((r: any) => ({
+      email: r.email,
+      first_name: '',
+      last_name: '',
+    }));
+
+    // Push to MTA
+    const result = await adapter.addSubscribers(listId!, subscribers);
+
+    console.log(`[MTA Push] ${user.name} pushed ${result.added} subscribers to list ${listId} (${adapter.provider}). Failed: ${result.failed}`);
+
+    res.json({
+      provider: adapter.provider,
+      listId,
+      listCreated,
+      totalFiltered: filtered.length,
+      added: result.added,
+      failed: result.failed,
+      classifications: allowedClassifications,
+    });
+  } catch (e: any) {
+    console.error('[MTA Push] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── GET /api/verify/mta-lists ───
+// Fetch available lists from the active MTA provider.
+
+router.get('/mta-lists', async (_req, res) => {
+  try {
+    const adapter = await getMtaAdapter();
+    if (!adapter) {
+      return res.status(400).json({ error: 'No MTA provider configured' });
+    }
+    const lists = await adapter.getLists();
+    res.json({ provider: adapter.provider, lists });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 // ═══════════════════════════════════════════════════════════════
 // SHARING — Google Drive-style per-job access control
 // ═══════════════════════════════════════════════════════════════
@@ -1195,7 +1307,7 @@ router.get('/jobs/:id/shares', async (req, res) => {
 
     const { data: shares } = await supabaseAdmin
       .from('pipeline_job_shares')
-      .select('id, shared_with_id, permission, created_at, shared_by')
+      .select('id, shared_with_id, permissions, created_at, shared_by')
       .eq('job_id', req.params.id)
       .order('created_at');
 
@@ -1223,7 +1335,7 @@ router.get('/jobs/:id/shares', async (req, res) => {
 
 // ─── POST /api/verify/jobs/:id/share ───
 // Share a job with one or more users.
-// Body: { userIds: string[], permission?: 'view' | 'manage' }
+// Body: { userIds: string[], permissions?: { can_read: bool, can_vault: bool, can_download: bool } }
 
 router.post('/jobs/:id/share', async (req, res) => {
   try {
@@ -1237,13 +1349,20 @@ router.post('/jobs/:id/share', async (req, res) => {
       return res.status(403).json({ error: 'Only the job owner or superadmin can share' });
     }
 
-    const { userIds, permission = 'view' } = req.body as { userIds: string[]; permission?: string };
+    const { userIds, permissions } = req.body as {
+      userIds: string[];
+      permissions?: { can_read?: boolean; can_vault?: boolean; can_download?: boolean };
+    };
     if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
       return res.status(400).json({ error: 'userIds array is required' });
     }
-    if (!['view', 'manage'].includes(permission)) {
-      return res.status(400).json({ error: 'permission must be "view" or "manage"' });
-    }
+
+    // Default: read-only
+    const perms = {
+      can_read: permissions?.can_read !== false,
+      can_vault: permissions?.can_vault === true,
+      can_download: permissions?.can_download === true,
+    };
 
     // Get the owner ID from ClickHouse
     const [job] = await chQuery<{ performed_by: string }>(`
@@ -1253,14 +1372,14 @@ router.post('/jobs/:id/share', async (req, res) => {
 
     const ownerId = job.performed_by;
 
-    // Upsert shares (skip if already shared)
+    // Upsert shares
     const inserts = userIds
-      .filter(uid => uid !== ownerId) // Can't share with yourself
+      .filter(uid => uid !== ownerId)
       .map(uid => ({
         job_id: jobId,
         owner_id: ownerId,
         shared_with_id: uid,
-        permission,
+        permissions: perms,
         shared_by: user.id,
       }));
 
@@ -1274,7 +1393,7 @@ router.post('/jobs/:id/share', async (req, res) => {
 
     if (error) throw error;
 
-    console.log(`[Share] ${user.name} shared job ${jobId} with ${inserts.length} user(s)`);
+    console.log(`[Share] ${user.name} shared job ${jobId} with ${inserts.length} user(s) (perms: ${JSON.stringify(perms)})`);
     res.json({ shared: inserts.length });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

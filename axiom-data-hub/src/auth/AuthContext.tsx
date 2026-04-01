@@ -46,6 +46,13 @@ export const ALL_PERMISSIONS = {
   canPauseMailQueue:    { label: 'Pause / Resume Queue',     group: 'Queue' },
   canFlushMailQueue:    { label: 'Flush Queue (Danger)',      group: 'Queue' },
 
+  // ── Pipeline Studio ──
+  canViewPipeline:      { label: 'View Pipeline Studio',     group: 'Pipeline' },
+  canRunPipeline:       { label: 'Run Verification Jobs',    group: 'Pipeline' },
+  canDownloadPipeline:  { label: 'Download CSV Results',     group: 'Pipeline' },
+  canPushToVault:       { label: 'Save to Vault',            group: 'Pipeline' },
+  canPushToMTA:         { label: 'Push to MTA',              group: 'Pipeline' },
+
   // ── System ──
   canEditConfig:        { label: 'Edit Server Config',       group: 'System' },
   canManageUsers:       { label: 'Manage Team Members',      group: 'System' },
@@ -84,6 +91,8 @@ const ROLE_DEFAULTS: Record<UserRole, Record<PermissionKey, boolean>> = {
     canCreateTargetLists: true, canExportData: true,       canStartMailQueue: true,
     canPauseMailQueue: true,    canFlushMailQueue: false,  canEditConfig: true,
     canManageUsers: false,      canDeleteData: false,      canViewAuditLog: true,
+    canViewPipeline: true,      canRunPipeline: true,      canDownloadPipeline: false,
+    canPushToVault: true,       canPushToMTA: true,
   },
 
   member: {
@@ -96,6 +105,8 @@ const ROLE_DEFAULTS: Record<UserRole, Record<PermissionKey, boolean>> = {
     canCreateTargetLists: false, canExportData: false,     canStartMailQueue: false,
     canPauseMailQueue: false,   canFlushMailQueue: false,  canEditConfig: false,
     canManageUsers: false,      canDeleteData: false,      canViewAuditLog: false,
+    canViewPipeline: true,      canRunPipeline: false,     canDownloadPipeline: false,
+    canPushToVault: true,       canPushToMTA: false,
   },
 };
 

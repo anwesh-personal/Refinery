@@ -198,6 +198,14 @@ export default function EmailVerifierPage() {
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [jobShares, setJobShares] = useState<any[]>([]);
   const [shareLoading, setShareLoading] = useState(false);
+  const [sharePerms, setSharePerms] = useState({ can_read: true, can_vault: false, can_download: false });
+
+  // MTA push modal
+  const [mtaJobId, setMtaJobId] = useState<string | null>(null);
+  const [mtaListName, setMtaListName] = useState('');
+  const [mtaResult, setMtaResult] = useState<any>(null);
+  const [mtaPushing, setMtaPushing] = useState(false);
+  const [mtaClassifications, setMtaClassifications] = useState<Record<string, boolean>>({ safe: true, uncertain: true, risky: false, reject: false });
 
   // Track which job's results we're currently viewing (for header actions)
   const [loadedJobId, setLoadedJobId] = useState<string | null>(null);
@@ -427,7 +435,7 @@ export default function EmailVerifierPage() {
     if (!shareJobId) return;
     setShareLoading(true);
     try {
-      await apiCall('/api/verify/jobs/' + shareJobId + '/share', { method: 'POST', body: { userIds: [userId] } });
+      await apiCall('/api/verify/jobs/' + shareJobId + '/share', { method: 'POST', body: { userIds: [userId], permissions: sharePerms } });
       const shares = await apiCall<any[]>(`/api/verify/jobs/${shareJobId}/shares`);
       setJobShares(shares || []);
     } catch (err: any) { showToast('error', `Share failed: ${err.message}`); }
@@ -442,6 +450,25 @@ export default function EmailVerifierPage() {
       setJobShares(prev => prev.filter(s => s.shared_with_id !== userId));
     } catch (err: any) { showToast('error', `Revoke failed: ${err.message}`); }
     setShareLoading(false);
+  };
+
+  const handleMtaPush = async () => {
+    if (!mtaJobId || !mtaListName.trim()) return;
+    setMtaPushing(true);
+    setMtaResult(null);
+    try {
+      const classifications = Object.entries(mtaClassifications).filter(([, v]) => v).map(([k]) => k);
+      const resp = await apiCall<any>(`/api/verify/jobs/${mtaJobId}/push-to-mta`, {
+        method: 'POST',
+        body: { listName: mtaListName.trim(), classifications },
+      });
+      setMtaResult(resp);
+      showToast('info', `Pushed ${resp.added} subscribers to ${resp.provider} list`);
+    } catch (err: any) {
+      setMtaResult({ error: err.message });
+      showToast('error', `MTA push failed: ${err.message}`);
+    }
+    setMtaPushing(false);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -860,15 +887,25 @@ export default function EmailVerifierPage() {
                               padding: '5px 12px', borderRadius: 8, border: '1px solid var(--border)',
                               background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
                             }}>View</button>
-                            <button onClick={() => setDownloadJobId(job.id)} style={{
-                              padding: '5px 12px', borderRadius: 8, border: '1px solid var(--green)',
-                              background: 'var(--green-muted)', color: 'var(--green)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-                            }}>CSV</button>
-                            <button onClick={() => { setVaultJobId(job.id); setVaultResult(null); setVaultCustomName(''); }} style={{
-                              padding: '5px 12px', borderRadius: 8, border: '1px solid var(--blue)',
-                              background: 'var(--blue-muted)', color: 'var(--blue)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-                            }}>Vault</button>
-                            {job._access === 'owner' && (
+                            {job._permissions?.can_download && (
+                              <button onClick={() => setDownloadJobId(job.id)} style={{
+                                padding: '5px 12px', borderRadius: 8, border: '1px solid var(--green)',
+                                background: 'var(--green-muted)', color: 'var(--green)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                              }}>CSV</button>
+                            )}
+                            {job._permissions?.can_vault && (
+                              <button onClick={() => { setVaultJobId(job.id); setVaultResult(null); setVaultCustomName(''); }} style={{
+                                padding: '5px 12px', borderRadius: 8, border: '1px solid var(--blue)',
+                                background: 'var(--blue-muted)', color: 'var(--blue)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                              }}>Vault</button>
+                            )}
+                            {job._permissions?.can_vault && (
+                              <button onClick={() => { setMtaJobId(job.id); setMtaResult(null); setMtaListName(''); }} style={{
+                                padding: '5px 12px', borderRadius: 8, border: '1px solid var(--cyan)',
+                                background: 'var(--cyan-muted)', color: 'var(--cyan)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+                              }}>MTA</button>
+                            )}
+                            {(job._access === 'owner' || job._access === 'superadmin') && (
                               <button onClick={() => openShareModal(job.id)} style={{
                                 padding: '5px 12px', borderRadius: 8, border: '1px solid var(--purple)',
                                 background: 'var(--purple-muted)', color: 'var(--purple)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
@@ -1812,6 +1849,65 @@ export default function EmailVerifierPage() {
         </div>
       )}
 
+
+      {/* ── MTA Push Modal ── */}
+      {mtaJobId && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={(e) => { if (e.target === e.currentTarget) { setMtaJobId(null); setMtaResult(null); } }}>
+          <div style={{
+            width: 440, background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)',
+            boxShadow: '0 25px 50px rgba(0,0,0,0.4)', padding: 28,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h3 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: 'var(--text-primary)' }}>Push to MTA</h3>
+              <button onClick={() => { setMtaJobId(null); setMtaResult(null); }} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', cursor: 'pointer', padding: 4 }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {mtaResult?.error ? (
+              <div style={{ padding: 14, background: 'var(--red-muted)', borderRadius: 10, border: '1px solid var(--red)', color: 'var(--red)', fontSize: 12, marginBottom: 16 }}>
+                {mtaResult.error}
+              </div>
+            ) : mtaResult ? (
+              <div style={{ padding: 14, background: 'var(--green-muted)', borderRadius: 10, border: '1px solid var(--green)', color: 'var(--green)', fontSize: 12, marginBottom: 16 }}>
+                ✅ Pushed <strong>{mtaResult.added}</strong> subscribers to <strong>{mtaResult.provider}</strong> list.
+                {mtaResult.failed > 0 && <span> ({mtaResult.failed} failed)</span>}
+                {mtaResult.listCreated && <span> — New list created.</span>}
+              </div>
+            ) : null}
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>New List Name</label>
+              <input value={mtaListName} onChange={e => setMtaListName(e.target.value)} placeholder="e.g. Verified Safe — April 2026"
+                style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 8 }}>Include Classifications</label>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                {(['safe', 'uncertain', 'risky', 'reject'] as const).map(cls => (
+                  <label key={cls} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={mtaClassifications[cls]} onChange={e => setMtaClassifications(prev => ({ ...prev, [cls]: e.target.checked }))} />
+                    <span style={{ textTransform: 'capitalize' }}>{cls}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={handleMtaPush} disabled={mtaPushing || !mtaListName.trim()} style={{
+              width: '100%', padding: '12px 0', borderRadius: 10, border: 'none',
+              background: mtaPushing ? 'var(--bg-elevated)' : 'var(--accent)', color: '#fff',
+              fontSize: 13, fontWeight: 700, cursor: mtaPushing ? 'not-allowed' : 'pointer',
+            }}>{mtaPushing ? 'Pushing…' : 'Push to MTA'}</button>
+          </div>
+        </div>
+      )}
+
       {/* ── Share Modal ── */}
       {shareJobId && (
         <div style={{
@@ -1834,9 +1930,25 @@ export default function EmailVerifierPage() {
               </button>
             </div>
 
-            <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 16 }}>
-              Job <code style={{ background: 'var(--bg-elevated)', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{shareJobId.slice(0, 12)}…</code> — grant view access to team members.
+            <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 12 }}>
+              Job <code style={{ background: 'var(--bg-elevated)', padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>{shareJobId.slice(0, 12)}…</code> — set access level then pick team members.
             </p>
+
+            {/* Permission checkboxes */}
+            <div style={{ marginBottom: 18, padding: '12px 14px', background: 'var(--bg-app)', borderRadius: 10, border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Permissions for new shares</div>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-primary)', cursor: 'default', opacity: 0.5 }}>
+                  <input type="checkbox" checked disabled /> Read
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={sharePerms.can_vault} onChange={e => setSharePerms(p => ({ ...p, can_vault: e.target.checked }))} /> Push to Vault
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={sharePerms.can_download} onChange={e => setSharePerms(p => ({ ...p, can_download: e.target.checked }))} /> Download
+                </label>
+              </div>
+            </div>
 
             {/* Current shares */}
             {jobShares.length > 0 && (
@@ -1850,7 +1962,14 @@ export default function EmailVerifierPage() {
                     }}>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{s.user?.full_name || 'Unknown'}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{s.user?.email}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                          {s.user?.email}
+                          <span style={{ marginLeft: 8 }}>
+                            {s.permissions?.can_read && <span style={{ fontSize: 9, background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 3, marginRight: 3 }}>Read</span>}
+                            {s.permissions?.can_vault && <span style={{ fontSize: 9, background: 'var(--blue-muted)', color: 'var(--blue)', padding: '1px 5px', borderRadius: 3, marginRight: 3 }}>Vault</span>}
+                            {s.permissions?.can_download && <span style={{ fontSize: 9, background: 'var(--green-muted)', color: 'var(--green)', padding: '1px 5px', borderRadius: 3 }}>Download</span>}
+                          </span>
+                        </div>
                       </div>
                       <button onClick={() => handleRevoke(s.shared_with_id)} disabled={shareLoading} style={{
                         padding: '4px 10px', borderRadius: 6, border: '1px solid var(--red)',
