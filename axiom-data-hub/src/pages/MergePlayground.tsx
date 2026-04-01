@@ -106,6 +106,7 @@ export default function MergePlayground() {
   // ── Step 3: Column Mapping + Priority ──
   const [excludedColumns, setExcludedColumns] = useState<Set<string>>(new Set());
   const [priorityOrder, setPriorityOrder] = useState<string[]>([]);
+  const [columnSearch, setColumnSearch] = useState('');
 
   // ── Step 4: Preview & Execute ──
   const [preview, setPreview] = useState<MergePreviewData | null>(null);
@@ -287,6 +288,15 @@ export default function MergePlayground() {
     const timer = setTimeout(() => setMessage(null), 6000);
     return () => clearTimeout(timer);
   }, [message]);
+
+  // Re-fetch preview when page size changes (Step 4 only)
+  useEffect(() => {
+    if (step === 4 && selectedKey && selectedJobIds.size >= 2) {
+      loadPreview(1, previewSearch, previewSortBy, previewSortDir);
+      setPreviewPage(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewPageSize]);
 
   const getFileName = (jobId: string): string => {
     return sources.find(s => s.jobId === jobId)?.fileName || jobId.slice(0, 8);
@@ -621,66 +631,108 @@ export default function MergePlayground() {
             </p>
           </div>
 
-          {selectedSources.map(src => {
-            const srcCols = src.columns.filter(c => c !== selectedKey);
-            // Note: srcCols are non-key columns from this file
+          {/* ── Unified Column Grid (deduplicated across all files) ── */}
+          {(() => {
+            const columnFileMap = new Map<string, string[]>();
+            for (const src of selectedSources) {
+              for (const col of src.columns) {
+                if (col === selectedKey) continue;
+                if (!columnFileMap.has(col)) columnFileMap.set(col, []);
+                columnFileMap.get(col)!.push(src.fileName);
+              }
+            }
+            const allNonKeyCols = Array.from(columnFileMap.keys()).sort();
+            const filteredCols = columnSearch
+              ? allNonKeyCols.filter(c => c.toLowerCase().includes(columnSearch.toLowerCase()))
+              : allNonKeyCols;
+
             return (
-              <div key={src.jobId} style={{
+              <div style={{
                 background: 'var(--bg-card)', border: '1px solid var(--border)',
                 borderRadius: 12, padding: 16, marginBottom: 12,
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <FileText size={14} color="var(--accent)" />
-                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{src.fileName}</span>
-                    <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{src.columns.length} columns</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      {allNonKeyCols.length} Columns
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                      {allNonKeyCols.length - excludedColumns.size} included
+                    </span>
                   </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ position: 'relative' }}>
+                      <Search size={12} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
+                      <input
+                        type="text" placeholder="Search columns…" value={columnSearch}
+                        onChange={e => setColumnSearch(e.target.value)}
+                        style={{
+                          padding: '5px 10px 5px 26px', borderRadius: 6, border: '1px solid var(--border)',
+                          background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: 11, width: 160,
+                        }}
+                      />
+                    </div>
                     <button
-                      onClick={() => setExcludedColumns(prev => { const next = new Set(prev); srcCols.forEach(c => next.delete(c)); return next; })}
-                      style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
-                    >Select All</button>
+                      onClick={() => setExcludedColumns(new Set())}
+                      style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--green)', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+                    >Include All</button>
                     <button
-                      onClick={() => setExcludedColumns(prev => { const next = new Set(prev); srcCols.forEach(c => next.add(c)); return next; })}
-                      style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--text-secondary)', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
-                    >Deselect All</button>
+                      onClick={() => setExcludedColumns(new Set(allNonKeyCols))}
+                      style={{ padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-input)', color: 'var(--red)', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+                    >Exclude All</button>
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {/* Merge key — always included */}
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', gap: 4,
                     padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
                     background: 'var(--accent)', color: 'var(--accent-contrast)', cursor: 'default',
                   }}>
                     🔑 {selectedKey}
+                    <span style={{ fontSize: 9, opacity: 0.7 }}>({selectedSources.length} files)</span>
                   </span>
-                  {srcCols.map(col => {
+                  {filteredCols.map(col => {
                     const included = !excludedColumns.has(col);
+                    const fileNames = columnFileMap.get(col) || [];
+                    const inAllFiles = fileNames.length === selectedSources.length;
                     return (
                       <button
                         key={col}
                         onClick={() => toggleColumn(col)}
+                        title={`In: ${fileNames.join(', ')}`}
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: 4,
                           padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 500,
                           background: included ? 'var(--bg-hover)' : 'transparent',
                           color: included ? 'var(--text-secondary)' : 'var(--text-tertiary)',
-                          border: `1px solid ${included ? 'var(--border)' : 'var(--border)'}`,
+                          border: '1px solid var(--border)',
                           cursor: 'pointer', transition: 'all 0.15s',
                           textDecoration: included ? 'none' : 'line-through',
                           opacity: included ? 1 : 0.5,
                         }}
                       >
                         {col}
+                        {!inAllFiles && (
+                          <span style={{
+                            fontSize: 8, fontWeight: 700, padding: '0 4px', borderRadius: 3,
+                            background: 'var(--yellow-muted)', color: 'var(--yellow)',
+                          }}>
+                            {fileNames.length}/{selectedSources.length}
+                          </span>
+                        )}
                       </button>
                     );
                   })}
                 </div>
+                {columnSearch && filteredCols.length === 0 && (
+                  <div style={{ padding: '12px 0', textAlign: 'center', fontSize: 12, color: 'var(--text-tertiary)' }}>
+                    No columns match "{columnSearch}"
+                  </div>
+                )}
               </div>
             );
-          })}
+          })()}
           {/* ── File Priority Order ── */}
           <div style={{
             background: 'var(--bg-card)', border: '1px solid var(--border)',
@@ -695,11 +747,22 @@ export default function MergePlayground() {
                   When two files have different values for the same column and key, the file higher in this list wins.
                 </div>
               </div>
-              <div style={{
-                padding: '3px 10px', borderRadius: 6, fontSize: 10, fontWeight: 700,
-                background: 'var(--blue-muted)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.05em',
-              }}>
-                #{1} = Highest
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  onClick={() => setPriorityOrder(Array.from(selectedJobIds))}
+                  style={{
+                    padding: '3px 10px', borderRadius: 6, fontSize: 10, fontWeight: 600,
+                    border: '1px solid var(--border)', background: 'var(--bg-input)',
+                    color: 'var(--text-tertiary)', cursor: 'pointer',
+                  }}
+                  title="Reset to original file selection order"
+                >Reset Order</button>
+                <div style={{
+                  padding: '3px 10px', borderRadius: 6, fontSize: 10, fontWeight: 700,
+                  background: 'var(--blue-muted)', color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '0.05em',
+                }}>
+                  #{1} = Highest
+                </div>
               </div>
             </div>
 
@@ -968,8 +1031,6 @@ export default function MergePlayground() {
                   const newSize = Number(e.target.value);
                   setPreviewPageSize(newSize);
                   setPreviewPage(1);
-                  // Use setTimeout to let state update before calling loadPreview
-                  setTimeout(() => loadPreview(1, previewSearch, previewSortBy, previewSortDir), 0);
                 }}
                 style={{
                   padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)',
@@ -1055,20 +1116,45 @@ export default function MergePlayground() {
                   </tr>
                 </thead>
                 <tbody>
-                  {preview.rows.map((row: any, ri: number) => (
-                    <tr key={ri} style={{ background: ri % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-app)' }}>
-                      {preview.columns.map(col => (
-                        <td key={col} style={{
-                          padding: '6px 10px', borderBottom: '1px solid var(--border)',
-                          maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          fontWeight: col === preview.mergeKey ? 600 : 400,
-                          color: row[col] ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                        }}>
-                          {row[col] ?? ''}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                  {(() => {
+                    // Build conflict cell lookup: Set<"keyValue::colName">
+                    const conflictCells = new Set<string>();
+                    const conflictInfo = new Map<string, string>(); // "keyValue::col" → "winner file name"
+                    if (conflictData?.samples) {
+                      for (const sample of conflictData.samples) {
+                        for (const c of sample.conflicts) {
+                          const cellKey = `${sample.keyValue}::${c.column}`;
+                          conflictCells.add(cellKey);
+                          conflictInfo.set(cellKey, getFileName(c.resolvedFromJobId));
+                        }
+                      }
+                    }
+
+                    return preview.rows.map((row: any, ri: number) => {
+                      const keyVal = String(row[preview.mergeKey] ?? '');
+                      return (
+                        <tr key={ri} style={{ background: ri % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-app)' }}>
+                          {preview.columns.map(col => {
+                            const cellKey = `${keyVal}::${col}`;
+                            const isConflict = conflictCells.has(cellKey);
+                            const winnerFile = isConflict ? conflictInfo.get(cellKey) : undefined;
+                            return (
+                              <td key={col} title={isConflict ? `⚡ Conflict resolved — value from: ${winnerFile}` : undefined} style={{
+                                padding: '6px 10px', borderBottom: '1px solid var(--border)',
+                                maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                fontWeight: col === preview.mergeKey ? 600 : 400,
+                                color: row[col] ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                                borderLeft: isConflict ? '3px solid var(--yellow)' : undefined,
+                                background: isConflict ? 'var(--yellow-muted)' : undefined,
+                              }}>
+                                {row[col] ?? ''}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>

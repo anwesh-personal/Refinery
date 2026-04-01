@@ -30,7 +30,7 @@ import { esc, sanitizeValue, toClickHouseDateTime } from '../utils/sanitize.js';
 //   ingestion.batch_size      (default: 10,000)
 //   node.heap_size_mb         (requires PM2 restart)
 // ═══════════════════════════════════════════════════════════════
-let MAX_CONCURRENT = 5; // default — overridden by system_config on startup
+let MAX_CONCURRENT = 3; // default — reduced from 5 to prevent OOM with large parquet files
 let BATCH_SIZE = 10_000;
 let activeCount = 0;
 const waitQueue: Array<{ resolve: () => void }> = [];
@@ -38,7 +38,7 @@ const waitQueue: Array<{ resolve: () => void }> = [];
 /** Load ingestion tuning from system_config (call on startup + config change) */
 export async function loadIngestionConfig(): Promise<void> {
   const { getConfigInt } = await import('./config.js');
-  MAX_CONCURRENT = await getConfigInt('ingestion.max_concurrent', 5);
+  MAX_CONCURRENT = await getConfigInt('ingestion.max_concurrent', 3);
   BATCH_SIZE = await getConfigInt('ingestion.batch_size', 10_000);
   console.log(`[Ingestion] Config loaded: max_concurrent=${MAX_CONCURRENT}, batch_size=${BATCH_SIZE}`);
 }
