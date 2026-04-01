@@ -1177,7 +1177,7 @@ router.post('/jobs/:id/push-to-mta', async (req, res) => {
     let allResults: any[];
     try { allResults = JSON.parse(job.results_json); } catch { return res.status(500).json({ error: 'Corrupt results data' }); }
 
-    const { listName, existingListId, classifications, maxRiskScore } = req.body || {};
+    const { listName, existingListId, classifications, maxRiskScore, customerUids } = req.body || {};
     const allowedClassifications = classifications || ['safe', 'uncertain'];
     const maxRisk = typeof maxRiskScore === 'number' ? maxRiskScore : Infinity;
 
@@ -1191,7 +1191,42 @@ router.post('/jobs/:id/push-to-mta', async (req, res) => {
       return res.status(400).json({ error: 'No results match the selected filters — nothing to push' });
     }
 
-    // Create or reuse list
+    // Build subscribers
+    const subscribers = filtered.map((r: any) => ({
+      email: r.email,
+      first_name: '',
+      last_name: '',
+    }));
+
+    // Multi-customer push: create a list per customer and push subscribers to each
+    if (Array.isArray(customerUids) && customerUids.length > 0 && adapter.createListForCustomer) {
+      if (!listName || typeof listName !== 'string' || listName.trim().length === 0) {
+        return res.status(400).json({ error: 'listName is required for multi-customer push' });
+      }
+
+      const results: any[] = [];
+      for (const custUid of customerUids) {
+        try {
+          const newList = await adapter.createListForCustomer(custUid, listName.trim());
+          const pushResult = await adapter.addSubscribers(newList.id, subscribers);
+          results.push({ customerUid: custUid, listId: newList.id, added: pushResult.added, failed: pushResult.failed });
+          console.log(`[MTA Push] ${user.name} → customer ${custUid}: list ${newList.id}, added ${pushResult.added}`);
+        } catch (e: any) {
+          results.push({ customerUid: custUid, error: e.message });
+          console.error(`[MTA Push] Failed for customer ${custUid}:`, e.message);
+        }
+      }
+
+      return res.json({
+        provider: adapter.provider,
+        multiCustomer: true,
+        totalFiltered: filtered.length,
+        classifications: allowedClassifications,
+        results,
+      });
+    }
+
+    // Single push (no customer selection)
     let listId = existingListId;
     let listCreated = false;
     if (!listId) {
@@ -1204,16 +1239,7 @@ router.post('/jobs/:id/push-to-mta', async (req, res) => {
       console.log(`[MTA Push] Created list "${listName}" → ${listId}`);
     }
 
-    // Build subscribers
-    const subscribers = filtered.map((r: any) => ({
-      email: r.email,
-      first_name: '',
-      last_name: '',
-    }));
-
-    // Push to MTA
     const result = await adapter.addSubscribers(listId!, subscribers);
-
     console.log(`[MTA Push] ${user.name} pushed ${result.added} subscribers to list ${listId} (${adapter.provider}). Failed: ${result.failed}`);
 
     res.json({
@@ -1242,6 +1268,25 @@ router.get('/mta-lists', async (_req, res) => {
     }
     const lists = await adapter.getLists();
     res.json({ provider: adapter.provider, lists });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── GET /api/verify/mta-customers ───
+// Fetch customer/user accounts from the active MTA.
+
+router.get('/mta-customers', async (_req, res) => {
+  try {
+    const adapter = await getMtaAdapter();
+    if (!adapter) {
+      return res.status(400).json({ error: 'No MTA provider configured' });
+    }
+    if (!adapter.listCustomers) {
+      return res.json({ provider: adapter.provider, customers: [] });
+    }
+    const customers = await adapter.listCustomers();
+    res.json({ provider: adapter.provider, customers });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

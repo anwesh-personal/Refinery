@@ -81,6 +81,13 @@ export interface RegisterDeliveryServerInput {
   hourly_quota?: number;
 }
 
+export interface MTACustomer {
+  id: string;
+  name: string;
+  email: string;
+  status: string;
+}
+
 export interface MTAAdapter {
   readonly provider: string;
 
@@ -122,4 +129,10 @@ export interface MTAAdapter {
 
   /** Remove a delivery server from the EMA */
   deleteDeliveryServer(serverId: string): Promise<{ ok: boolean }>;
+
+  /** List MTA customers/accounts (multi-user MTA support) */
+  listCustomers?(): Promise<MTACustomer[]>;
+
+  /** Create a list under a specific customer */
+  createListForCustomer?(customerUid: string, name: string, defaults?: Record<string, unknown>): Promise<MTAList>;
 }

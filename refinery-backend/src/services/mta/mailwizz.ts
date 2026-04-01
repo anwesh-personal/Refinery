@@ -7,6 +7,7 @@ import type {
   CreateCampaignInput,
   MTADeliveryServer,
   RegisterDeliveryServerInput,
+  MTACustomer,
 } from './adapter.js';
 
 // ═══════════════════════════════════════════════════════════════
@@ -354,5 +355,49 @@ export class MailWizzAdapter implements MTAAdapter {
   async deleteDeliveryServer(serverId: string): Promise<{ ok: boolean }> {
     await this.request('DELETE', `v1/delivery-servers/${serverId}/delete`);
     return { ok: true };
+  }
+
+  // ── Customer Management (Backend API) ──
+
+  async listCustomers(): Promise<MTACustomer[]> {
+    try {
+      const res = await this.request<any>('GET', 'v1/customers', undefined, { page: '1', per_page: '100' });
+      const records = res.data?.records || [];
+      return records.map((r: any) => ({
+        id: r.customer_uid || r.customer_id || '',
+        name: `${r.first_name || ''} ${r.last_name || ''}`.trim() || r.email || 'Unknown',
+        email: r.email || '',
+        status: r.status || 'active',
+      }));
+    } catch (e: any) {
+      console.warn('[MailWizz] listCustomers failed (may need backend API key):', e.message);
+      return [];
+    }
+  }
+
+  async createListForCustomer(customerUid: string, name: string, defaults?: Record<string, unknown>): Promise<MTAList> {
+    const payload = {
+      customer_uid: customerUid,
+      general: {
+        name,
+        description: defaults?.description || `Auto-created by Refinery Nexus`,
+      },
+      defaults: {
+        from_name: defaults?.from_name || 'Refinery',
+        from_email: defaults?.from_email || 'noreply@example.com',
+        reply_to: defaults?.reply_to || 'noreply@example.com',
+        subject: defaults?.subject || 'Campaign',
+      },
+      notifications: { subscribe: 'no', unsubscribe: 'no' },
+      company: defaults?.company || {},
+    };
+
+    const res = await this.request<any>('POST', 'v1/lists/create', payload);
+    return {
+      id: res.data?.record?.list_uid || res.list_uid || '',
+      name,
+      subscriber_count: 0,
+      created_at: new Date().toISOString(),
+    };
   }
 }

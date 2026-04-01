@@ -206,6 +206,9 @@ export default function EmailVerifierPage() {
   const [mtaResult, setMtaResult] = useState<any>(null);
   const [mtaPushing, setMtaPushing] = useState(false);
   const [mtaClassifications, setMtaClassifications] = useState<Record<string, boolean>>({ safe: true, uncertain: true, risky: false, reject: false });
+  const [mtaCustomers, setMtaCustomers] = useState<any[]>([]);
+  const [selectedCustomerUids, setSelectedCustomerUids] = useState<Set<string>>(new Set());
+  const [mtaCustomersLoading, setMtaCustomersLoading] = useState(false);
 
   // Track which job's results we're currently viewing (for header actions)
   const [loadedJobId, setLoadedJobId] = useState<string | null>(null);
@@ -458,12 +461,22 @@ export default function EmailVerifierPage() {
     setMtaResult(null);
     try {
       const classifications = Object.entries(mtaClassifications).filter(([, v]) => v).map(([k]) => k);
+      const customerUidsArr = Array.from(selectedCustomerUids);
       const resp = await apiCall<any>(`/api/verify/jobs/${mtaJobId}/push-to-mta`, {
         method: 'POST',
-        body: { listName: mtaListName.trim(), classifications },
+        body: {
+          listName: mtaListName.trim(),
+          classifications,
+          ...(customerUidsArr.length > 0 ? { customerUids: customerUidsArr } : {}),
+        },
       });
       setMtaResult(resp);
-      showToast('info', `Pushed ${resp.added} subscribers to ${resp.provider} list`);
+      if (resp.multiCustomer) {
+        const ok = resp.results?.filter((r: any) => !r.error).length || 0;
+        showToast('info', `Pushed to ${ok}/${resp.results?.length} MTA users (${resp.totalFiltered} subscribers each)`);
+      } else {
+        showToast('info', `Pushed ${resp.added} subscribers to ${resp.provider} list`);
+      }
     } catch (err: any) {
       setMtaResult({ error: err.message });
       showToast('error', `MTA push failed: ${err.message}`);
@@ -900,7 +913,15 @@ export default function EmailVerifierPage() {
                               }}>Vault</button>
                             )}
                             {job._permissions?.can_vault && (
-                              <button onClick={() => { setMtaJobId(job.id); setMtaResult(null); setMtaListName(''); }} style={{
+                              <button onClick={async () => {
+                                setMtaJobId(job.id); setMtaResult(null); setMtaListName('');
+                                setMtaCustomersLoading(true); setSelectedCustomerUids(new Set());
+                                try {
+                                  const resp = await apiCall<any>('/api/verify/mta-customers');
+                                  setMtaCustomers(resp.customers || []);
+                                } catch { setMtaCustomers([]); }
+                                setMtaCustomersLoading(false);
+                              }} style={{
                                 padding: '5px 12px', borderRadius: 8, border: '1px solid var(--cyan)',
                                 background: 'var(--cyan-muted)', color: 'var(--cyan)', fontSize: 11, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
                               }}>MTA</button>
@@ -1899,11 +1920,49 @@ export default function EmailVerifierPage() {
               </div>
             </div>
 
+            {/* Customer picker */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 8 }}>Push to MTA Users</label>
+              {mtaCustomersLoading ? (
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', padding: 10 }}>Loading customers…</div>
+              ) : mtaCustomers.length === 0 ? (
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', padding: '8px 12px', background: 'var(--bg-app)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  No customers found. List will be created under the default API key account.
+                </div>
+              ) : (
+                <div style={{ maxHeight: 160, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, padding: 2 }}>
+                  {mtaCustomers.map((c: any) => (
+                    <label key={c.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-primary)',
+                      padding: '6px 10px', borderRadius: 8, cursor: 'pointer',
+                      background: selectedCustomerUids.has(c.id) ? 'var(--accent-muted)' : 'var(--bg-app)',
+                      border: `1px solid ${selectedCustomerUids.has(c.id) ? 'var(--accent)' : 'var(--border)'}`,
+                    }}>
+                      <input type="checkbox" checked={selectedCustomerUids.has(c.id)}
+                        onChange={() => setSelectedCustomerUids(prev => {
+                          const next = new Set(prev);
+                          next.has(c.id) ? next.delete(c.id) : next.add(c.id);
+                          return next;
+                        })} />
+                      <span style={{ fontWeight: 600 }}>{c.name}</span>
+                      <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>{c.email}</span>
+                      <span style={{
+                        marginLeft: 'auto', fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
+                        padding: '2px 6px', borderRadius: 4,
+                        background: c.status === 'active' ? 'var(--green-muted)' : 'var(--red-muted)',
+                        color: c.status === 'active' ? 'var(--green)' : 'var(--red)',
+                      }}>{c.status}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <button onClick={handleMtaPush} disabled={mtaPushing || !mtaListName.trim()} style={{
               width: '100%', padding: '12px 0', borderRadius: 10, border: 'none',
               background: mtaPushing ? 'var(--bg-elevated)' : 'var(--accent)', color: '#fff',
               fontSize: 13, fontWeight: 700, cursor: mtaPushing ? 'not-allowed' : 'pointer',
-            }}>{mtaPushing ? 'Pushing…' : 'Push to MTA'}</button>
+            }}>{mtaPushing ? 'Pushing…' : `Push to MTA${selectedCustomerUids.size > 0 ? ` (${selectedCustomerUids.size} user${selectedCustomerUids.size > 1 ? 's' : ''})` : ''}`}</button>
           </div>
         </div>
       )}
