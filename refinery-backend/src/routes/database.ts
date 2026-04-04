@@ -49,6 +49,19 @@ router.post('/browse', async (req, res) => {
   }
 });
 
+// POST /api/database/facets  { search, filters, advancedFilters, facetColumns? }
+// Returns top values + counts for key columns within the current filtered result set.
+// Powers the drill-down UI — click a value to add it as a filter.
+router.post('/facets', async (req, res) => {
+  try {
+    const { facetColumns, ...browseParams } = req.body;
+    const result = await dbService.getFacets(browseParams, facetColumns);
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/database/filter-options/:column
 router.get('/filter-options/:column', async (req, res) => {
   try {

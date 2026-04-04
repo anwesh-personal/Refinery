@@ -123,41 +123,15 @@ export interface BrowseParams {
   completenessFilter?: 'all' | 'high' | 'medium' | 'low';
 }
 
-/** Browse data with filters, search, pagination — no SQL required */
-export async function browseData(params: BrowseParams) {
+// ─── Shared WHERE clause builder ────────────────────────────────────────
+// Used by browseData, getFacets, and any future query that needs the same filter logic.
+function buildWhereConditions(params: BrowseParams, allowedSet: Set<string>, selectCols?: string[]): string[] {
   const {
     search = '',
     filters = {},
-    page = 1,
-    pageSize = 50,
-    sortBy,
-    sortDir = 'asc',
     completenessFilter,
   } = params;
 
-  const allColumns = await getTableColumns();
-  const allowedSet = new Set(allColumns);
-
-  // Default columns: curated priority list with emails up front
-  const PRIORITY_COLS = [
-    'first_name', 'last_name', 'business_email', 'personal_emails',
-    'company_name', 'job_title_normalized', 'primary_industry',
-    'personal_state', 'seniority_level', 'mobile_phone',
-    'company_domain', 'linkedin_url',
-  ];
-  const priorityCols = PRIORITY_COLS.filter(c => allowedSet.has(c));
-  const remaining = allColumns.filter(c => !INTERNAL_COLS.has(c) && !priorityCols.includes(c));
-  const defaultCols = [...priorityCols, ...remaining].slice(0, 14);
-
-  // Validate & sanitize requested columns
-  const selectCols = (params.columns?.length ? params.columns : defaultCols)
-    .filter(c => allowedSet.has(c));
-
-  if (selectCols.length === 0) {
-    throw new Error('No valid columns to select');
-  }
-
-  // Build WHERE clauses
   const conditions: string[] = [];
 
   // ─── SMART SEARCH ─────────────────────────────────────────────────────
@@ -168,10 +142,10 @@ export async function browseData(params: BrowseParams) {
     const escaped = raw.replace(/'/g, "\\'");
 
     // Detect search intent from the input shape
-    const isDomain = /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(raw);                   // pch.com, yahoo.com
-    const isEmail  = raw.includes('@');                                         // john@pch.com
-    const isPhone  = /^[\d()+\-\s.]{7,}$/.test(raw);                           // +1 555-1234
-    const isLinkedIn = raw.toLowerCase().includes('linkedin.com');              // linkedin.com/in/...
+    const isDomain = /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(raw);
+    const isEmail  = raw.includes('@');
+    const isPhone  = /^[\d()+\-\s.]{7,}$/.test(raw);
+    const isLinkedIn = raw.toLowerCase().includes('linkedin.com');
 
     // Build the searchable column sets — always validated against actual schema
     const DOMAIN_COLS  = ['business_email', 'personal_emails', 'additional_personal_emails', 'programmatic_business_emails', 'historical_programmatic_emails', 'company_domain', 'related_domains'].filter(c => allowedSet.has(c));
@@ -186,19 +160,14 @@ export async function browseData(params: BrowseParams) {
     let targetCols: string[];
 
     if (isDomain) {
-      // Domain search — focus on email + domain columns for speed
       targetCols = DOMAIN_COLS;
     } else if (isEmail) {
-      // Email search — exact match preferred
       targetCols = EMAIL_COLS;
     } else if (isPhone) {
-      // Phone search — only phone columns
       targetCols = PHONE_COLS;
     } else if (isLinkedIn) {
-      // LinkedIn URL search
       targetCols = LINKEDIN_COLS;
     } else {
-      // General text — search EVERYTHING meaningful
       targetCols = [...new Set([
         ...NAME_COLS, ...EMAIL_COLS, ...COMPANY_COLS, ...JOB_COLS,
         ...LOCATION_COLS, ...PHONE_COLS, ...LINKEDIN_COLS,
@@ -248,14 +217,13 @@ export async function browseData(params: BrowseParams) {
     }
   }
 
-  // Has Email composite filter — checks both business_email and personal_emails
+  // Has Email composite filter
   if (params.hasEmail) {
     conditions.push(`((\`business_email\` IS NOT NULL AND toString(\`business_email\`) != '') OR (\`personal_emails\` IS NOT NULL AND toString(\`personal_emails\`) != ''))`);
   }
 
-  // Completeness filter — compute ratio of non-null, non-empty columns server-side
-  if (completenessFilter && completenessFilter !== 'all') {
-    // Build a ClickHouse expression that counts filled columns across all selectCols
+  // Completeness filter
+  if (completenessFilter && completenessFilter !== 'all' && selectCols && selectCols.length > 0) {
     const filledExpr = selectCols.map(c => `if(\`${c}\` IS NOT NULL AND toString(\`${c}\`) != '', 1, 0)`).join(' + ');
     const totalCols = selectCols.length;
     if (completenessFilter === 'high') {
@@ -267,12 +235,46 @@ export async function browseData(params: BrowseParams) {
     }
   }
 
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  return conditions;
+}
 
-  // DEBUG — remove after verification
-  if (search.trim() || Object.keys(filters).length > 0) {
-    console.log(`[BROWSE DEBUG] search="${search}" | filters=${JSON.stringify(filters)} | conditions=${conditions.length} | WHERE=${whereClause.substring(0, 300)}`);
+/** Browse data with filters, search, pagination — no SQL required */
+export async function browseData(params: BrowseParams) {
+  const {
+    search = '',
+    filters = {},
+    page = 1,
+    pageSize = 50,
+    sortBy,
+    sortDir = 'asc',
+    completenessFilter,
+  } = params;
+
+  const allColumns = await getTableColumns();
+  const allowedSet = new Set(allColumns);
+
+  // Default columns: curated priority list with emails up front
+  const PRIORITY_COLS = [
+    'first_name', 'last_name', 'business_email', 'personal_emails',
+    'company_name', 'job_title_normalized', 'primary_industry',
+    'personal_state', 'seniority_level', 'mobile_phone',
+    'company_domain', 'linkedin_url',
+  ];
+  const priorityCols = PRIORITY_COLS.filter(c => allowedSet.has(c));
+  const remaining = allColumns.filter(c => !INTERNAL_COLS.has(c) && !priorityCols.includes(c));
+  const defaultCols = [...priorityCols, ...remaining].slice(0, 14);
+
+  // Validate & sanitize requested columns
+  const selectCols = (params.columns?.length ? params.columns : defaultCols)
+    .filter(c => allowedSet.has(c));
+
+  if (selectCols.length === 0) {
+    throw new Error('No valid columns to select');
   }
+
+  // Build WHERE using shared function
+  const conditions = buildWhereConditions(params, allowedSet, selectCols);
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
   // Validate sort column
   const safeSortBy = (sortBy && allowedSet.has(sortBy)) ? `\`${sortBy}\`` : `\`${selectCols[0]}\``;
@@ -301,6 +303,58 @@ export async function browseData(params: BrowseParams) {
   const elapsed = Date.now() - start;
 
   return { rows, total, page, pageSize: safePageSize, elapsed };
+}
+
+// ─── Faceted Filter Counts ──────────────────────────────────────────────
+// Returns top N values + counts for specified columns within the CURRENT filtered result set.
+// This powers the drill-down UI — e.g. after searching pch.com, show "California (89), Texas (45)".
+const FACET_COLUMNS = [
+  'personal_state', 'seniority_level', 'primary_industry', 'department',
+  'job_title_normalized', 'company_name', 'personal_country', 'gender',
+];
+
+export async function getFacets(params: BrowseParams, facetColumns?: string[]) {
+  const allColumns = await getTableColumns();
+  const allowedSet = new Set(allColumns);
+
+  // Use provided facet columns or default set, always validated against schema
+  const cols = (facetColumns?.length ? facetColumns : FACET_COLUMNS)
+    .filter(c => allowedSet.has(c));
+
+  if (cols.length === 0) return { facets: {} };
+
+  // Build WHERE using the same shared function as browseData
+  const conditions = buildWhereConditions(params, allowedSet);
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // Run all facet queries in parallel for speed
+  const facetPromises = cols.map(async (col) => {
+    try {
+      // Add non-empty condition for this specific facet column
+      const facetConditions = [...conditions, `\`${col}\` IS NOT NULL AND toString(\`${col}\`) != ''`];
+      const facetWhere = `WHERE ${facetConditions.join(' AND ')}`;
+
+      const rows = await query<{ val: string; cnt: string }>(`
+        SELECT toString(\`${col}\`) as val, count() as cnt
+        FROM universal_person
+        ${facetWhere}
+        GROUP BY val
+        ORDER BY cnt DESC
+        LIMIT 15
+      `);
+      return { column: col, values: rows.map(r => ({ value: r.val, count: Number(r.cnt) })) };
+    } catch {
+      return { column: col, values: [] };
+    }
+  });
+
+  const results = await Promise.all(facetPromises);
+  const facets: Record<string, { value: string; count: number }[]> = {};
+  for (const r of results) {
+    if (r.values.length > 0) facets[r.column] = r.values;
+  }
+
+  return { facets };
 }
 
 /** Get distinct values for a filter column (for populating dropdowns) */

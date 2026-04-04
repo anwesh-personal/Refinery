@@ -156,6 +156,10 @@ export default function DatabasePage() {
   // Quick boolean toggles
   const [quickToggles, setQuickToggles] = useState<Record<string, boolean>>({});
 
+  // Faceted drill-down state
+  const [facets, setFacets] = useState<Record<string, { value: string; count: number }[]>>({});
+  const [facetsLoading, setFacetsLoading] = useState(false);
+
   // Filter presets
   const [filterPresets, setFilterPresets] = useState<FilterPreset[]>(() => {
     try { return JSON.parse(localStorage.getItem('refinery_filter_presets') || '[]'); } catch { return []; }
@@ -297,6 +301,29 @@ export default function DatabasePage() {
       });
       setResult(res);
       searchRef.current = currentSearch; // update ref AFTER successful fetch
+
+      // ─── Facet drill-down: fetch top values for key columns (non-blocking) ───
+      // Only fetch when results are filtered (not on 121M unfiltered view)
+      const hasActiveFilters = currentSearch.trim() || Object.keys(activeFilters).length > 0 ||
+        afPayload.length > 0 || quickToggles.hasEmail || quickToggles.hasPhone || quickToggles.hasLinkedin ||
+        dataSourceFilter || (completenessFilter !== 'all');
+
+      if (hasActiveFilters && (res.total ?? 0) < 10_000_000) {
+        setFacetsLoading(true);
+        apiCall<{ facets: Record<string, { value: string; count: number }[]> }>('/api/database/facets', {
+          method: 'POST',
+          body: {
+            search: currentSearch,
+            filters: { ...activeFilters, ...(dataSourceFilter ? { _ingestion_job_id: dataSourceFilter } : {}) },
+            advancedFilters: afPayload.length > 0 ? afPayload : undefined,
+            hasEmail: quickToggles.hasEmail || undefined,
+          }
+        }).then(facetRes => {
+          if (facetRes?.facets) setFacets(facetRes.facets);
+        }).catch(() => {}).finally(() => setFacetsLoading(false));
+      } else {
+        setFacets({});
+      }
     } catch (e: any) {
       setError(`Browse error: ${e.message}`);
     } finally {
@@ -311,7 +338,8 @@ export default function DatabasePage() {
     const isSearchChange = search !== searchRef.current;
 
     // Always debounce — prevents stale ref races when multiple deps change at once
-    const delay = isSearchChange ? 600 : 50; // longer debounce for typing, near-instant for filter changes
+    // 600ms for typing (search bar + filter values), 300ms for dropdown/toggle changes
+    const delay = isSearchChange ? 600 : 300;
     isTypingRef.current = isSearchChange;
 
     const timer = setTimeout(() => {
@@ -321,7 +349,7 @@ export default function DatabasePage() {
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, filters, page, sortCol, sortDir, visibleCols, activeTab, advancedFilters, quickToggles, completenessFilter]);
+  }, [search, filters, page, sortCol, sortDir, visibleCols, activeTab, advancedFilters, quickToggles, completenessFilter, dataSourceFilter]);
 
 
   const executeSQL = async () => {
@@ -718,7 +746,7 @@ export default function DatabasePage() {
                             updated[idx] = { ...af, value: e.target.value };
                             setAdvancedFilters(updated);
                           }}
-                          onKeyDown={e => { if (e.key === 'Enter') { setPage(1); runBrowse(); } }}
+                          onKeyDown={e => { if (e.key === 'Enter') setPage(1); }}
                           style={{
                             padding: '8px 12px', borderRadius: 8, fontSize: 12,
                             background: 'var(--bg-input)', border: '1px solid var(--border)',
@@ -754,13 +782,10 @@ export default function DatabasePage() {
                     >
                       <Plus size={14} /> Add Filter
                     </button>
-                    {advancedFilters.length > 0 && (
-                      <Button variant="primary" icon={<Search size={14} />}
-                        onClick={() => { setPage(1); runBrowse(); }}
-                        style={{ fontSize: 12, padding: '8px 16px' }}
-                      >
-                        Apply Filters
-                      </Button>
+                    {advancedFilters.some(f => f.column && f.operator) && (
+                      <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        ⚡ Filters apply live as you type
+                      </span>
                     )}
                   </div>
                 </div>
@@ -966,6 +991,72 @@ export default function DatabasePage() {
               </div>
             );
           })()}
+
+          {/* ═══ DRILL-DOWN FACETS ═══ */}
+          {Object.keys(facets).length > 0 && (
+            <div style={{
+              marginBottom: 16, padding: '12px 16px', borderRadius: 12,
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              position: 'relative',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.05em' }}>
+                  🔍 Drill Deeper
+                </span>
+                {facetsLoading && <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>updating...</span>}
+                <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 'auto' }}>
+                  Click a value to filter
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {Object.entries(facets).map(([col, values]) => (
+                  <div key={col} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)',
+                      minWidth: 90, paddingTop: 4, textTransform: 'capitalize',
+                    }}>
+                      {col.replace(/_/g, ' ').replace(/^personal /, '').replace(/^job title /, '')}
+                    </span>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', flex: 1 }}>
+                      {values.slice(0, 8).map(v => {
+                        // Check if this value is already an active filter
+                        const isActive = advancedFilters.some(af => af.column === col && af.value === v.value && af.operator === 'equals');
+                        return (
+                          <button
+                            key={v.value}
+                            disabled={isActive}
+                            onClick={() => {
+                              if (isActive) return;
+                              filterIdCounter.current += 1;
+                              setAdvancedFilters(prev => [...prev, {
+                                id: filterIdCounter.current, column: col, operator: 'equals', value: v.value,
+                              }]);
+                              setPage(1);
+                            }}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 500,
+                              cursor: isActive ? 'default' : 'pointer',
+                              background: isActive ? 'var(--accent)' : 'var(--bg-hover)',
+                              color: isActive ? 'var(--accent-contrast)' : 'var(--text-primary)',
+                              border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
+                              opacity: isActive ? 0.6 : 1,
+                              transition: 'all 0.15s',
+                            }}
+                            onMouseOver={e => { if (!isActive) { e.currentTarget.style.background = 'var(--accent-muted)'; e.currentTarget.style.borderColor = 'var(--accent)'; } }}
+                            onMouseOut={e => { if (!isActive) { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.borderColor = 'var(--border)'; } }}
+                          >
+                            {v.value}
+                            <span style={{ fontSize: 9, opacity: 0.6 }}>({v.count.toLocaleString()})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
