@@ -160,13 +160,58 @@ export async function browseData(params: BrowseParams) {
   // Build WHERE clauses
   const conditions: string[] = [];
 
-  // Search — search across all string-like columns that are in selectCols
+  // ─── SMART SEARCH ─────────────────────────────────────────────────────
+  // Always search across ALL relevant columns, not just visible ones.
+  // Auto-detects intent: domain, email, phone, or general text search.
   if (search.trim()) {
-    const escaped = search.trim().replace(/'/g, "\\'");
-    const searchClauses = selectCols
-      .map(col => `lower(coalesce(toString(\`${col}\`), '')) LIKE lower('%${escaped}%')`)
-      .join(' OR ');
-    conditions.push(`(${searchClauses})`);
+    const raw = search.trim();
+    const escaped = raw.replace(/'/g, "\\'");
+
+    // Detect search intent from the input shape
+    const isDomain = /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(raw);                   // pch.com, yahoo.com
+    const isEmail  = raw.includes('@');                                         // john@pch.com
+    const isPhone  = /^[\d()+\-\s.]{7,}$/.test(raw);                           // +1 555-1234
+    const isLinkedIn = raw.toLowerCase().includes('linkedin.com');              // linkedin.com/in/...
+
+    // Build the searchable column sets — always validated against actual schema
+    const DOMAIN_COLS  = ['business_email', 'personal_emails', 'additional_personal_emails', 'programmatic_business_emails', 'historical_programmatic_emails', 'company_domain', 'related_domains'].filter(c => allowedSet.has(c));
+    const EMAIL_COLS   = ['business_email', 'personal_emails', 'additional_personal_emails', 'programmatic_business_emails', 'historical_programmatic_emails'].filter(c => allowedSet.has(c));
+    const PHONE_COLS   = ['mobile_phone', 'direct_number', 'personal_phone', 'company_phone'].filter(c => allowedSet.has(c));
+    const NAME_COLS    = ['first_name', 'last_name', 'full_name'].filter(c => allowedSet.has(c));
+    const COMPANY_COLS = ['company_name', 'company_domain', 'company_description', 'primary_industry'].filter(c => allowedSet.has(c));
+    const JOB_COLS     = ['job_title', 'job_title_normalized', 'seniority_level', 'department'].filter(c => allowedSet.has(c));
+    const LOCATION_COLS= ['personal_city', 'personal_state', 'personal_country', 'personal_zip', 'company_city', 'company_state', 'company_country'].filter(c => allowedSet.has(c));
+    const LINKEDIN_COLS= ['linkedin_url', 'company_linkedin_url'].filter(c => allowedSet.has(c));
+
+    let targetCols: string[];
+
+    if (isDomain) {
+      // Domain search — focus on email + domain columns for speed
+      targetCols = DOMAIN_COLS;
+    } else if (isEmail) {
+      // Email search — exact match preferred
+      targetCols = EMAIL_COLS;
+    } else if (isPhone) {
+      // Phone search — only phone columns
+      targetCols = PHONE_COLS;
+    } else if (isLinkedIn) {
+      // LinkedIn URL search
+      targetCols = LINKEDIN_COLS;
+    } else {
+      // General text — search EVERYTHING meaningful
+      targetCols = [...new Set([
+        ...NAME_COLS, ...EMAIL_COLS, ...COMPANY_COLS, ...JOB_COLS,
+        ...LOCATION_COLS, ...PHONE_COLS, ...LINKEDIN_COLS,
+        ...DOMAIN_COLS,
+      ])];
+    }
+
+    if (targetCols.length > 0) {
+      const searchClauses = targetCols
+        .map(col => `lower(coalesce(toString(\`${col}\`), '')) LIKE lower('%${escaped}%')`)
+        .join(' OR ');
+      conditions.push(`(${searchClauses})`);
+    }
   }
 
   // Simple exact-match filters (legacy / dropdown support)

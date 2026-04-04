@@ -303,7 +303,7 @@ export default function DatabasePage() {
     } finally {
       setLoading(false);
     }
-  }, [filters, page, pageSize, sortCol, sortDir, visibleCols, activeTab, columnsLoaded, dataSourceFilter, quickToggles, completenessFilter]);
+  }, [filters, page, pageSize, sortCol, sortDir, visibleCols, activeTab, columnsLoaded, dataSourceFilter, quickToggles, completenessFilter, advancedFilters]);
 
   // Single effect for Browse tab (handles both search debounce and other filters)
   useEffect(() => {
@@ -516,21 +516,49 @@ export default function DatabasePage() {
             {/* Search & Toolbar */}
             <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
               <div style={{ flex: 1, position: 'relative', minWidth: 250 }}>
-                <Search size={16} style={{ position: 'absolute', left: 14, top: 12, color: 'var(--text-tertiary)' }} />
+                <Search size={16} style={{ position: 'absolute', left: 14, top: 12, color: search ? 'var(--accent)' : 'var(--text-tertiary)', transition: 'color 0.2s' }} />
                 <input
                   type="text"
-                  placeholder="Search names, emails, companies..."
+                  placeholder="Search anything — domains, emails, names, phone numbers, companies, cities..."
                   value={search}
                   onChange={e => { setSearch(e.target.value); setPage(1); }}
                   style={{
                     width: '100%', padding: '10px 16px 10px 38px', borderRadius: 12,
                     fontSize: 13, fontWeight: 500, outline: 'none',
-                    background: 'var(--bg-input)', border: '1px solid var(--border)',
+                    background: 'var(--bg-input)', border: `1px solid ${search ? 'var(--accent)' : 'var(--border)'}`,
                     color: 'var(--text-primary)', transition: 'border-color 0.2s',
+                    ...(search ? { boxShadow: '0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent)' } : {}),
                   }}
                   onFocus={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+                  onBlur={(e) => { if (!search) e.currentTarget.style.borderColor = 'var(--border)'; }}
                 />
+                {/* Smart intent badge — shows what type of search is detected */}
+                {search.trim() && (() => {
+                  const s = search.trim();
+                  const isDomain = /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(s);
+                  const isEmail = s.includes('@');
+                  const isPhone = /^[\d()+\-\s.]{7,}$/.test(s);
+                  const isLinkedIn = s.toLowerCase().includes('linkedin.com');
+                  const badge = isDomain ? { icon: '🌐', label: 'Domain', color: '#3b82f6' }
+                    : isEmail ? { icon: '📧', label: 'Email', color: '#8b5cf6' }
+                    : isPhone ? { icon: '📱', label: 'Phone', color: '#10b981' }
+                    : isLinkedIn ? { icon: '💼', label: 'LinkedIn', color: '#0077b5' }
+                    : { icon: '🔍', label: 'All fields', color: 'var(--text-tertiary)' };
+                  return (
+                    <span style={{
+                      position: 'absolute', right: 12, top: 8,
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      padding: '3px 10px', borderRadius: 20,
+                      fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+                      background: `color-mix(in srgb, ${badge.color} 12%, transparent)`,
+                      color: badge.color, border: `1px solid color-mix(in srgb, ${badge.color} 25%, transparent)`,
+                      animation: 'fadeIn 0.15s ease-out',
+                      pointerEvents: 'none', userSelect: 'none',
+                    }}>
+                      {badge.icon} {badge.label}
+                    </span>
+                  );
+                })()}
               </div>
 
               <div style={{ position: 'relative' }}>
