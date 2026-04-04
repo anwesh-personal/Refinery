@@ -121,6 +121,7 @@ export interface BrowseParams {
   sortDir?: 'asc' | 'desc';
   columns?: string[];
   completenessFilter?: 'all' | 'high' | 'medium' | 'low';
+  dataSourceIds?: string[];  // Multi-source filter: array of _ingestion_job_id values
 }
 
 // ─── Shared WHERE clause builder ────────────────────────────────────────
@@ -220,6 +221,12 @@ function buildWhereConditions(params: BrowseParams, allowedSet: Set<string>, sel
   // Has Email composite filter
   if (params.hasEmail) {
     conditions.push(`((\`business_email\` IS NOT NULL AND toString(\`business_email\`) != '') OR (\`personal_emails\` IS NOT NULL AND toString(\`personal_emails\`) != ''))`);
+  }
+
+  // Multi-source data filter — IN clause for multiple ingestion job IDs
+  if (params.dataSourceIds && params.dataSourceIds.length > 0) {
+    const escaped = params.dataSourceIds.map(id => `'${id.replace(/'/g, "\\'")}'`).join(', ');
+    conditions.push(`\`_ingestion_job_id\` IN (${escaped})`);
   }
 
   // Completeness filter

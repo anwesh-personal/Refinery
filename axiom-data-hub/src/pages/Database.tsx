@@ -53,7 +53,7 @@ interface FilterPreset {
   completenessFilter: 'all' | 'high' | 'medium' | 'low';
   search: string;
   quickToggles: Record<string, boolean>;
-  dataSourceFilter: string;
+  dataSourceFilter: string[];
   savedAt: number;
 }
 
@@ -119,7 +119,7 @@ export default function DatabasePage() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [showColPicker, setShowColPicker] = useState(false);
   const [pageSize, setPageSize] = useState(50);
-  const [dataSourceFilter, setDataSourceFilter] = useState<string>('');
+  const [dataSourceFilter, setDataSourceFilter] = useState<string[]>([]);
   const [completenessFilter, setCompletenessFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const colPickerRef = useRef<HTMLDivElement>(null);
   const colPickerBtnRef = useRef<HTMLButtonElement>(null);
@@ -288,7 +288,8 @@ export default function DatabasePage() {
         method: 'POST',
         body: {
           search: currentSearch,
-          filters: { ...activeFilters, ...(dataSourceFilter ? { _ingestion_job_id: dataSourceFilter } : {}) },
+          filters: activeFilters,
+          dataSourceIds: dataSourceFilter.length > 0 ? dataSourceFilter : undefined,
           advancedFilters: afPayload.length > 0 ? afPayload : undefined,
           hasEmail: quickToggles.hasEmail || undefined,
           page,
@@ -306,7 +307,7 @@ export default function DatabasePage() {
       // Only fetch when results are filtered (not on 121M unfiltered view)
       const hasActiveFilters = currentSearch.trim() || Object.keys(activeFilters).length > 0 ||
         afPayload.length > 0 || quickToggles.hasEmail || quickToggles.hasPhone || quickToggles.hasLinkedin ||
-        dataSourceFilter || (completenessFilter !== 'all');
+        dataSourceFilter.length > 0 || (completenessFilter !== 'all');
 
       if (hasActiveFilters && (res.total ?? 0) < 10_000_000) {
         setFacetsLoading(true);
@@ -314,7 +315,8 @@ export default function DatabasePage() {
           method: 'POST',
           body: {
             search: currentSearch,
-            filters: { ...activeFilters, ...(dataSourceFilter ? { _ingestion_job_id: dataSourceFilter } : {}) },
+            filters: activeFilters,
+            dataSourceIds: dataSourceFilter.length > 0 ? dataSourceFilter : undefined,
             advancedFilters: afPayload.length > 0 ? afPayload : undefined,
             hasEmail: quickToggles.hasEmail || undefined,
           }
@@ -612,6 +614,24 @@ export default function DatabasePage() {
                     background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
                     boxShadow: 'var(--shadow-lg)', padding: 12, maxHeight: 400, overflowY: 'auto'
                   }}>
+                    {/* Quick actions */}
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
+                      <button onClick={() => {
+                        const all: Record<string, boolean> = {};
+                        allColumns.forEach(c => all[c] = true);
+                        setVisibleCols(all);
+                      }} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer', background: 'var(--accent-muted)', color: 'var(--accent)', border: '1px solid var(--accent)' }}>
+                        Show All
+                      </button>
+                      <button onClick={() => {
+                        const defaults: Record<string, boolean> = {};
+                        const PRIORITY = ['first_name','last_name','business_email','personal_emails','company_name','job_title_normalized','primary_industry','personal_state','seniority_level','mobile_phone','company_domain','linkedin_url'];
+                        PRIORITY.filter(c => allColumns.includes(c)).forEach(c => defaults[c] = true);
+                        setVisibleCols(defaults);
+                      }} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                        Default
+                      </button>
+                    </div>
                     {Object.entries(COLUMN_GROUPS).map(([group, groupCols]) => {
                       const available = groupCols.filter(c => allColumns.includes(c));
                       if (available.length === 0) return null;
@@ -831,7 +851,7 @@ export default function DatabasePage() {
                     <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12, color: 'var(--text-primary)' }}
                       onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                       onMouseOut={e => (e.currentTarget.style.background = 'transparent')}>
-                      <span onClick={() => { setFilters(p.filters); setAdvancedFilters(p.advancedFilters); setCompletenessFilter(p.completenessFilter); setSearch(p.search); setQuickToggles(p.quickToggles || {}); setDataSourceFilter(p.dataSourceFilter || ''); setPage(1); setShowPresets(false); toastSuccess(`Loaded "${p.name}"`); }} style={{ flex: 1, fontWeight: 600 }}>
+                      <span onClick={() => { setFilters(p.filters); setAdvancedFilters(p.advancedFilters); setCompletenessFilter(p.completenessFilter); setSearch(p.search); setQuickToggles(p.quickToggles || {}); setDataSourceFilter(Array.isArray(p.dataSourceFilter) ? p.dataSourceFilter : p.dataSourceFilter ? [p.dataSourceFilter] : []); setPage(1); setShowPresets(false); toastSuccess(`Loaded "${p.name}"`); }} style={{ flex: 1, fontWeight: 600 }}>
                         {p.name}
                         <span style={{ fontSize: 9, color: 'var(--text-tertiary)', marginLeft: 6 }}>{new Date(p.savedAt).toLocaleDateString()}</span>
                       </span>
@@ -848,7 +868,7 @@ export default function DatabasePage() {
               const afAdv = advancedFilters.filter(f => f.column && f.operator);
               const activeToggles = Object.entries(quickToggles).filter(([_, v]) => v);
               const hasCompleteness = completenessFilter !== 'all';
-              const hasDataSource = !!dataSourceFilter;
+              const hasDataSource = dataSourceFilter.length > 0;
               const hasSearch = !!search.trim();
 
               // Check if ANY filter is active
@@ -911,7 +931,8 @@ export default function DatabasePage() {
 
               // 5. Data source filter
               if (hasDataSource) {
-                parts.push(`\`_ingestion_job_id\` = '${dataSourceFilter.replace(/'/g, "\\'")}'`);
+                const escaped = dataSourceFilter.map(id => `'${id.replace(/'/g, "\\'")}'`).join(', ');
+                parts.push(`\`_ingestion_job_id\` IN (${escaped})`);
               }
 
               // 6. Completeness filter (computed column ratio)
@@ -975,7 +996,7 @@ export default function DatabasePage() {
             if (search) chips.push({ label: `Search: "${search}"`, onRemove: () => setSearch('') });
             if (completenessFilter !== 'all') chips.push({ label: `Completeness: ${completenessFilter}`, onRemove: () => setCompletenessFilter('all') });
             Object.entries(quickToggles).forEach(([k, v]) => { if (v) chips.push({ label: k === 'hasEmail' ? 'Has Email' : k === 'hasPhone' ? 'Has Phone' : 'Has LinkedIn', onRemove: () => setQuickToggles(prev => ({ ...prev, [k]: false })) }); });
-            if (dataSourceFilter) chips.push({ label: `Source: ${dataSourceOptions.find(s => s.id === dataSourceFilter)?.label || dataSourceFilter}`, onRemove: () => setDataSourceFilter('') });
+            if (dataSourceFilter.length > 0) chips.push({ label: `Source: ${dataSourceFilter.length === 1 ? (dataSourceOptions.find(s => s.id === dataSourceFilter[0])?.label || dataSourceFilter[0]) : `${dataSourceFilter.length} files`}`, onRemove: () => setDataSourceFilter([]) });
             if (chips.length === 0) return null;
             return (
               <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -986,7 +1007,7 @@ export default function DatabasePage() {
                     <X size={10} style={{ cursor: 'pointer', opacity: 0.7 }} onClick={() => { c.onRemove(); setPage(1); }} />
                   </span>
                 ))}
-                <button onClick={() => { setFilters({}); setAdvancedFilters([]); setSearch(''); setCompletenessFilter('all'); setQuickToggles({}); setDataSourceFilter(''); setPage(1); }}
+                <button onClick={() => { setFilters({}); setAdvancedFilters([]); setSearch(''); setCompletenessFilter('all'); setQuickToggles({}); setDataSourceFilter([]); setPage(1); }}
                   style={{ fontSize: 10, fontWeight: 700, color: 'var(--red)', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>Clear All</button>
               </div>
             );
@@ -1168,19 +1189,57 @@ export default function DatabasePage() {
                   </select>
                 </div>
 
-                {/* Data source filter */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <select value={dataSourceFilter} onChange={e => { setDataSourceFilter(e.target.value); setPage(1); }} style={{
-                    background: dataSourceFilter ? 'var(--accent)' : 'var(--bg-input)',
-                    border: '1px solid var(--border)', borderRadius: 6,
-                    color: dataSourceFilter ? 'var(--accent-contrast)' : 'var(--text-primary)',
-                    fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
+                {/* Data source filter — multi-select */}
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <button
+                    onClick={() => {
+                      const el = document.getElementById('source-picker');
+                      if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+                    }}
+                    style={{
+                      background: dataSourceFilter.length > 0 ? 'var(--accent)' : 'var(--bg-input)',
+                      border: '1px solid var(--border)', borderRadius: 6,
+                      color: dataSourceFilter.length > 0 ? 'var(--accent-contrast)' : 'var(--text-primary)',
+                      fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
+                    }}
+                  >
+                    {dataSourceFilter.length === 0 ? 'All Sources' : dataSourceFilter.length === 1 ? (dataSourceOptions.find(s => s.id === dataSourceFilter[0])?.label || '1 file').split(' (')[0] : `${dataSourceFilter.length} files`}
+                  </button>
+                  <div id="source-picker" style={{
+                    display: 'none', position: 'absolute', top: 32, right: 0, zIndex: 200,
+                    background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
+                    boxShadow: 'var(--shadow-lg)', padding: 8, minWidth: 280, maxHeight: 300, overflowY: 'auto',
                   }}>
-                    <option value="">All Sources</option>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, padding: '2px 4px' }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Data Sources</span>
+                      {dataSourceFilter.length > 0 && (
+                        <button onClick={() => { setDataSourceFilter([]); setPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer' }}>Clear</button>
+                      )}
+                    </div>
                     {dataSourceOptions.map(ds => (
-                      <option key={ds.id} value={ds.id}>{ds.label}</option>
+                      <label key={ds.id} style={{
+                        display: 'flex', alignItems: 'center', gap: 6, padding: '5px 6px',
+                        borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 500,
+                        color: 'var(--text-primary)',
+                      }}
+                        onMouseOver={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={dataSourceFilter.includes(ds.id)}
+                          onChange={() => {
+                            setDataSourceFilter(prev =>
+                              prev.includes(ds.id) ? prev.filter(id => id !== ds.id) : [...prev, ds.id]
+                            );
+                            setPage(1);
+                          }}
+                          style={{ accentColor: 'var(--accent)' }}
+                        />
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ds.label}</span>
+                      </label>
                     ))}
-                  </select>
+                  </div>
                 </div>
 
                 {/* Page nav */}
@@ -1232,7 +1291,8 @@ export default function DatabasePage() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                       search,
-                      filters: { ...activeFilters, ...(dataSourceFilter ? { _ingestion_job_id: dataSourceFilter } : {}) },
+                      filters: activeFilters,
+                      dataSourceIds: dataSourceFilter.length > 0 ? dataSourceFilter : undefined,
                       advancedFilters: afPayload.length > 0 ? afPayload : undefined,
                       sortBy: sortCol, sortDir,
                       columns: activeCols.length > 0 ? activeCols : undefined,
