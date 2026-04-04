@@ -41,6 +41,29 @@ router.get('/source-files', async (req, res) => {
   }
 });
 
+// GET /api/ingestion/sources — returns completed ingestion jobs for the Data Source dropdown
+// Used by the Data Explorer to let users scope searches to a specific ingested file
+router.get('/sources', async (_req, res) => {
+  try {
+    const jobs = await q<{
+      id: string; file_name: string; rows_ingested: string; completed_at: string;
+    }>(`
+      SELECT id, file_name, rows_ingested, completed_at
+      FROM ingestion_jobs
+      WHERE status = 'complete' AND rows_ingested > 0
+      ORDER BY completed_at DESC
+      LIMIT 200
+    `);
+    const sources = jobs.map(j => ({
+      id: j.id,
+      label: `${j.file_name.replace(/\.[^/.]+$/, '').slice(0, 40)} (${Number(j.rows_ingested).toLocaleString()} rows, ${new Date(j.completed_at).toLocaleDateString()})`,
+    }));
+    res.json(sources);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/ingestion/check-duplicates  { sourceKeys: ["..."] }
 router.post('/check-duplicates', async (req, res) => {
   try {
