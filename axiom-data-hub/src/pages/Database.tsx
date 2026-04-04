@@ -258,11 +258,9 @@ export default function DatabasePage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Use a ref for search to avoid double-fire when filtering
+  // Track what search value was last sent to the server
   const searchRef = useRef(search);
-  useEffect(() => {
-    searchRef.current = search;
-  }, [search]);
+  const isTypingRef = useRef(false);
 
   // Load browse data
   const runBrowse = useCallback(async (currentSearch: string = searchRef.current) => {
@@ -298,6 +296,7 @@ export default function DatabasePage() {
         }
       });
       setResult(res);
+      searchRef.current = currentSearch; // update ref AFTER successful fetch
     } catch (e: any) {
       setError(`Browse error: ${e.message}`);
     } finally {
@@ -305,23 +304,22 @@ export default function DatabasePage() {
     }
   }, [filters, page, pageSize, sortCol, sortDir, visibleCols, activeTab, columnsLoaded, dataSourceFilter, quickToggles, completenessFilter, advancedFilters]);
 
-  // Single effect for Browse tab (handles both search debounce and other filters)
+  // Single effect for Browse tab — debounces search, runs immediately for other filter changes
   useEffect(() => {
     if (activeTab !== 'browse') return;
 
     const isSearchChange = search !== searchRef.current;
 
-    // If it's a search change, debounce. Otherwise, run immediately.
-    let timer: ReturnType<typeof setTimeout>;
-    if (isSearchChange) {
-      timer = setTimeout(() => runBrowse(search), 400);
-    } else {
-      if (!loading) runBrowse(searchRef.current);
-    }
+    // Always debounce — prevents stale ref races when multiple deps change at once
+    const delay = isSearchChange ? 600 : 50; // longer debounce for typing, near-instant for filter changes
+    isTypingRef.current = isSearchChange;
 
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
+    const timer = setTimeout(() => {
+      isTypingRef.current = false;
+      runBrowse(search);
+    }, delay);
+
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, filters, page, sortCol, sortDir, visibleCols, activeTab, advancedFilters, quickToggles, completenessFilter]);
 
