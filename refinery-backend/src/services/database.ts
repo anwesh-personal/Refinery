@@ -269,6 +269,11 @@ export async function browseData(params: BrowseParams) {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
+  // DEBUG — remove after verification
+  if (search.trim() || Object.keys(filters).length > 0) {
+    console.log(`[BROWSE DEBUG] search="${search}" | filters=${JSON.stringify(filters)} | conditions=${conditions.length} | WHERE=${whereClause.substring(0, 300)}`);
+  }
+
   // Validate sort column
   const safeSortBy = (sortBy && allowedSet.has(sortBy)) ? `\`${sortBy}\`` : `\`${selectCols[0]}\``;
   const safeSortDir = sortDir === 'desc' ? 'DESC' : 'ASC';
