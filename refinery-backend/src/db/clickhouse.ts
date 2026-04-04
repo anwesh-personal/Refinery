@@ -26,7 +26,7 @@ export const clickhouse = createClient({
 /** Run a query and return rows as JSON. Default timeout: 30s. */
 export async function query<T = Record<string, unknown>>(
   sql: string,
-  opts?: { timeoutMs?: number },
+  opts?: { timeoutMs?: number; settings?: Record<string, string | number | boolean> },
 ): Promise<T[]> {
   const timeoutMs = opts?.timeoutMs ?? DEFAULT_QUERY_TIMEOUT_MS;
   const controller = new AbortController();
@@ -36,6 +36,7 @@ export async function query<T = Record<string, unknown>>(
       query: sql,
       format: 'JSONEachRow',
       abort_signal: controller.signal,
+      ...(opts?.settings ? { clickhouse_settings: opts.settings } : {}),
     });
     return (await result.json()) as T[];
   } finally {

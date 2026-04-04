@@ -293,9 +293,11 @@ export async function browseData(params: BrowseParams) {
 
   const start = Date.now();
 
-  // Get total count
+  // Get total count (60s timeout — wide searches on 121M rows can exceed default 30s)
+  const browseOpts = { timeoutMs: 60_000, settings: { max_execution_time: 60 } };
   const [countResult] = await query<{ cnt: string }>(
-    `SELECT count() as cnt FROM universal_person ${whereClause}`
+    `SELECT count() as cnt FROM universal_person ${whereClause}`,
+    browseOpts
   );
   const total = Number(countResult?.cnt || 0);
 
@@ -304,7 +306,8 @@ export async function browseData(params: BrowseParams) {
   const rows = await query(
     `SELECT ${escapedCols} FROM universal_person ${whereClause}
      ORDER BY ${safeSortBy} ${safeSortDir}
-     LIMIT ${safePageSize} OFFSET ${offset}`
+     LIMIT ${safePageSize} OFFSET ${offset}`,
+    browseOpts
   );
 
   const elapsed = Date.now() - start;
