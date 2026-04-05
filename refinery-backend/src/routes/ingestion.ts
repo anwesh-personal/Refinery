@@ -288,11 +288,13 @@ router.post('/:id/retry', async (req, res) => {
     }
 
     // 2. Reset the job record in-place (started_at is a key column — cannot be updated)
+    // retry_count resets to 0 for manual retries (user explicitly asked — not auto-recovery)
     await cmd(`
       ALTER TABLE ingestion_jobs UPDATE 
         status = 'pending', 
         error_message = NULL, 
         rows_ingested = 0,
+        retry_count = 0,
         performed_by = '${esc(user.id)}',
         performed_by_name = '${esc(user.name)}'
       WHERE id = '${esc(jobId)}'

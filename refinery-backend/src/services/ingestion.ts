@@ -73,29 +73,123 @@ export function getQueueStatus(): { active: number; queued: number; maxConcurren
  * Recover stale ingestion jobs on startup.
  *
  * When PM2 restarts the process, any in-flight background workers are killed
- * but their ClickHouse job records still say "downloading" / "uploading" etc.
- * This function marks them as failed so they don't appear as perpetually "in progress".
+ * but their ClickHouse job records still say "downloading" / "uploading" / "ingesting" etc.
+ *
+ * Recovery strategy:
+ *   - pending / downloading → safe to re-enqueue (no data written yet)
+ *   - uploading → safe to re-enqueue (S3 upload was interrupted, start fresh)
+ *   - ingesting → delete partial rows by job ID first, THEN re-enqueue
+ *   - retry_count >= 3 → permanently mark as failed (prevents infinite crash loops)
  *
  * Returns the number of jobs recovered.
  */
+const MAX_AUTO_RETRIES = 3;
+
 export async function recoverStaleIngestionJobs(): Promise<number> {
   const staleStatuses = ['pending', 'downloading', 'uploading', 'ingesting'];
-  const [countResult] = await query<{ cnt: string }>(
-    `SELECT count() as cnt FROM ingestion_jobs WHERE status IN ('${staleStatuses.join("','")}')`
-  );
-  const count = Number(countResult?.cnt || 0);
 
-  if (count > 0) {
+  // Fetch all stale jobs (need details for per-job decisions)
+  const staleJobs = await query<{
+    id: string;
+    source_key: string;
+    source_bucket: string;
+    status: string;
+    rows_ingested: string;
+    retry_count: number;
+  }>(
+    `SELECT id, source_key, source_bucket, status, rows_ingested, retry_count
+     FROM ingestion_jobs
+     WHERE status IN ('${staleStatuses.join("','")}')
+     ORDER BY started_at ASC`
+  );
+
+  if (staleJobs.length === 0) return 0;
+
+  let reEnqueued = 0;
+  let hardFailed = 0;
+  let partialDataCleaned = 0;
+
+  // ─── Phase 1: Categorize and handle each stale job ───
+  const jobsToRetry: typeof staleJobs = [];
+
+  for (const job of staleJobs) {
+    const retryCount = Number(job.retry_count) || 0;
+
+    // Exceeded retry cap → permanent failure (prevents infinite crash loops from bad files)
+    if (retryCount >= MAX_AUTO_RETRIES) {
+      await command(`
+        ALTER TABLE ingestion_jobs UPDATE
+          status = 'failed',
+          error_message = 'Exceeded ${MAX_AUTO_RETRIES} automatic retry attempts — manual retry required'
+        WHERE id = '${esc(job.id)}'
+      `);
+      hardFailed++;
+      continue;
+    }
+
+    // If job was mid-insert (ingesting), clean up partial data first
+    const partialRows = Number(job.rows_ingested) || 0;
+    if (job.status === 'ingesting' && partialRows > 0) {
+      try {
+        await command(`ALTER TABLE universal_person DELETE WHERE _ingestion_job_id = '${esc(job.id)}'`);
+        partialDataCleaned += partialRows;
+        console.log(`[Ingestion] Recovery: cleaned ${partialRows.toLocaleString()} partial rows for job ${job.id}`);
+      } catch (e: any) {
+        // If cleanup fails, mark as failed instead of risking duplicates
+        console.error(`[Ingestion] Recovery: failed to clean partial rows for ${job.id}: ${e.message}`);
+        await command(`
+          ALTER TABLE ingestion_jobs UPDATE
+            status = 'failed',
+            error_message = 'Recovery failed: could not clean partial rows — ${esc(String(e.message))}'
+          WHERE id = '${esc(job.id)}'
+        `);
+        hardFailed++;
+        continue;
+      }
+    }
+
+    // Reset job to pending with incremented retry count
     await command(`
       ALTER TABLE ingestion_jobs UPDATE
-        status = 'failed',
-        error_message = 'Interrupted by server restart — re-ingest to retry'
-      WHERE status IN ('${staleStatuses.join("','")}')
+        status = 'pending',
+        rows_ingested = 0,
+        error_message = NULL,
+        retry_count = ${retryCount + 1}
+      WHERE id = '${esc(job.id)}'
     `);
-    console.log(`[Ingestion] ⚠ Recovered ${count} stale job(s) — marked as failed.`);
+
+    jobsToRetry.push(job);
+    reEnqueued++;
   }
 
-  // Clean up orphaned temp directories from previous crashes
+  // ─── Phase 2: Re-enqueue recovered jobs through the pipeline ───
+  // Delay slightly to let the event loop stabilize after startup
+  if (jobsToRetry.length > 0) {
+    setTimeout(async () => {
+      for (const job of jobsToRetry) {
+        try {
+          // Resolve S3 source from the stored bucket
+          const [source] = await query<{ id: string }>(
+            `SELECT id FROM s3_sources WHERE bucket = '${esc(job.source_bucket)}' AND is_active = 1 LIMIT 1`
+          );
+
+          await retryIngestionJob(job.id, job.source_key, source?.id);
+          console.log(`[Ingestion] Recovery: re-enqueued job ${job.id} (retry #${(Number(job.retry_count) || 0) + 1})`);
+        } catch (e: any) {
+          console.error(`[Ingestion] Recovery: failed to re-enqueue ${job.id}:`, e.message);
+          // Mark as failed — don't let a bad re-enqueue crash the whole startup
+          await command(`
+            ALTER TABLE ingestion_jobs UPDATE
+              status = 'failed',
+              error_message = 'Recovery re-enqueue failed: ${esc(String(e.message))}'
+            WHERE id = '${esc(job.id)}'
+          `).catch(() => {});
+        }
+      }
+    }, 5000); // 5s delay — let server fully boot before firing pipelines
+  }
+
+  // ─── Phase 3: Clean up orphaned temp directories ───
   try {
     const tmpBase = os.tmpdir();
     const entries = await fs.promises.readdir(tmpBase);
@@ -108,7 +202,8 @@ export async function recoverStaleIngestionJobs(): Promise<number> {
     }
   } catch { /* tmpdir read failure is non-fatal */ }
 
-  return count;
+  console.log(`[Ingestion] Recovery: ${reEnqueued} re-enqueued, ${hardFailed} permanently failed, ${partialDataCleaned.toLocaleString()} partial rows cleaned.`);
+  return staleJobs.length;
 }
 
 /**

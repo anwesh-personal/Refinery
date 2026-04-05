@@ -91,6 +91,7 @@ const SCHEMAS = [
     file_name         String,
     file_size_bytes   UInt64 DEFAULT 0,
     rows_ingested     UInt64 DEFAULT 0,
+    retry_count       UInt8 DEFAULT 0,
     status            String DEFAULT 'pending',
     error_message     Nullable(String),
     performed_by      Nullable(String),
@@ -333,6 +334,10 @@ export async function initDatabase(): Promise<void> {
   // ── Pipeline Source Emails (for retry/resume) ──
   await command(`ALTER TABLE pipeline_jobs ADD COLUMN IF NOT EXISTS source_emails_json Nullable(String)`);
   console.log('[DB] ✓ source_emails_json column ensured on pipeline_jobs');
+
+  // ── Ingestion Retry Counter (for auto-recovery on restart) ──
+  await command(`ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS retry_count UInt8 DEFAULT 0`);
+  console.log('[DB] ✓ retry_count column ensured on ingestion_jobs');
 
   console.log('[DB] ✓ All tables initialized');
 }
