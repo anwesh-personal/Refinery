@@ -687,143 +687,141 @@ export default function IngestionPage() {
               animation: 'ingestionShimmer 2s ease infinite',
             }} />
 
-            <div style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 20 }}>
-              {/* Pulsing icon */}
-              <div style={{
-                width: 48, height: 48, borderRadius: 14,
-                background: 'linear-gradient(135deg, var(--accent), var(--purple))',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                animation: 'ingestionPulse 2s ease-in-out infinite',
-                boxShadow: '0 0 20px var(--accent)',
-                flexShrink: 0,
-              }}>
-                <Loader2 size={22} color="var(--accent-contrast)" className="spin" />
-              </div>
-
-              {/* Info */}
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {activeJobs.length === 1 ? 'Ingestion in Progress' : `${activeJobs.length} Ingestions in Progress`}
-                  {activeProgress?.overallEtaSec != null && activeProgress.overallEtaSec > 0 && (
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-muted)', padding: '2px 8px', borderRadius: 6 }}>
-                      ETA: {formatDuration(activeProgress.overallEtaSec)}
-                    </span>
-                  )}
-                  {activeProgress && (
-                    <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-tertiary)' }}>
-                      {activeProgress.avgRowsPerSec > 0 ? `~${formatNumber(activeProgress.avgRowsPerSec)} rows/sec` : ''}
-                    </span>
-                  )}
+            {/* Overall Summary Bar */}
+            <div style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: 12,
+                  background: 'linear-gradient(135deg, var(--accent), var(--purple))',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  animation: 'ingestionPulse 2s ease-in-out infinite',
+                  boxShadow: '0 0 20px var(--accent)', flexShrink: 0,
+                }}>
+                  <Loader2 size={20} color="var(--accent-contrast)" className="spin" />
                 </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {activeJobs.map(j => {
-                    const steps = ['pending', 'downloading', 'uploading', 'ingesting', 'complete'];
-                    const currentIdx = steps.indexOf(j.status);
-                    const fileSize = Number(j.file_size_bytes) || 0;
-                    const rowsIngested = Number(j.rows_ingested) || 0;
-                    const isFailed = j.status === 'failed';
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {activeJobs.length === 1 ? 'Ingestion in Progress' : `${activeJobs.length} Ingestions in Progress`}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                    {activeProgress && activeProgress.queueDepth > 0
+                      ? `${activeProgress.queueDepth} queued · ${activeProgress.maxConcurrent} concurrent slots`
+                      : "Processing in background — feel free to navigate away"}
+                  </div>
+                </div>
+              </div>
+              {/* Overall ETA + Throughput */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+                {activeProgress && activeProgress.avgRowsPerSec > 0 && (
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--green)', fontFamily: 'monospace' }}>
+                      {formatNumber(activeProgress.avgRowsPerSec)}
+                    </div>
+                    <div style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)' }}>rows/sec</div>
+                  </div>
+                )}
+                {activeProgress?.overallEtaSec != null && activeProgress.overallEtaSec > 0 && (
+                  <div style={{
+                    textAlign: 'center', padding: '8px 16px', borderRadius: 10,
+                    background: 'linear-gradient(135deg, var(--accent-muted), transparent)',
+                    border: '1px solid var(--accent)',
+                  }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)', fontFamily: 'monospace' }}>
+                      {formatDuration(activeProgress.overallEtaSec)}
+                    </div>
+                    <div style={{ fontSize: 9, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)' }}>total eta</div>
+                  </div>
+                )}
+              </div>
+            </div>
 
-                    return (
-                      <div key={j.id} style={{
-                        padding: '10px 14px', borderRadius: 10,
-                        background: 'var(--bg-hover)', border: '1px solid var(--border)',
-                        fontSize: 12, minWidth: 280,
-                      }}>
-                        {/* File name + size */}
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <span style={{ fontWeight: 700, color: 'var(--text-primary)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.file_name}</span>
-                          {fileSize > 0 && <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>{formatBytes(fileSize)}</span>}
-                        </div>
+            {/* Per-Job Rows */}
+            <div style={{ padding: '0' }}>
+              {activeJobs.map((j, idx) => {
+                const steps = ['pending', 'downloading', 'uploading', 'ingesting', 'complete'];
+                const currentIdx = steps.indexOf(j.status);
+                const fileSize = Number(j.file_size_bytes) || 0;
+                const rowsIngested = Number(j.rows_ingested) || 0;
+                const prog = activeProgress?.jobs.find(p => p.id === j.id);
+                const rps = prog?.rowsPerSec || 0;
+                const eta = prog?.etaRemainingSec;
+                const elapsed = prog?.elapsedSec || 0;
 
-                        {/* Step pipeline */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
-                          {(['downloading', 'uploading', 'ingesting'] as const).map((step, i) => {
-                            const stepIdx = steps.indexOf(step);
-                            const isDone = currentIdx > stepIdx;
-                            const isCurrent = currentIdx === stepIdx;
-                            const stepLabels = { downloading: 'Download', uploading: 'Upload', ingesting: 'Ingest' };
-                            const stepColor = isDone ? 'var(--green)' : isCurrent ? statusColors[step] || 'var(--yellow)' : 'var(--text-tertiary)';
-
-                            return (
-                              <React.Fragment key={step}>
-                                {i > 0 && <div style={{ flex: 1, height: 2, background: isDone ? 'var(--green)' : 'var(--border)', borderRadius: 1, transition: 'background 0.3s' }} />}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                                  {isDone ? (
-                                    <CheckCircle2 size={14} color="var(--green)" />
-                                  ) : isCurrent ? (
-                                    <span style={{
-                                      width: 8, height: 8, borderRadius: '50%',
-                                      background: stepColor,
-                                      animation: 'ingestionDot 1.4s ease-in-out infinite',
-                                      boxShadow: `0 0 6px ${stepColor}`,
-                                      display: 'inline-block',
-                                    }} />
-                                  ) : (
-                                    <span style={{ width: 8, height: 8, borderRadius: '50%', border: '1.5px solid var(--border)', display: 'inline-block' }} />
-                                  )}
-                                  <span style={{ fontSize: 10, fontWeight: isCurrent ? 700 : 400, color: stepColor, letterSpacing: '0.02em' }}>{stepLabels[step]}</span>
-                                </div>
-                              </React.Fragment>
-                            );
-                          })}
-                        </div>
-
-                        {/* Progress bar during ingesting phase */}
-                        {j.status === 'ingesting' && rowsIngested > 0 && (() => {
-                          const prog = activeProgress?.jobs.find(p => p.id === j.id);
-                          const rps = prog?.rowsPerSec || 0;
-                          const eta = prog?.etaRemainingSec;
-                          return (
-                            <div style={{ marginTop: 4 }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 3 }}>
-                                <span>{formatNumber(rowsIngested)} rows</span>
-                                <span style={{ fontFamily: 'monospace', display: 'flex', gap: 8 }}>
-                                  {rps > 0 && <span style={{ color: 'var(--green)' }}>{formatNumber(rps)}/s</span>}
-                                  {eta != null && eta > 0 && <span style={{ color: 'var(--accent)' }}>~{formatDuration(eta)}</span>}
-                                  {(!eta || eta <= 0) && <span>inserting...</span>}
-                                </span>
-                              </div>
-                              <div style={{ width: '100%', height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
-                                <div style={{
-                                  height: '100%', borderRadius: 2,
-                                  background: 'linear-gradient(90deg, var(--blue), var(--accent))',
-                                  backgroundSize: '200% 100%',
-                                  animation: 'ingestionShimmer 1.5s ease infinite',
-                                  width: '100%',
-                                }} />
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        {/* Row count for non-ingesting statuses */}
-                        {j.status !== 'ingesting' && rowsIngested > 0 && (
-                          <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>
-                            {formatNumber(rowsIngested)} rows processed
-                          </div>
-                        )}
-
-                        {/* Failed state */}
-                        {isFailed && (
-                          <div style={{ fontSize: 10, color: 'var(--red)', marginTop: 4, fontWeight: 600 }}>
-                            ✗ {j.error_message || 'Failed'}
-                          </div>
-                        )}
+                return (
+                  <div key={j.id} style={{
+                    padding: '14px 24px',
+                    borderBottom: idx < activeJobs.length - 1 ? '1px solid var(--border)' : 'none',
+                    display: 'flex', alignItems: 'center', gap: 16,
+                  }}>
+                    {/* File info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                        <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.file_name}</span>
+                        {fileSize > 0 && <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'monospace', flexShrink: 0 }}>{formatBytes(fileSize)}</span>}
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
+                      {/* Step pipeline */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {(['downloading', 'uploading', 'ingesting'] as const).map((step, i) => {
+                          const stepIdx = steps.indexOf(step);
+                          const isDone = currentIdx > stepIdx;
+                          const isCurrent = currentIdx === stepIdx;
+                          const stepLabels = { downloading: 'Download', uploading: 'Upload', ingesting: 'Ingest' };
+                          const stepColor = isDone ? 'var(--green)' : isCurrent ? statusColors[step] || 'var(--yellow)' : 'var(--text-tertiary)';
+                          return (
+                            <React.Fragment key={step}>
+                              {i > 0 && <div style={{ flex: 1, height: 2, background: isDone ? 'var(--green)' : 'var(--border)', borderRadius: 1, maxWidth: 30 }} />}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                {isDone ? <CheckCircle2 size={12} color="var(--green)" /> : isCurrent ? (
+                                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: stepColor, animation: 'ingestionDot 1.4s ease-in-out infinite', boxShadow: `0 0 6px ${stepColor}`, display: 'inline-block' }} />
+                                ) : <span style={{ width: 8, height: 8, borderRadius: '50%', border: '1.5px solid var(--border)', display: 'inline-block' }} />}
+                                <span style={{ fontSize: 10, fontWeight: isCurrent ? 700 : 400, color: stepColor }}>{stepLabels[step]}</span>
+                              </div>
+                            </React.Fragment>
+                          );
+                        })}
+                      </div>
+                      {/* Progress bar */}
+                      {j.status === 'ingesting' && rowsIngested > 0 && (
+                        <div style={{ marginTop: 6, width: '100%', height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', borderRadius: 2, background: 'linear-gradient(90deg, var(--blue), var(--accent))', backgroundSize: '200% 100%', animation: 'ingestionShimmer 1.5s ease infinite', width: '100%' }} />
+                        </div>
+                      )}
+                    </div>
 
-              {/* Message */}
-              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>Processing in background</div>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                  {activeProgress && activeProgress.queueDepth > 0
-                    ? `${activeProgress.queueDepth} queued · ${activeProgress.maxConcurrent} concurrent`
-                    : "Feel free to navigate away — we'll keep crunching."}
-                </div>
-              </div>
+                    {/* Per-job stats — prominent right-aligned */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexShrink: 0 }}>
+                      {/* Rows */}
+                      <div style={{ textAlign: 'center', minWidth: 80 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
+                          {rowsIngested > 0 ? formatNumber(rowsIngested) : '—'}
+                        </div>
+                        <div style={{ fontSize: 9, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>rows</div>
+                      </div>
+                      {/* Speed */}
+                      <div style={{ textAlign: 'center', minWidth: 70 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: rps > 0 ? 'var(--green)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                          {rps > 0 ? formatNumber(rps) : '—'}
+                        </div>
+                        <div style={{ fontSize: 9, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>rows/s</div>
+                      </div>
+                      {/* Elapsed */}
+                      <div style={{ textAlign: 'center', minWidth: 60 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                          {elapsed > 0 ? formatDuration(elapsed) : '—'}
+                        </div>
+                        <div style={{ fontSize: 9, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>elapsed</div>
+                      </div>
+                      {/* ETA */}
+                      <div style={{ textAlign: 'center', minWidth: 70, padding: '6px 12px', borderRadius: 8, background: eta != null && eta > 0 ? 'var(--accent-muted)' : 'transparent' }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: eta != null && eta > 0 ? 'var(--accent)' : 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                          {eta != null && eta > 0 ? formatDuration(eta) : '—'}
+                        </div>
+                        <div style={{ fontSize: 9, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>eta</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             {/* CSS keyframes */}
