@@ -1377,7 +1377,10 @@ export default function DatabasePage() {
                       </div>
                     </th>
                   )}
-                  {resultCols.map(col => (
+                  {resultCols.map(col => {
+                    const COLUMN_ICONS: Record<string, string> = { business_email: '📧', personal_emails: '📧', company_domain: '🌐', mobile_phone: '📱', personal_phone: '📱', direct_number: '📱', company_phone: '📱', linkedin_url: '💼', company_linkedin_url: '💼', first_name: '👤', last_name: '👤', full_name: '👤', company_name: '🏢', job_title: '💼', job_title_normalized: '💼', personal_city: '📍', personal_state: '📍', country: '🌎' };
+                    const icon = COLUMN_ICONS[col] || '';
+                    return (
                     <th key={col}
                       style={{
                         padding: '12px 16px', textAlign: 'left', fontWeight: 700,
@@ -1389,6 +1392,7 @@ export default function DatabasePage() {
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', flex: 1 }} onClick={() => toggleSort(col)}>
+                          {icon && <span style={{ fontSize: 12 }}>{icon}</span>}
                           {col.replace(/_/g, ' ')}
                           {sortCol === col && (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
                         </span>
@@ -1397,7 +1401,8 @@ export default function DatabasePage() {
                         )}
                       </div>
                     </th>
-                  ))}
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -1424,11 +1429,32 @@ export default function DatabasePage() {
                         </td>
                       )}
 
+                      {activeTab === 'browse' && (
+                        <td style={{ padding: '10px 8px 10px 16px', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', fontFamily: "'JetBrains Mono', monospace", width: 40, textAlign: 'right' }}>
+                          {(page - 1) * pageSize + i + 1}
+                        </td>
+                      )}
+
                       {resultCols.map((col, cIdx) => {
                         const val = row[col];
                         const valStr = val === null || val === undefined ? '' : String(val);
+                        // Color coding for data types
+                        const EMAIL_COLS = ['business_email', 'personal_emails', 'additional_personal_emails', 'programmatic_business_emails'];
+                        const PHONE_COLS = ['mobile_phone', 'personal_phone', 'direct_number', 'company_phone'];
+                        const DOMAIN_COLS = ['company_domain', 'related_domains'];
+                        const LINKEDIN_COLS = ['linkedin_url', 'company_linkedin_url'];
+                        const isClickable = valStr && (EMAIL_COLS.includes(col) || PHONE_COLS.includes(col) || DOMAIN_COLS.includes(col) || LINKEDIN_COLS.includes(col));
+                        const cellColor = !valStr ? 'var(--text-tertiary)' : EMAIL_COLS.includes(col) ? '#818cf8' : PHONE_COLS.includes(col) ? '#34d399' : DOMAIN_COLS.includes(col) ? '#60a5fa' : LINKEDIN_COLS.includes(col) ? '#0077b5' : 'var(--text-secondary)';
                         return (
-                          <td key={col} onClick={() => setSelectedRow(row)}
+                          <td key={col}
+                            onClick={() => {
+                              if (isClickable) {
+                                navigator.clipboard.writeText(valStr);
+                                toastSuccess(`Copied: ${valStr}`);
+                              } else {
+                                setSelectedRow(row);
+                              }
+                            }}
                             onDoubleClick={(e) => {
                               e.stopPropagation();
                               if (!valStr) return;
@@ -1437,7 +1463,7 @@ export default function DatabasePage() {
                               setPage(1);
                               toastSuccess(`Filtered: ${col.replace(/_/g, ' ')} = "${valStr}"`);
                             }}
-                            style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)', position: 'relative' }} title={`${valStr || '—'}\n\nDouble-click to filter by this value`}>
+                            style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: cellColor, position: 'relative', cursor: isClickable ? 'copy' : 'pointer' }} title={isClickable ? `Click to copy: ${valStr}\nDouble-click to filter` : `${valStr || '—'}\n\nDouble-click to filter by this value`}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               {cIdx === 0 && <span style={{ width: 6, height: 6, borderRadius: '50%', background: completenessColor, flexShrink: 0 }} title={`Data Completeness`} />}
                               <span>{!valStr ? <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>—</span> : valStr}</span>
