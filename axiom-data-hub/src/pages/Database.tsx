@@ -156,11 +156,16 @@ export default function DatabasePage() {
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [showColPicker, setShowColPicker] = useState(false);
+  const [colPickerSearch, setColPickerSearch] = useState('');
   const [pageSize, setPageSize] = useState(50);
   const [dataSourceFilter, setDataSourceFilter] = useState<string[]>([]);
+  const [showSourcePicker, setShowSourcePicker] = useState(false);
+  const [sourceSearch, setSourceSearch] = useState('');
   const [completenessFilter, setCompletenessFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const colPickerRef = useRef<HTMLDivElement>(null);
   const colPickerBtnRef = useRef<HTMLButtonElement>(null);
+  const sourcePickerRef = useRef<HTMLDivElement>(null);
+  const sourcePickerBtnRef = useRef<HTMLButtonElement>(null);
 
   // Data source options for filter
   const [dataSourceOptions, setDataSourceOptions] = useState<{ id: string; label: string }[]>([]);
@@ -265,17 +270,24 @@ export default function DatabasePage() {
     }).catch(() => { });
   }, [fetchStats, fetchColumns]);
 
-  // Click outside handler for column picker
+  // Click outside handler for column picker + source picker
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (colPickerRef.current && !colPickerRef.current.contains(event.target as Node) &&
         colPickerBtnRef.current && !colPickerBtnRef.current.contains(event.target as Node)) {
         setShowColPicker(false);
+        setColPickerSearch('');
       }
       // Click outside presets dropdown
       if (presetsRef.current && !presetsRef.current.contains(event.target as Node) &&
         presetsBtnRef.current && !presetsBtnRef.current.contains(event.target as Node)) {
         setShowPresets(false);
+      }
+      // Click outside source picker
+      if (sourcePickerRef.current && !sourcePickerRef.current.contains(event.target as Node) &&
+        sourcePickerBtnRef.current && !sourcePickerBtnRef.current.contains(event.target as Node)) {
+        setShowSourcePicker(false);
+        setSourceSearch('');
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -631,84 +643,179 @@ export default function DatabasePage() {
               </div>
 
               <div style={{ position: 'relative' }}>
-                {/* 
-                  Use generic button element here and capture ref, 
-                  so we can cleanly attach ref without breaking UI.Button constraints
-                */}
                 <button
                   ref={colPickerBtnRef}
-                  onClick={() => setShowColPicker(!showColPicker)}
+                  onClick={() => { setShowColPicker(!showColPicker); setColPickerSearch(''); }}
                   style={{
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                     padding: '10px 20px', borderRadius: 12, fontSize: 13, fontWeight: 600,
                     cursor: 'pointer', transition: 'all 0.2s',
-                    background: 'var(--bg-card-hover)', color: 'var(--text-primary)', border: '1px solid var(--border)'
+                    background: 'var(--bg-card-hover)', color: 'var(--text-primary)', border: '1px solid var(--border)',
+                    position: 'relative',
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--border-hover)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; }}
                 >
                   <Columns size={14} /> Columns
+                  <span style={{
+                    background: 'var(--accent)', color: 'var(--accent-contrast)',
+                    fontSize: 10, fontWeight: 800, padding: '1px 6px', borderRadius: 10, minWidth: 18, textAlign: 'center',
+                  }}>{Object.values(visibleCols).filter(Boolean).length}</span>
                 </button>
                 {showColPicker && (
-                  <div ref={colPickerRef} style={{
-                    position: 'absolute', top: 44, right: 0, width: 260, zIndex: 100,
-                    background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12,
-                    boxShadow: 'var(--shadow-lg)', padding: 12, maxHeight: 400, overflowY: 'auto'
+                  <div ref={colPickerRef} className="animate-fadeIn" style={{
+                    position: 'absolute', top: 48, right: 0, width: 300, zIndex: 100,
+                    background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14,
+                    boxShadow: '0 12px 40px rgba(0,0,0,0.35)', overflow: 'hidden',
                   }}>
+                    {/* Search */}
+                    <div style={{ padding: '12px 12px 8px 12px' }}>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                        background: 'var(--bg-input)', borderRadius: 8, border: '1px solid var(--border)',
+                      }}>
+                        <Search size={13} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+                        <input
+                          autoFocus
+                          value={colPickerSearch}
+                          onChange={e => setColPickerSearch(e.target.value)}
+                          placeholder="Search columns..."
+                          style={{
+                            flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                            color: 'var(--text-primary)', fontSize: 12,
+                          }}
+                        />
+                        {colPickerSearch && (
+                          <X size={12} style={{ color: 'var(--text-tertiary)', cursor: 'pointer' }} onClick={() => setColPickerSearch('')} />
+                        )}
+                      </div>
+                    </div>
+
                     {/* Quick actions */}
-                    <div style={{ display: 'flex', gap: 6, marginBottom: 10, paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', gap: 6, padding: '0 12px 10px 12px', borderBottom: '1px solid var(--border)' }}>
                       <button onClick={() => {
                         const all: Record<string, boolean> = {};
                         allColumns.forEach(c => all[c] = true);
                         setVisibleCols(all);
-                      }} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer', background: 'var(--accent-muted)', color: 'var(--accent)', border: '1px solid var(--accent)' }}>
-                        Show All
+                      }} style={{
+                        flex: 1, padding: '6px 0', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        background: 'var(--accent-muted)', color: 'var(--accent)', border: '1px solid var(--accent)',
+                        transition: 'all 0.15s',
+                      }}>
+                        Show All ({allColumns.length})
                       </button>
                       <button onClick={() => {
                         const defaults: Record<string, boolean> = {};
                         const PRIORITY = ['first_name','last_name','business_email','personal_emails','company_name','job_title_normalized','primary_industry','personal_state','seniority_level','mobile_phone','company_domain','linkedin_url'];
                         PRIORITY.filter(c => allColumns.includes(c)).forEach(c => defaults[c] = true);
                         setVisibleCols(defaults);
-                      }} style={{ flex: 1, padding: '5px 0', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
-                        Default
+                      }} style={{
+                        flex: 1, padding: '6px 0', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        background: 'var(--bg-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border)',
+                        transition: 'all 0.15s',
+                      }}>
+                        Default (12)
                       </button>
                     </div>
-                    {Object.entries(COLUMN_GROUPS).map(([group, groupCols]) => {
-                      const available = groupCols.filter(c => allColumns.includes(c));
-                      if (available.length === 0) return null;
-                      return (
-                        <div key={group} style={{ marginBottom: 8 }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', padding: '4px 8px', letterSpacing: '0.08em' }}>{group}</div>
-                          {available.map(col => (
-                            <label key={col} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 12 }}
-                              onMouseOver={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                              onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
-                              <input type="checkbox" checked={!!visibleCols[col]} onChange={() => toggleCol(col)} style={{ accentColor: 'var(--accent)' }} />
-                              <span style={{ userSelect: 'none' }}>{col.replace(/_/g, ' ')}</span>
-                            </label>
-                          ))}
-                        </div>
-                      );
-                    })}
-                    {/* Other columns not in any group */}
-                    {(() => {
-                      const grouped = new Set(Object.values(COLUMN_GROUPS).flat());
-                      const other = allColumns.filter(c => !grouped.has(c));
-                      if (other.length === 0) return null;
-                      return (
-                        <div style={{ marginBottom: 8 }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', padding: '4px 8px', letterSpacing: '0.08em' }}>Other</div>
-                          {other.map(col => (
-                            <label key={col} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', cursor: 'pointer', borderRadius: 6, fontSize: 12 }}
-                              onMouseOver={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                              onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
-                              <input type="checkbox" checked={!!visibleCols[col]} onChange={() => toggleCol(col)} style={{ accentColor: 'var(--accent)' }} />
-                              <span style={{ userSelect: 'none' }}>{col.replace(/_/g, ' ')}</span>
-                            </label>
-                          ))}
-                        </div>
-                      );
-                    })()}
+
+                    {/* Columns list */}
+                    <div style={{ maxHeight: 340, overflowY: 'auto', padding: '8px 0' }}>
+                      {Object.entries(COLUMN_GROUPS).map(([group, groupCols]) => {
+                        const available = groupCols.filter(c => allColumns.includes(c));
+                        if (available.length === 0) return null;
+                        const filtered = colPickerSearch
+                          ? available.filter(c => c.toLowerCase().includes(colPickerSearch.toLowerCase()))
+                          : available;
+                        if (filtered.length === 0) return null;
+                        const activeInGroup = filtered.filter(c => visibleCols[c]).length;
+                        return (
+                          <div key={group} style={{ marginBottom: 4 }}>
+                            <div style={{
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                              fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                              color: 'var(--text-tertiary)', padding: '6px 16px 4px', letterSpacing: '0.08em',
+                            }}>
+                              <span>{group}</span>
+                              <span style={{
+                                fontSize: 9, padding: '1px 6px', borderRadius: 8,
+                                background: activeInGroup > 0 ? 'var(--accent-muted)' : 'transparent',
+                                color: activeInGroup > 0 ? 'var(--accent)' : 'var(--text-tertiary)',
+                                fontWeight: 800,
+                              }}>{activeInGroup}/{filtered.length}</span>
+                            </div>
+                            {filtered.map(col => (
+                              <label key={col} onClick={() => toggleCol(col)} style={{
+                                display: 'flex', alignItems: 'center', gap: 10, padding: '5px 16px',
+                                cursor: 'pointer', borderRadius: 0, fontSize: 12.5, fontWeight: 500,
+                                color: visibleCols[col] ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                transition: 'all 0.1s',
+                              }}
+                                onMouseOver={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                                onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                                <div style={{
+                                  width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                                  border: visibleCols[col] ? '2px solid var(--accent)' : '2px solid var(--border-hover)',
+                                  background: visibleCols[col] ? 'var(--accent)' : 'transparent',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  transition: 'all 0.15s',
+                                }}>
+                                  {visibleCols[col] && <CheckCircle2 size={10} style={{ color: 'var(--accent-contrast)' }} />}
+                                </div>
+                                <span style={{ userSelect: 'none' }}>{col.replace(/_/g, ' ')}</span>
+                              </label>
+                            ))}
+                          </div>
+                        );
+                      })}
+                      {/* Other columns not in any group */}
+                      {(() => {
+                        const grouped = new Set(Object.values(COLUMN_GROUPS).flat());
+                        const other = allColumns.filter(c => !grouped.has(c));
+                        const filtered = colPickerSearch
+                          ? other.filter(c => c.toLowerCase().includes(colPickerSearch.toLowerCase()))
+                          : other;
+                        if (filtered.length === 0) return null;
+                        const activeInGroup = filtered.filter(c => visibleCols[c]).length;
+                        return (
+                          <div style={{ marginBottom: 4 }}>
+                            <div style={{
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                              fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+                              color: 'var(--text-tertiary)', padding: '6px 16px 4px', letterSpacing: '0.08em',
+                            }}>
+                              <span>Other</span>
+                              <span style={{
+                                fontSize: 9, padding: '1px 6px', borderRadius: 8,
+                                background: activeInGroup > 0 ? 'var(--accent-muted)' : 'transparent',
+                                color: activeInGroup > 0 ? 'var(--accent)' : 'var(--text-tertiary)',
+                                fontWeight: 800,
+                              }}>{activeInGroup}/{filtered.length}</span>
+                            </div>
+                            {filtered.map(col => (
+                              <label key={col} onClick={() => toggleCol(col)} style={{
+                                display: 'flex', alignItems: 'center', gap: 10, padding: '5px 16px',
+                                cursor: 'pointer', borderRadius: 0, fontSize: 12.5, fontWeight: 500,
+                                color: visibleCols[col] ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                transition: 'all 0.1s',
+                              }}
+                                onMouseOver={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                                onMouseOut={e => e.currentTarget.style.background = 'transparent'}>
+                                <div style={{
+                                  width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                                  border: visibleCols[col] ? '2px solid var(--accent)' : '2px solid var(--border-hover)',
+                                  background: visibleCols[col] ? 'var(--accent)' : 'transparent',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  transition: 'all 0.15s',
+                                }}>
+                                  {visibleCols[col] && <CheckCircle2 size={10} style={{ color: 'var(--accent-contrast)' }} />}
+                                </div>
+                                <span style={{ userSelect: 'none' }}>{col.replace(/_/g, ' ')}</span>
+                              </label>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1233,57 +1340,114 @@ export default function DatabasePage() {
                   </select>
                 </div>
 
-                {/* Data source filter — multi-select */}
+                {/* Data source filter — premium multi-select */}
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 4 }}>
                   <button
-                    onClick={() => {
-                      const el = document.getElementById('source-picker');
-                      if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
-                    }}
+                    ref={sourcePickerBtnRef}
+                    onClick={() => { setShowSourcePicker(!showSourcePicker); setSourceSearch(''); }}
                     style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
                       background: dataSourceFilter.length > 0 ? 'var(--accent)' : 'var(--bg-input)',
-                      border: '1px solid var(--border)', borderRadius: 6,
+                      border: '1px solid var(--border)', borderRadius: 8,
                       color: dataSourceFilter.length > 0 ? 'var(--accent-contrast)' : 'var(--text-primary)',
-                      fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
+                      fontSize: 11, fontWeight: 600, padding: '5px 10px', cursor: 'pointer',
+                      transition: 'all 0.15s',
                     }}
                   >
-                    {dataSourceFilter.length === 0 ? 'All Sources' : dataSourceFilter.length === 1 ? (dataSourceOptions.find(s => s.id === dataSourceFilter[0])?.label || '1 file').split(' (')[0] : `${dataSourceFilter.length} files`}
+                    <Layers size={12} />
+                    {dataSourceFilter.length === 0 ? 'All Sources' : dataSourceFilter.length === 1 ? (dataSourceOptions.find(s => s.id === dataSourceFilter[0])?.label || '1 file').split(' (')[0] : `${dataSourceFilter.length} sources`}
+                    {dataSourceFilter.length > 0 && (
+                      <span style={{
+                        background: 'rgba(255,255,255,0.25)', fontSize: 9, fontWeight: 800,
+                        padding: '0 5px', borderRadius: 6, minWidth: 14, textAlign: 'center',
+                      }}>{dataSourceFilter.length}</span>
+                    )}
                   </button>
-                  <div id="source-picker" style={{
-                    display: 'none', position: 'absolute', top: 32, right: 0, zIndex: 200,
-                    background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10,
-                    boxShadow: 'var(--shadow-lg)', padding: 8, minWidth: 280, maxHeight: 300, overflowY: 'auto',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, padding: '2px 4px' }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>Data Sources</span>
-                      {dataSourceFilter.length > 0 && (
-                        <button onClick={() => { setDataSourceFilter([]); setPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer' }}>Clear</button>
-                      )}
-                    </div>
-                    {dataSourceOptions.map(ds => (
-                      <label key={ds.id} style={{
-                        display: 'flex', alignItems: 'center', gap: 6, padding: '5px 6px',
-                        borderRadius: 6, cursor: 'pointer', fontSize: 11, fontWeight: 500,
-                        color: 'var(--text-primary)',
-                      }}
-                        onMouseOver={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-                        onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={dataSourceFilter.includes(ds.id)}
-                          onChange={() => {
-                            setDataSourceFilter(prev =>
-                              prev.includes(ds.id) ? prev.filter(id => id !== ds.id) : [...prev, ds.id]
+                  {showSourcePicker && (
+                    <div ref={sourcePickerRef} className="animate-fadeIn" style={{
+                      position: 'absolute', top: 36, right: 0, zIndex: 200,
+                      background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14,
+                      boxShadow: '0 12px 40px rgba(0,0,0,0.35)', overflow: 'hidden', minWidth: 320,
+                    }}>
+                      {/* Search + Clear */}
+                      <div style={{ padding: '12px 12px 8px 12px' }}>
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                          background: 'var(--bg-input)', borderRadius: 8, border: '1px solid var(--border)',
+                        }}>
+                          <Search size={13} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+                          <input
+                            autoFocus
+                            value={sourceSearch}
+                            onChange={e => setSourceSearch(e.target.value)}
+                            placeholder="Search sources..."
+                            style={{
+                              flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                              color: 'var(--text-primary)', fontSize: 12,
+                            }}
+                          />
+                          {sourceSearch && (
+                            <X size={12} style={{ color: 'var(--text-tertiary)', cursor: 'pointer' }} onClick={() => setSourceSearch('')} />
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Header */}
+                      <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '0 14px 8px', borderBottom: '1px solid var(--border)',
+                      }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
+                          Data Sources ({dataSourceOptions.length})
+                        </span>
+                        {dataSourceFilter.length > 0 && (
+                          <button onClick={() => { setDataSourceFilter([]); setPage(1); }} style={{
+                            fontSize: 10, fontWeight: 700, color: 'var(--red)', background: 'var(--red-muted)',
+                            border: 'none', cursor: 'pointer', padding: '2px 8px', borderRadius: 4,
+                          }}>Clear All</button>
+                        )}
+                      </div>
+
+                      {/* Source list */}
+                      <div style={{ maxHeight: 280, overflowY: 'auto', padding: '6px 0' }}>
+                        {dataSourceOptions
+                          .filter(ds => !sourceSearch || ds.label.toLowerCase().includes(sourceSearch.toLowerCase()))
+                          .map(ds => {
+                            const isActive = dataSourceFilter.includes(ds.id);
+                            return (
+                              <label key={ds.id} onClick={() => {
+                                setDataSourceFilter(prev =>
+                                  prev.includes(ds.id) ? prev.filter(id => id !== ds.id) : [...prev, ds.id]
+                                );
+                                setPage(1);
+                              }} style={{
+                                display: 'flex', alignItems: 'center', gap: 10, padding: '6px 14px',
+                                cursor: 'pointer', fontSize: 12, fontWeight: 500,
+                                color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                transition: 'all 0.1s',
+                              }}
+                                onMouseOver={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                                onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                              >
+                                <div style={{
+                                  width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                                  border: isActive ? '2px solid var(--accent)' : '2px solid var(--border-hover)',
+                                  background: isActive ? 'var(--accent)' : 'transparent',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  transition: 'all 0.15s',
+                                }}>
+                                  {isActive && <CheckCircle2 size={10} style={{ color: 'var(--accent-contrast)' }} />}
+                                </div>
+                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ds.label}</span>
+                              </label>
                             );
-                            setPage(1);
-                          }}
-                          style={{ accentColor: 'var(--accent)' }}
-                        />
-                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ds.label}</span>
-                      </label>
-                    ))}
-                  </div>
+                          })}
+                        {dataSourceOptions.filter(ds => !sourceSearch || ds.label.toLowerCase().includes(sourceSearch.toLowerCase())).length === 0 && (
+                          <div style={{ padding: '16px 14px', fontSize: 12, color: 'var(--text-tertiary)', textAlign: 'center' }}>No matching sources</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Page nav */}
