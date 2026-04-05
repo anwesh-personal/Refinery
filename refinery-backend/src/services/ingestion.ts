@@ -43,6 +43,7 @@ const waitQueue: Array<{ resolve: () => void }> = [];
 // Per-job pause/resume without DB polling. flushBatch checks this set
 // between every batch — if paused, it sleeps until resumed or shutdown.
 const pausedJobs = new Set<string>();
+const activeJobIds = new Set<string>(); // all jobs currently in runIngestionPipeline
 const PAUSE_POLL_INTERVAL_MS = 2000; // check every 2s while paused
 
 /** Pause a specific job. Takes effect at the next batch boundary. */
@@ -57,14 +58,14 @@ export function resumeJob(jobId: string): void {
   console.log(`[Ingestion] ${jobId}: Resumed.`);
 }
 
-/** Pause ALL active jobs. */
+/** Pause ALL active jobs — uses activeJobIds which tracks from pipeline entry. */
 export function pauseAllJobs(): string[] {
   const paused: string[] = [];
-  for (const [jobId] of progressStore) {
+  for (const jobId of activeJobIds) {
     pausedJobs.add(jobId);
     paused.push(jobId);
   }
-  console.log(`[Ingestion] Pause ALL — ${paused.length} job(s) paused.`);
+  console.log(`[Ingestion] Pause ALL — ${paused.length} job(s) will pause at next batch boundary.`);
   return paused;
 }
 
@@ -1088,6 +1089,7 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
 
   const storageClient = getStorageClient();
   let totalRows = 0;
+  activeJobIds.add(jobId); // Track from pipeline entry for pauseAllJobs
 
   // ─── Step 1: Download from S3 to temp file (with retry) ───
   // Transient network failures (ECONNRESET, ETIMEDOUT, etc.) are retried
@@ -1406,6 +1408,9 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
     await archivePromise;
 
   } finally {
+    // Clean up tracking state — prevents stale entries on failure or completion
+    activeJobIds.delete(jobId);
+    pausedJobs.delete(jobId);
     // Clean up temp files
     await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => { });
   }
