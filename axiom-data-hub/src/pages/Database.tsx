@@ -167,6 +167,7 @@ export default function DatabasePage() {
 
   // Row detail drawer
   const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
+  const [exporting, setExporting] = useState(false);
 
 
   // Dynamic columns from backend
@@ -1324,7 +1325,8 @@ export default function DatabasePage() {
                   downloadCSV(selectedRows, 'selected');
                 }}>Export Selected ({selectedIds.size})</Button>
               )}
-              <Button variant="secondary" icon={<Download size={14} />} onClick={async () => {
+              <Button variant="secondary" icon={<Download size={14} />} disabled={exporting} onClick={async () => {
+                setExporting(true);
                 try {
                   const activeFilters = Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== ''));
                   const activeCols = Object.entries(visibleCols).filter(([_, v]) => v).map(([k]) => k);
@@ -1348,19 +1350,23 @@ export default function DatabasePage() {
                       completenessFilter: completenessFilter !== 'all' ? completenessFilter : undefined,
                     }),
                   });
+                  if (!resp.ok) throw new Error(`Export failed: ${resp.statusText}`);
                   const blob = await resp.blob();
                   const url = URL.createObjectURL(blob);
                   const link = document.createElement('a');
                   link.href = url;
-                  link.download = `refinery-export-all-${Date.now()}.csv`;
+                  link.download = `refinery-export-${Date.now()}.csv`;
                   document.body.appendChild(link);
                   link.click();
                   document.body.removeChild(link);
                   URL.revokeObjectURL(url);
+                  toastSuccess(`Export complete — ${formatNumber(result.total || 0)} rows`);
                 } catch (e: any) {
                   setError(`Export failed: ${e.message}`);
+                } finally {
+                  setExporting(false);
                 }
-              }}>Export All{completenessFilter !== 'all' ? ` (${completenessFilter})` : ''} ({formatNumber(result.total || 0)})</Button>
+              }}>{exporting ? 'Exporting...' : `Export All (${formatNumber(result.total || 0)})`}</Button>
               {selectedIds.size > 0 && (
                 <Button variant="primary" icon={<Trash2 size={14} />} onClick={handleBulkDelete} disabled={bulkDeleting} style={{ background: 'var(--red)', borderColor: 'var(--red)' }}>
                   {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedIds.size})`}

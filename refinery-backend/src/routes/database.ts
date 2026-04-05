@@ -102,34 +102,41 @@ router.get('/health', async (_req, res) => {
   }
 });
 
-// POST /api/database/export — same params as browse but returns CSV
+// POST /api/database/export — streams CSV directly from ClickHouse (zero memory buffering)
 router.post('/export', async (req, res) => {
   try {
-    const result = await dbService.browseData({ ...req.body, page: 1, pageSize: 100000 });
-    const rows = result.rows;
-    if (!rows.length) {
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="export-${Date.now()}-empty.csv"`);
-      return res.send('No data found\n');
-    }
-    const cols = Object.keys(rows[0]);
-    const header = cols.join(',');
-    const lines = rows.map(row =>
-      cols.map(c => {
-        const v = row[c];
-        if (v === null || v === undefined) return '';
-        const s = String(v).replace(/"/g, '""');
-        return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s}"` : s;
-      }).join(',')
-    );
-    const csv = [header, ...lines].join('\n');
     const user = getRequestUser(req);
-    console.log(`[Export] Database CSV exported by ${user.name} (${user.id}) \u2014 ${rows.length} rows`);
+    console.log(`[Export] CSV export started by ${user.name} (${user.id})`);
+
+    const { stream } = await dbService.exportStreamCSV(req.body);
+
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="export-${Date.now()}.csv"`);
-    res.send(csv);
+    res.setHeader('Content-Disposition', `attachment; filename="refinery-export-${Date.now()}.csv"`);
+    res.setHeader('Transfer-Encoding', 'chunked');
+
+    // Pipe each chunk from ClickHouse stream directly to the response
+    for await (const rows of stream) {
+      // Each chunk is an array of row arrays from ClickHouse CSVWithNames format
+      const text = rows.map((row: { text: string }) => row.text).join('\n');
+      if (text) {
+        const ok = res.write(text + '\n');
+        if (!ok) {
+          // Back-pressure: wait for drain before continuing
+          await new Promise<void>(resolve => res.once('drain', resolve));
+        }
+      }
+    }
+
+    console.log(`[Export] CSV export completed for ${user.name}`);
+    res.end();
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    console.error('[Export] Failed:', e.message);
+    // If headers already sent, we can't send JSON error
+    if (!res.headersSent) {
+      res.status(500).json({ error: e.message });
+    } else {
+      res.end();
+    }
   }
 });
 

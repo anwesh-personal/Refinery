@@ -1,4 +1,4 @@
-import { query, command, ping } from '../db/clickhouse.js';
+import { query, command, ping, streamCSV } from '../db/clickhouse.js';
 import { env } from '../config/env.js';
 
 /** Run a user SQL query (read-only, with safety checks) */
@@ -420,4 +420,49 @@ export async function getTableColumnsFor(tableName: string): Promise<string[]> {
     ORDER BY position
   `);
   return rows.map(r => r.name);
+}
+
+/**
+ * Streaming CSV export — returns a ClickHouse native CSV stream.
+ * Zero memory footprint: ClickHouse generates CSV, Node.js just pipes it through.
+ * 5-minute ClickHouse timeout for large filtered sets (millions of rows).
+ */
+export async function exportStreamCSV(params: BrowseParams) {
+  const { sortBy, sortDir = 'asc' } = params;
+
+  const allColumns = await getTableColumns();
+  const allowedSet = new Set(allColumns);
+
+  // Use the same priority columns and validation as browseData
+  const PRIORITY_COLS = [
+    'first_name', 'last_name', 'business_email', 'personal_emails',
+    'company_name', 'job_title_normalized', 'primary_industry',
+    'personal_state', 'seniority_level', 'mobile_phone',
+    'company_domain', 'linkedin_url',
+  ];
+  const priorityCols = PRIORITY_COLS.filter(c => allowedSet.has(c));
+  const remaining = allColumns.filter(c => !INTERNAL_COLS.has(c) && !priorityCols.includes(c));
+  const defaultCols = [...priorityCols, ...remaining].slice(0, 14);
+
+  const selectCols = (params.columns?.length ? params.columns : defaultCols)
+    .filter(c => allowedSet.has(c));
+
+  if (selectCols.length === 0) throw new Error('No valid columns to select');
+
+  // Build WHERE using shared function (identical to browseData)
+  const conditions = buildWhereConditions(params, allowedSet, selectCols);
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  // Sort
+  const safeSortBy = (sortBy && allowedSet.has(sortBy)) ? `\`${sortBy}\`` : `\`${selectCols[0]}\``;
+  const safeSortDir = sortDir === 'desc' ? 'DESC' : 'ASC';
+
+  const escapedCols = selectCols.map(c => `\`${c}\``).join(', ');
+
+  // 5-minute timeout for large exports
+  const sql = `SELECT ${escapedCols} FROM universal_person ${whereClause}
+    ORDER BY ${safeSortBy} ${safeSortDir}`;
+
+  const stream = await streamCSV(sql, { timeoutMs: 300_000 });
+  return { stream, columns: selectCols };
 }
