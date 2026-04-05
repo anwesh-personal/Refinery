@@ -41,9 +41,12 @@ const COMPLETENESS_LOW = 0.4;
 
 // Quick toggle definitions — column name is validated at runtime against schema
 const QUICK_TOGGLE_CONFIG = [
-  { key: 'hasEmail', label: 'Has Email', column: 'personal_emails', icon: 'mail' },
+  { key: 'hasPersonalEmail', label: 'Has Personal Email', column: 'personal_emails', icon: 'mail' },
+  { key: 'hasBusinessEmail', label: 'Has Business Email', column: 'business_email', icon: 'mail' },
   { key: 'hasPhone', label: 'Has Phone', column: 'mobile_phone', icon: 'phone' },
   { key: 'hasLinkedin', label: 'Has LinkedIn', column: 'linkedin_url', icon: 'linkedin' },
+  { key: 'hasUpId', label: 'Has UP ID', column: 'up_id', icon: 'key' },
+  { key: 'hasCompany', label: 'Has Company', column: 'company_name', icon: 'building' },
 ] as const;
 
 interface FilterPreset {
@@ -315,10 +318,12 @@ export default function DatabasePage() {
         .filter(f => f.column && f.operator)
         .map(f => ({ column: f.column, operator: f.operator, value: f.value }));
 
-      // Add quick boolean toggles
-      // hasEmail is handled separately via the hasEmail flag (checks both business_email + personal_emails)
-      if (quickToggles.hasPhone) afPayload.push({ column: 'mobile_phone', operator: 'is_not_null', value: '' });
-      if (quickToggles.hasLinkedin) afPayload.push({ column: 'linkedin_url', operator: 'is_not_null', value: '' });
+      // Add quick boolean toggles — all go through advancedFilters as is_not_null
+      for (const toggle of QUICK_TOGGLE_CONFIG) {
+        if (quickToggles[toggle.key]) {
+          afPayload.push({ column: toggle.column, operator: 'is_not_null', value: '' });
+        }
+      }
 
       const res = await apiCall<QueryResult>('/api/database/browse', {
         method: 'POST',
@@ -327,7 +332,6 @@ export default function DatabasePage() {
           filters: activeFilters,
           dataSourceIds: dataSourceFilter.length > 0 ? dataSourceFilter : undefined,
           advancedFilters: afPayload.length > 0 ? afPayload : undefined,
-          hasEmail: quickToggles.hasEmail || undefined,
           page,
           pageSize,
           sortBy: sortCol || activeCols[0] || 'up_id',
@@ -342,7 +346,7 @@ export default function DatabasePage() {
       // ─── Facet drill-down: fetch top values for key columns (non-blocking) ───
       // Only fetch when results are filtered (not on 121M unfiltered view)
       const hasActiveFilters = currentSearch.trim() || Object.keys(activeFilters).length > 0 ||
-        afPayload.length > 0 || quickToggles.hasEmail || quickToggles.hasPhone || quickToggles.hasLinkedin ||
+        afPayload.length > 0 || Object.values(quickToggles).some(Boolean) ||
         dataSourceFilter.length > 0 || (completenessFilter !== 'all');
 
       if (hasActiveFilters && (res.total ?? 0) < 10_000_000) {
@@ -354,7 +358,6 @@ export default function DatabasePage() {
             filters: activeFilters,
             dataSourceIds: dataSourceFilter.length > 0 ? dataSourceFilter : undefined,
             advancedFilters: afPayload.length > 0 ? afPayload : undefined,
-            hasEmail: quickToggles.hasEmail || undefined,
           }
         }).then(facetRes => {
           if (facetRes?.facets) setFacets(facetRes.facets);
@@ -919,12 +922,7 @@ export default function DatabasePage() {
               for (const [key] of activeToggles) {
                 const toggle = QUICK_TOGGLE_CONFIG.find(t => t.key === key);
                 if (toggle) {
-                  if (key === 'hasEmail') {
-                    // Email checks both business_email AND personal_emails
-                    parts.push(`((\`business_email\` IS NOT NULL AND toString(\`business_email\`) != '') OR (\`personal_emails\` IS NOT NULL AND toString(\`personal_emails\`) != ''))`);
-                  } else {
-                    parts.push(`\`${toggle.column}\` IS NOT NULL AND toString(\`${toggle.column}\`) != ''`);
-                  }
+                  parts.push(`\`${toggle.column}\` IS NOT NULL AND toString(\`${toggle.column}\`) != ''`);
                 }
               }
 
@@ -960,7 +958,7 @@ export default function DatabasePage() {
               const summary: string[] = [];
               if (af.length > 0) summary.push(`${af.length} dropdown filter(s)`);
               if (afAdv.length > 0) summary.push(`${afAdv.length} advanced filter(s)`);
-              if (activeToggles.length > 0) summary.push(activeToggles.map(([k]) => k === 'hasEmail' ? 'Has Email' : k === 'hasPhone' ? 'Has Phone' : 'Has LinkedIn').join(', '));
+              if (activeToggles.length > 0) summary.push(activeToggles.map(([k]) => QUICK_TOGGLE_CONFIG.find(t => t.key === k)?.label || k).join(', '));
               if (hasCompleteness) summary.push(`Completeness: ${completenessFilter}`);
               if (hasDataSource) summary.push('Data source filtered');
               if (hasSearch) summary.push(`Search: "${search}"`);
@@ -1006,7 +1004,7 @@ export default function DatabasePage() {
             advancedFilters.forEach((af, idx) => { if (af.column) chips.push({ label: `${af.column.replace(/_/g, ' ')} ${af.operator.replace(/_/g, ' ')} ${af.value || ''}`.trim(), onRemove: () => setAdvancedFilters(advancedFilters.filter((_, i) => i !== idx)) }); });
             if (search) chips.push({ label: `Search: "${search}"`, onRemove: () => setSearch('') });
             if (completenessFilter !== 'all') chips.push({ label: `Completeness: ${completenessFilter}`, onRemove: () => setCompletenessFilter('all') });
-            Object.entries(quickToggles).forEach(([k, v]) => { if (v) chips.push({ label: k === 'hasEmail' ? 'Has Email' : k === 'hasPhone' ? 'Has Phone' : 'Has LinkedIn', onRemove: () => setQuickToggles(prev => ({ ...prev, [k]: false })) }); });
+            Object.entries(quickToggles).forEach(([k, v]) => { if (v) chips.push({ label: QUICK_TOGGLE_CONFIG.find(t => t.key === k)?.label || k, onRemove: () => setQuickToggles(prev => ({ ...prev, [k]: false })) }); });
             if (dataSourceFilter.length > 0) chips.push({ label: `Source: ${dataSourceFilter.length === 1 ? (dataSourceOptions.find(s => s.id === dataSourceFilter[0])?.label || dataSourceFilter[0]) : `${dataSourceFilter.length} files`}`, onRemove: () => setDataSourceFilter([]) });
             if (chips.length === 0) return null;
             return (
@@ -1332,8 +1330,11 @@ export default function DatabasePage() {
                   const activeCols = Object.entries(visibleCols).filter(([_, v]) => v).map(([k]) => k);
                   const afPayload = advancedFilters.filter(f => f.column && f.operator).map(f => ({ column: f.column, operator: f.operator, value: f.value }));
                   // Include quick toggles in export — must match browse logic exactly
-                  if (quickToggles.hasPhone) afPayload.push({ column: 'mobile_phone', operator: 'is_not_null', value: '' });
-                  if (quickToggles.hasLinkedin) afPayload.push({ column: 'linkedin_url', operator: 'is_not_null', value: '' });
+                  for (const toggle of QUICK_TOGGLE_CONFIG) {
+                    if (quickToggles[toggle.key]) {
+                      afPayload.push({ column: toggle.column, operator: 'is_not_null', value: '' });
+                    }
+                  }
                   const resp = await fetch((import.meta as any).env?.VITE_API_URL ? `${(import.meta as any).env.VITE_API_URL}/api/database/export` : '/api/database/export', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1342,7 +1343,6 @@ export default function DatabasePage() {
                       filters: activeFilters,
                       dataSourceIds: dataSourceFilter.length > 0 ? dataSourceFilter : undefined,
                       advancedFilters: afPayload.length > 0 ? afPayload : undefined,
-                      hasEmail: quickToggles.hasEmail || undefined,
                       sortBy: sortCol, sortDir,
                       columns: activeCols.length > 0 ? activeCols : undefined,
                       completenessFilter: completenessFilter !== 'all' ? completenessFilter : undefined,
