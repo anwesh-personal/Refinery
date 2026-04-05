@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { PageHeader, SectionHeader, Button } from '../components/UI';
 import { apiCall } from '../lib/api';
 import { useServers } from '../components/ServerSelector';
-import { Server, Plus, Trash2, Edit2, Play, CheckCircle, XCircle, Database, Cloud, Settings, Save, Info } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, Play, CheckCircle, XCircle, Database, Cloud, Settings, Save, Info, RotateCcw } from 'lucide-react';
 import { Can } from '../auth/ProtectedRoute';
 import AgentCard from '../components/AgentCard';
+import { useAuth } from '../auth/AuthContext';
 
 interface ServerData {
   id: string;
@@ -66,6 +67,10 @@ export default function ConfigPage() {
   const [sysConfigMsg, setSysConfigMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [newConfigKey, setNewConfigKey] = useState('');
   const [newConfigValue, setNewConfigValue] = useState('');
+  const [restarting, setRestarting] = useState(false);
+
+  const { user } = useAuth();
+  const isSuperadmin = user?.role === 'superadmin';
 
   // Known config keys with human-readable labels and descriptions (shown as tooltip on hover)
   const KNOWN_CONFIGS: { key: string; label: string; description: string; tooltip: string; type: 'number' | 'string' | 'secret'; unit?: string; requiresRestart?: boolean }[] = [
@@ -526,15 +531,49 @@ export default function ConfigPage() {
       <div style={{ marginTop: 48 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <SectionHeader title="System Settings" />
-          <Can do="canEditConfig">
-            <Button
-              onClick={handleSaveSysConfig}
-              disabled={sysConfigSaving}
-              icon={sysConfigSaving ? <Settings size={14} className="animate-pulse" /> : <Save size={14} />}
-            >
-              {sysConfigSaving ? 'Saving...' : 'Save Settings'}
-            </Button>
-          </Can>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            {isSuperadmin && (
+              <Button
+                variant="danger"
+                onClick={async () => {
+                  if (!window.confirm('⚠️ This will restart the API server (PM2).\n\nAll active ingestion pipelines will be interrupted and auto-recovered on restart.\n\nProceed?')) return;
+                  setRestarting(true);
+                  try {
+                    await apiCall('/api/config/restart', { method: 'POST' });
+                    // Poll until the server comes back
+                    const poll = async (attempt = 0): Promise<void> => {
+                      if (attempt > 30) { setRestarting(false); return; } // 30s timeout
+                      await new Promise(r => setTimeout(r, 1000));
+                      try {
+                        await apiCall('/api/config');
+                        setRestarting(false);
+                        window.location.reload();
+                      } catch {
+                        return poll(attempt + 1);
+                      }
+                    };
+                    await poll();
+                  } catch {
+                    setRestarting(false);
+                  }
+                }}
+                disabled={restarting}
+                icon={<RotateCcw size={14} className={restarting ? 'spin' : ''} />}
+                style={{ opacity: restarting ? 0.6 : 1 }}
+              >
+                {restarting ? 'Restarting...' : 'Restart Server'}
+              </Button>
+            )}
+            <Can do="canEditConfig">
+              <Button
+                onClick={handleSaveSysConfig}
+                disabled={sysConfigSaving}
+                icon={sysConfigSaving ? <Settings size={14} className="animate-pulse" /> : <Save size={14} />}
+              >
+                {sysConfigSaving ? 'Saving...' : 'Save Settings'}
+              </Button>
+            </Can>
+          </div>
         </div>
 
         {sysConfigMsg && (
