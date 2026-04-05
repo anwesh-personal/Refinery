@@ -149,14 +149,12 @@ function buildWhereConditions(params: BrowseParams, allowedSet: Set<string>, sel
     const isLinkedIn = raw.toLowerCase().includes('linkedin.com');
 
     // Build the searchable column sets — always validated against actual schema
+    // Only sets that are used by intent-specific search paths:
     const DOMAIN_COLS  = ['business_email', 'personal_emails', 'additional_personal_emails', 'programmatic_business_emails', 'historical_programmatic_emails', 'company_domain', 'related_domains'].filter(c => allowedSet.has(c));
     const EMAIL_COLS   = ['business_email', 'personal_emails', 'additional_personal_emails', 'programmatic_business_emails', 'historical_programmatic_emails'].filter(c => allowedSet.has(c));
     const PHONE_COLS   = ['mobile_phone', 'direct_number', 'personal_phone', 'company_phone'].filter(c => allowedSet.has(c));
-    const NAME_COLS    = ['first_name', 'last_name', 'full_name'].filter(c => allowedSet.has(c));
-    const COMPANY_COLS = ['company_name', 'company_domain', 'company_description', 'primary_industry'].filter(c => allowedSet.has(c));
-    const JOB_COLS     = ['job_title', 'job_title_normalized', 'seniority_level', 'department'].filter(c => allowedSet.has(c));
-    const LOCATION_COLS= ['personal_city', 'personal_state', 'personal_country', 'personal_zip', 'company_city', 'company_state', 'company_country'].filter(c => allowedSet.has(c));
     const LINKEDIN_COLS= ['linkedin_url', 'company_linkedin_url'].filter(c => allowedSet.has(c));
+    // General text search uses _search_text (bloom-filter indexed) — no column set needed
 
     if (isDomain) {
       // Domain search — targeted columns for precision

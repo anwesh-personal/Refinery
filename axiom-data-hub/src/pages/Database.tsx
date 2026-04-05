@@ -85,6 +85,41 @@ function formatBytes(bytes: number): string {
 
 function formatNumber(n: string | number): string { return Number(n).toLocaleString(); }
 
+// ─── TABLE DISPLAY CONSTANTS (file-level to avoid re-allocation inside render loops) ───
+
+/** Icons shown in column headers for visual data-type identification */
+const COLUMN_ICONS: Record<string, string> = {
+  business_email: '📧', personal_emails: '📧', additional_personal_emails: '📧', programmatic_business_emails: '📧',
+  company_domain: '🌐', related_domains: '🌐',
+  mobile_phone: '📱', personal_phone: '📱', direct_number: '📱', company_phone: '📱',
+  linkedin_url: '💼', company_linkedin_url: '💼',
+  first_name: '👤', last_name: '👤', full_name: '👤',
+  company_name: '🏢', primary_industry: '🏢',
+  job_title: '💼', job_title_normalized: '💼', seniority_level: '💼', department: '💼',
+  personal_city: '📍', personal_state: '📍', personal_country: '📍', company_city: '📍', company_state: '📍', company_country: '📍', country: '🌎',
+};
+
+/** Column sets used for copy-on-click and color coding */
+const COPYABLE_EMAIL_COLS = new Set(['business_email', 'personal_emails', 'additional_personal_emails', 'programmatic_business_emails', 'historical_programmatic_emails']);
+const COPYABLE_PHONE_COLS = new Set(['mobile_phone', 'personal_phone', 'direct_number', 'company_phone', 'personal_phone_1', 'personal_phone_2', 'personal_phone_3', 'direct_phone']);
+const COPYABLE_DOMAIN_COLS = new Set(['company_domain', 'related_domains']);
+const COPYABLE_LINKEDIN_COLS = new Set(['linkedin_url', 'company_linkedin_url']);
+
+/** Returns CSS variable color for a cell's column type. Theme-aware. */
+function getCellColor(col: string, hasValue: boolean): string {
+  if (!hasValue) return 'var(--text-tertiary)';
+  if (COPYABLE_EMAIL_COLS.has(col)) return 'var(--purple)';
+  if (COPYABLE_PHONE_COLS.has(col)) return 'var(--green)';
+  if (COPYABLE_DOMAIN_COLS.has(col)) return 'var(--blue)';
+  if (COPYABLE_LINKEDIN_COLS.has(col)) return 'var(--cyan)';
+  return 'var(--text-secondary)';
+}
+
+/** Whether a cell value should be copied on click (vs opening the row drawer) */
+function isCopyableCell(col: string): boolean {
+  return COPYABLE_EMAIL_COLS.has(col) || COPYABLE_PHONE_COLS.has(col) || COPYABLE_DOMAIN_COLS.has(col) || COPYABLE_LINKEDIN_COLS.has(col);
+}
+
 // --- Main Component ---
 export default function DatabasePage() {
   const { success: toastSuccess, error: toastError } = useToast();
@@ -893,12 +928,10 @@ export default function DatabasePage() {
                 }
               }
 
-              // 4. Search → LIKE across searchable columns
+              // 4. Search → use indexed _search_text column (matches backend logic exactly)
               if (hasSearch) {
-                const escaped = search.trim().replace(/'/g, "\\'");
-                const searchCols = ['first_name', 'last_name', 'business_email', 'personal_emails', 'company_name', 'job_title_normalized', 'mobile_phone', 'company_domain'];
-                const searchClause = searchCols.map(c => `lower(coalesce(toString(\`${c}\`), '')) LIKE lower('%${escaped}%')`).join(' OR ');
-                parts.push(`(${searchClause})`);
+                const escaped = search.trim().replace(/'/g, "\\'").toLowerCase();
+                parts.push(`_search_text LIKE '%${escaped}%'`);
               }
 
               // 5. Data source filter
@@ -1298,6 +1331,9 @@ export default function DatabasePage() {
                   const activeFilters = Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== ''));
                   const activeCols = Object.entries(visibleCols).filter(([_, v]) => v).map(([k]) => k);
                   const afPayload = advancedFilters.filter(f => f.column && f.operator).map(f => ({ column: f.column, operator: f.operator, value: f.value }));
+                  // Include quick toggles in export — must match browse logic exactly
+                  if (quickToggles.hasPhone) afPayload.push({ column: 'mobile_phone', operator: 'is_not_null', value: '' });
+                  if (quickToggles.hasLinkedin) afPayload.push({ column: 'linkedin_url', operator: 'is_not_null', value: '' });
                   const resp = await fetch((import.meta as any).env?.VITE_API_URL ? `${(import.meta as any).env.VITE_API_URL}/api/database/export` : '/api/database/export', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1306,6 +1342,7 @@ export default function DatabasePage() {
                       filters: activeFilters,
                       dataSourceIds: dataSourceFilter.length > 0 ? dataSourceFilter : undefined,
                       advancedFilters: afPayload.length > 0 ? afPayload : undefined,
+                      hasEmail: quickToggles.hasEmail || undefined,
                       sortBy: sortCol, sortDir,
                       columns: activeCols.length > 0 ? activeCols : undefined,
                       completenessFilter: completenessFilter !== 'all' ? completenessFilter : undefined,
@@ -1386,7 +1423,6 @@ export default function DatabasePage() {
                     </th>
                   )}
                   {resultCols.map(col => {
-                    const COLUMN_ICONS: Record<string, string> = { business_email: '📧', personal_emails: '📧', company_domain: '🌐', mobile_phone: '📱', personal_phone: '📱', direct_number: '📱', company_phone: '📱', linkedin_url: '💼', company_linkedin_url: '💼', first_name: '👤', last_name: '👤', full_name: '👤', company_name: '🏢', job_title: '💼', job_title_normalized: '💼', personal_city: '📍', personal_state: '📍', country: '🌎' };
                     const icon = COLUMN_ICONS[col] || '';
                     return (
                     <th key={col}
@@ -1446,13 +1482,8 @@ export default function DatabasePage() {
                       {resultCols.map((col, cIdx) => {
                         const val = row[col];
                         const valStr = val === null || val === undefined ? '' : String(val);
-                        // Color coding for data types
-                        const EMAIL_COLS = ['business_email', 'personal_emails', 'additional_personal_emails', 'programmatic_business_emails'];
-                        const PHONE_COLS = ['mobile_phone', 'personal_phone', 'direct_number', 'company_phone'];
-                        const DOMAIN_COLS = ['company_domain', 'related_domains'];
-                        const LINKEDIN_COLS = ['linkedin_url', 'company_linkedin_url'];
-                        const isClickable = valStr && (EMAIL_COLS.includes(col) || PHONE_COLS.includes(col) || DOMAIN_COLS.includes(col) || LINKEDIN_COLS.includes(col));
-                        const cellColor = !valStr ? 'var(--text-tertiary)' : EMAIL_COLS.includes(col) ? '#818cf8' : PHONE_COLS.includes(col) ? '#34d399' : DOMAIN_COLS.includes(col) ? '#60a5fa' : LINKEDIN_COLS.includes(col) ? '#0077b5' : 'var(--text-secondary)';
+                        const isClickable = !!valStr && isCopyableCell(col);
+                        const cellColor = getCellColor(col, !!valStr);
                         return (
                           <td key={col}
                             onClick={() => {
