@@ -158,6 +158,7 @@ function getFileFormat(name: string): FileFormat {
 
 type FileSortKey = 'name' | 'size' | 'date';
 type JobSortKey = 'date' | 'rows' | 'status' | 'file';
+type IngestionStatusFilter = 'all' | 'ingested' | 'uningested' | 'in_progress';
 
 /* ---------------- Component ---------------- */
 export default function IngestionPage() {
@@ -179,6 +180,7 @@ export default function IngestionPage() {
   const [fileTypeFilter, setFileTypeFilter] = useState<FileFormat | 'all'>('all');
   const [jobSortKey, setJobSortKey] = useState<JobSortKey>('date');
   const [jobSortAsc, setJobSortAsc] = useState(false);
+  const [ingestionStatusFilter, setIngestionStatusFilter] = useState<IngestionStatusFilter>('all');
 
   // Auto-ingest rules
   const [rules, setRules] = useState<IngestionRule[]>([]);
@@ -998,8 +1000,12 @@ export default function IngestionPage() {
         </div>
 
         {(folders.length > 0 || sourceFiles.length > 0) ? (() => {
-          // Apply filter and sort
-          const filtered = fileTypeFilter === 'all' ? sourceFiles : sourceFiles.filter(f => getFileFormat(f.key.split('/').pop() || '') === fileTypeFilter);
+          // Apply type filter
+          let filtered = fileTypeFilter === 'all' ? sourceFiles : sourceFiles.filter(f => getFileFormat(f.key.split('/').pop() || '') === fileTypeFilter);
+          // Apply ingestion status filter
+          if (ingestionStatusFilter === 'ingested') filtered = filtered.filter(f => fileStatusMap[f.key]?.status === 'complete');
+          else if (ingestionStatusFilter === 'uningested') filtered = filtered.filter(f => !fileStatusMap[f.key] || !['complete', 'pending', 'downloading', 'uploading', 'ingesting'].includes(fileStatusMap[f.key].status));
+          else if (ingestionStatusFilter === 'in_progress') filtered = filtered.filter(f => fileStatusMap[f.key] && ['pending', 'downloading', 'uploading', 'ingesting'].includes(fileStatusMap[f.key].status));
           const sorted = [...filtered].sort((a, b) => {
             let cmp = 0;
             if (fileSortKey === 'name') cmp = (a.key.split('/').pop() || '').localeCompare(b.key.split('/').pop() || '');
@@ -1008,6 +1014,9 @@ export default function IngestionPage() {
             return fileSortAsc ? cmp : -cmp;
           });
           const formatCounts = sourceFiles.reduce((acc, f) => { const fmt = getFileFormat(f.key.split('/').pop() || ''); acc[fmt] = (acc[fmt] || 0) + 1; return acc; }, {} as Record<string, number>);
+          const ingestedCount = sourceFiles.filter(f => fileStatusMap[f.key]?.status === 'complete').length;
+          const inProgressCount = sourceFiles.filter(f => fileStatusMap[f.key] && ['pending', 'downloading', 'uploading', 'ingesting'].includes(fileStatusMap[f.key].status)).length;
+          const uningestedCount = sourceFiles.length - ingestedCount - inProgressCount;
 
           return (
             <div style={{ borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
@@ -1036,6 +1045,18 @@ export default function IngestionPage() {
                         {formatCounts['gz'] && <option value="gz">GZ ({formatCounts['gz']})</option>}
                         {formatCounts['parquet'] && <option value="parquet">Parquet ({formatCounts['parquet']})</option>}
                         {formatCounts['other'] && <option value="other">Other ({formatCounts['other']})</option>}
+                      </select>
+                    </div>
+                    {/* Ingestion Status filter */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <select value={ingestionStatusFilter} onChange={e => setIngestionStatusFilter(e.target.value as IngestionStatusFilter)} style={{
+                        background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 6,
+                        color: 'var(--text-primary)', fontSize: 11, fontWeight: 600, padding: '4px 8px', cursor: 'pointer',
+                      }}>
+                        <option value="all">All Status</option>
+                        {ingestedCount > 0 && <option value="ingested">✓ Ingested ({ingestedCount})</option>}
+                        {uningestedCount > 0 && <option value="uningested">○ Uningested ({uningestedCount})</option>}
+                        {inProgressCount > 0 && <option value="in_progress">⟳ In Progress ({inProgressCount})</option>}
                       </select>
                     </div>
                     {/* Sort */}
