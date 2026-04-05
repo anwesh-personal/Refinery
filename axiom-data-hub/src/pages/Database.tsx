@@ -675,37 +675,7 @@ export default function DatabasePage() {
               <Button variant="secondary" icon={<RefreshCw size={14} />} onClick={() => runBrowse()}>Refresh</Button>
             </div>
 
-            {/* Filters */}
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              {availableFilters.map(f => (
-                <div key={f} style={{ minWidth: 160, flex: 1, position: 'relative' }}>
-                  <select
-                    value={filters[f] || ''}
-                    onChange={e => {
-                      setFilters(prev => ({ ...prev, [f]: e.target.value }));
-                      setPage(1);
-                    }}
-                    style={{
-                      width: '100%', padding: '9px 32px 9px 12px', borderRadius: 10,
-                      fontSize: 13, fontWeight: 500, outline: 'none', cursor: 'pointer',
-                      background: 'var(--bg-input)', border: '1px solid var(--border)',
-                      color: filters[f] ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                      // Allow native appearance so arrow shows
-                    }}
-                  >
-                    <option value="">{f.split('_').join(' ').toUpperCase()} (All)</option>
-                    {(filterOptions[f] || []).map(opt => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-              {(Object.keys(filters).some(k => filters[k] !== '') || search || advancedFilters.length > 0) && (
-                <Button variant="ghost" onClick={() => { setFilters({}); setSearch(''); setAdvancedFilters([]); setPage(1); }}>
-                  Clear All
-                </Button>
-              )}
-            </div>
+            {/* Quick Toggles + Completeness moved here for cleaner layout */}
 
             {/* Advanced Filter Builder */}
             <div style={{ marginTop: 16 }}>
@@ -1161,17 +1131,51 @@ export default function DatabasePage() {
         </div>
       )}
 
-      {/* --- RESULTS GRID --- */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
-          {activeTab === 'browse' ? (
-            loading && !result ? (<span><Loader2 size={14} className="spin" style={{ display: 'inline', marginRight: 8 }} /> Loading data...</span>) :
-              result ? `Showing ${formatNumber(result.total || 0)} results (${result.elapsed}ms)` : 'Data Results'
-          ) : (
-            `Query Results ${result ? `(${result.rows.length} rows, ${result.elapsed}ms)` : ''}`
-          )}
-        </h3>
+      {/* --- RESULTS STATS BAR --- */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16,
+        padding: '12px 20px', borderRadius: 12,
+        background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 6%, var(--bg-card)), var(--bg-card))',
+        border: '1px solid var(--border)',
+        backdropFilter: 'blur(8px)',
+      }}>
+        <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+          {/* Result count */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: result ? 'var(--green)' : 'var(--text-tertiary)', boxShadow: result ? '0 0 6px var(--green)' : 'none' }} />
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>
+              {activeTab === 'browse' ? (
+                loading && !result ? 'Searching...' :
+                  result ? formatNumber(result.total || 0) : '—'
+              ) : (result ? result.rows.length : '—')}
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 500 }}>
+              {activeTab === 'browse' ? 'leads' : 'rows'}
+            </span>
+          </div>
 
+          {/* Query speed */}
+          {result?.elapsed && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: Number(result.elapsed) < 3000 ? 'color-mix(in srgb, var(--green) 15%, transparent)' : Number(result.elapsed) < 10000 ? 'color-mix(in srgb, var(--yellow) 15%, transparent)' : 'color-mix(in srgb, var(--red) 15%, transparent)', color: Number(result.elapsed) < 3000 ? 'var(--green)' : Number(result.elapsed) < 10000 ? 'var(--yellow, #f59e0b)' : 'var(--red)' }}>
+                ⚡ {Number(result.elapsed) < 1000 ? `${result.elapsed}ms` : `${(Number(result.elapsed) / 1000).toFixed(1)}s`}
+              </span>
+            </div>
+          )}
+
+          {/* Active columns */}
+          <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 500 }}>
+            {Object.values(visibleCols).filter(Boolean).length} columns
+          </span>
+        </div>
+
+        <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', margin: 0 }}>
+          {activeTab === 'browse' ? 'Data Explorer' : 'SQL Editor'}
+        </h3>
+      </div>
+
+      {/* --- PAGINATION & EXPORT BAR --- */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 16 }}>
         {/* Pagination & Export for Browse OR just Export for SQL */}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           {activeTab === 'browse' && result && (result.total || 0) > 0 && (() => {
