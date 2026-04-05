@@ -114,7 +114,6 @@ export interface BrowseParams {
   search?: string;
   filters?: Record<string, string>;
   advancedFilters?: AdvancedFilter[];
-  hasEmail?: boolean;
   page?: number;
   pageSize?: number;
   sortBy?: string;
@@ -216,11 +215,6 @@ function buildWhereConditions(params: BrowseParams, allowedSet: Set<string>, sel
         break;
       }
     }
-  }
-
-  // Has Email composite filter
-  if (params.hasEmail) {
-    conditions.push(`((\`business_email\` IS NOT NULL AND toString(\`business_email\`) != '') OR (\`personal_emails\` IS NOT NULL AND toString(\`personal_emails\`) != ''))`);
   }
 
   // Multi-source data filter — IN clause for multiple ingestion job IDs
