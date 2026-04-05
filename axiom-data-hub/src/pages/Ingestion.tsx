@@ -574,13 +574,7 @@ export default function IngestionPage() {
     setIngestingBulk(false);
   };
 
-  const toggleSelectAll = () => {
-    if (selectedFiles.size === sourceFiles.length) {
-      setSelectedFiles(new Set());
-    } else {
-      setSelectedFiles(new Set(sourceFiles.map(f => f.key)));
-    }
-  };
+
 
   const toggleFile = (key: string) => {
     const next = new Set(selectedFiles);
@@ -1022,11 +1016,21 @@ export default function IngestionPage() {
               {sourceFiles.length > 0 && (
                 <div style={{ padding: '10px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <button onClick={toggleSelectAll} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: selectedFiles.size === sourceFiles.length ? 'var(--accent)' : 'var(--text-tertiary)' }}>
-                      {selectedFiles.size > 0 && selectedFiles.size === sourceFiles.length ? <CheckSquare size={16} /> : <Square size={16} />}
+                    <button onClick={() => {
+                      const filteredKeys = filtered.map(f => f.key);
+                      const allSelected = filteredKeys.every(k => selectedFiles.has(k));
+                      if (allSelected) {
+                        const next = new Set(selectedFiles);
+                        filteredKeys.forEach(k => next.delete(k));
+                        setSelectedFiles(next);
+                      } else {
+                        setSelectedFiles(new Set([...selectedFiles, ...filteredKeys]));
+                      }
+                    }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: filtered.length > 0 && filtered.every(f => selectedFiles.has(f.key)) ? 'var(--accent)' : 'var(--text-tertiary)' }}>
+                      {filtered.length > 0 && filtered.every(f => selectedFiles.has(f.key)) ? <CheckSquare size={16} /> : <Square size={16} />}
                     </button>
                     <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)' }}>
-                      {filtered.length} file{filtered.length !== 1 ? 's' : ''}{fileTypeFilter !== 'all' ? ` (${fileTypeFilter.toUpperCase()})` : ''}
+                      {filtered.length} file{filtered.length !== 1 ? 's' : ''}{fileTypeFilter !== 'all' ? ` (${fileTypeFilter.toUpperCase()})` : ''}{ingestionStatusFilter !== 'all' ? ` · ${ingestionStatusFilter.replace('_', ' ')}` : ''}
                       {folders.length > 0 ? ` · ${folders.length} folder${folders.length !== 1 ? 's' : ''}` : ''}
                     </span>
                   </div>

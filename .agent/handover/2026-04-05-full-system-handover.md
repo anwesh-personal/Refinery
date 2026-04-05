@@ -471,4 +471,54 @@ All credentials are in `.agent/creds.md` (gitignored). Key ones:
 
 *This document supersedes `system_handover.md` (March 18, 2026) and `database-explorer-handover.md`. All issues documented in those files have been resolved.*
 
-*Last updated: April 5, 2026, 1:20 PM IST*
+*Last updated: April 5, 2026, 7:30 PM IST*
+
+---
+
+## 14. APRIL 5 PM SESSION — INGESTION STABILIZATION & UX OVERHAUL
+
+### Root Cause Fix: EPIPE & Socket Hang-up
+- **Root cause identified:** The ClickHouse client's `request_timeout` was hardcoded at 30 seconds in `clickhouse.ts`. This is a *connection-level* ceiling that kills the socket BEFORE the per-query `AbortController` timeout can fire. Long batch INSERTs (5+ min for 20M rows) were being killed mid-stream → `EPIPE` / `socket hang up`.
+- **Fix:** `request_timeout` set to 600 seconds (10 min ceiling). Individual operations still enforce stricter timeouts via AbortController.
+- **Additional fix:** Disabled `async_insert` (set to `0`). ClickHouse was buffering writes and ACKing before data was committed, causing conflicts with retry logic and misleading success signals.
+- **File:** `refinery-backend/src/db/clickhouse.ts` lines 8-24
+
+### Real-Time Ingestion Progress & ETA
+- **Backend:** New `getActiveProgress()` function in `services/ingestion.ts`
+  - Queries active jobs + their current `rows_ingested`, `started_at`, `file_size_bytes`
+  - Computes per-job throughput: `rows_ingested / elapsed_seconds`
+  - Estimates total rows via `avg(file_size_bytes / rows_ingested)` from last 20 completed jobs
+  - Per-job ETA: `(estimated_total - rows_ingested) / throughput`
+  - Overall queue ETA: accounts for active + pending jobs, concurrency slots
+- **Route:** `GET /api/ingestion/active-progress`
+- **Frontend polling:** Every 3 seconds while jobs are active (separate from the 5s full data refresh)
+
+### Premium Active Ingestion Banner (Redesigned)
+- **Overall summary bar:** Pulsing icon, title, queue info, overall avg throughput (large green monospace), total ETA (accent-bordered box with large monospace)
+- **Per-job rows:** Full-width with 4 prominent stat columns:
+  | Column | Color | Description |
+  |--------|-------|-------------|
+  | ROWS | primary | Current rows ingested (monospace) |
+  | ROWS/S | green | Real-time throughput |
+  | ELAPSED | secondary | Time since job started |
+  | ETA | accent (highlighted bg when active) | Estimated remaining time |
+- **Step pipeline** with Download → Upload → Ingest progress indicators
+- **Shimmer progress bar** during ingesting phase
+
+### Ingestion Jobs Table — Month Grouping
+- Jobs are grouped by month (e.g., "April 2026") with collapsible header rows
+- Each month header shows: Calendar icon, month label, job count, total rows, total size, complete/total ratio
+- Sort direction inherited from active sort order
+
+### S3 File Browser — Ingestion Status Filter
+- New dropdown filter in the toolbar: **All Status / ✓ Ingested / ○ Uningested / ⟳ In Progress**
+- Counts shown in dropdown options
+- Stacks with existing type filter (CSV/Parquet/GZ)
+- Files also grouped by month with section headers (Calendar icon, file count, total size, ingested badge)
+
+### Pending: Cred Management Page
+- User requested a new Credential Management page (superadmin-only)
+- Columns: Client Name, Email Server, Login Email, Login Password, Server IP, etc.
+- Share mechanism with granular permissions (read, write, download) — similar to verification page
+- **NOT YET BUILT** — parked for next session
+
