@@ -1422,6 +1422,9 @@ export default function DatabasePage() {
                       </div>
                     </th>
                   )}
+                  {activeTab === 'browse' && (
+                    <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border)', fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', width: 40, textAlign: 'right' }}>#</th>
+                  )}
                   {resultCols.map(col => {
                     const icon = COLUMN_ICONS[col] || '';
                     return (
