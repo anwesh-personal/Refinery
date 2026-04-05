@@ -64,22 +64,32 @@ export async function command(
   }
 }
 
-/** Insert rows in bulk. Default timeout: 60s. */
+/** Insert rows in bulk. Default timeout: 60s. Pass clickhouse_settings to override server-side limits. */
 export async function insertRows(
   table: string,
   rows: Record<string, unknown>[],
-  opts?: { timeoutMs?: number },
+  opts?: { timeoutMs?: number; settings?: Record<string, string | number | boolean> },
 ): Promise<void> {
   if (rows.length === 0) return;
   const timeoutMs = opts?.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Auto-scale server-side max_execution_time to match client timeout
+  // This prevents ClickHouse from killing long-running bulk inserts
+  const maxExecTimeSec = Math.ceil(timeoutMs / 1000);
+  const mergedSettings = {
+    max_execution_time: maxExecTimeSec,
+    ...opts?.settings,
+  };
+
   try {
     await clickhouse.insert({
       table,
       values: rows,
       format: 'JSONEachRow',
       abort_signal: controller.signal,
+      clickhouse_settings: mergedSettings,
     });
   } finally {
     clearTimeout(timer);
