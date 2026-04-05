@@ -1449,7 +1449,46 @@ export default function IngestionPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedJobs.map((job) => (
+                  {(() => {
+                    // Group jobs by month
+                    const monthGroups: Record<string, typeof sortedJobs> = {};
+                    for (const j of sortedJobs) {
+                      const d = new Date(j.started_at);
+                      const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                      if (!monthGroups[mk]) monthGroups[mk] = [];
+                      monthGroups[mk].push(j);
+                    }
+                    const monthKeys = Object.keys(monthGroups).sort((a, b) => jobSortAsc ? a.localeCompare(b) : b.localeCompare(a));
+
+                    return monthKeys.flatMap(mk => {
+                      const mJobs = monthGroups[mk];
+                      const [y, m] = mk.split('-');
+                      const label = new Date(Number(y), Number(m) - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                      const totalRows = mJobs.reduce((s, j) => s + Number(j.rows_ingested || 0), 0);
+                      const totalSize = mJobs.reduce((s, j) => s + Number(j.file_size_bytes || 0), 0);
+                      const completeCount = mJobs.filter(j => j.status === 'complete').length;
+
+                      return [
+                        <tr key={`month-${mk}`}>
+                          <td colSpan={8} style={{
+                            padding: '10px 16px', background: 'var(--bg-hover)',
+                            borderBottom: '1px solid var(--border)', borderTop: '1px solid var(--border)',
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Calendar size={13} color="var(--accent)" />
+                                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{label}</span>
+                                <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
+                                  {mJobs.length} job{mJobs.length !== 1 ? 's' : ''} · {formatNumber(totalRows)} rows · {formatBytes(totalSize)}
+                                </span>
+                              </div>
+                              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--green)', background: 'rgba(34,197,94,0.1)', padding: '2px 8px', borderRadius: 4 }}>
+                                {completeCount}/{mJobs.length} complete
+                              </span>
+                            </div>
+                          </td>
+                        </tr>,
+                        ...mJobs.map((job) => (
                     <tr key={job.id} style={{ transition: 'background 0.1s' }}
                       onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                       onMouseOut={e => (e.currentTarget.style.background = '')}>
@@ -1531,7 +1570,10 @@ export default function IngestionPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                        ))
+                      ];
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>
