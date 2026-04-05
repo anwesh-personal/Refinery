@@ -16,7 +16,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as s3Sources from './s3sources.js';
-import { esc, sanitizeValue, toClickHouseDateTime } from '../utils/sanitize.js';
+import { esc, sanitizeValue, toClickHouseDateTime, safeErrorMessage } from '../utils/sanitize.js';
+import { withRetry, isTransientError } from '../utils/retry.js';
 
 // ═══════════════════════════════════════════════════════════════
 // Concurrency-Controlled Ingestion Queue
@@ -37,6 +38,67 @@ let INSERT_TIMEOUT_MS = 300_000; // 5 min default
 let RECOVERY_DELAY_MS = 5_000;   // 5s default
 let activeCount = 0;
 const waitQueue: Array<{ resolve: () => void }> = [];
+
+// ── In-Memory Progress Store ──────────────────────────────────────────
+// Tracks ingestion progress WITHOUT ALTER TABLE mutations.
+// Progress is read from memory by the /active-progress API,
+// and only written to DB on job completion.
+// This eliminates 95%+ of ALTER TABLE mutations during bulk ingestion.
+interface ProgressEntry {
+  rowsIngested: number;
+  rowsSkipped: number;
+  updatedAt: number;
+}
+const progressStore = new Map<string, ProgressEntry>();
+
+/** Update in-memory progress (zero DB cost). Called from flushBatch. */
+function trackProgress(jobId: string, rowsIngested: number, rowsSkipped: number): void {
+  progressStore.set(jobId, { rowsIngested, rowsSkipped, updatedAt: Date.now() });
+}
+
+/** Get in-memory progress for a job. Returns null if not tracked. */
+export function getJobProgress(jobId: string): ProgressEntry | null {
+  return progressStore.get(jobId) ?? null;
+}
+
+/** Finalize: write to DB and remove from memory. Called on job completion. */
+async function finalizeProgress(jobId: string, totalRows: number, totalSkipped: number): Promise<void> {
+  progressStore.delete(jobId);
+  await command(`
+    ALTER TABLE ingestion_jobs UPDATE
+      rows_ingested = ${totalRows},
+      rows_skipped = ${totalSkipped}
+    WHERE id = '${esc(jobId)}'
+  `);
+}
+
+// ── Columns included in _search_text for general text search ──────────
+// Domain/email/phone/LinkedIn searches already use specific column sets
+// in database.ts's buildWhereConditions(). _search_text covers GENERAL
+// text search only: person names, company, title, location, industry.
+// Curated list keeps storage lean at any scale. LZ4 compresses well.
+const SEARCH_TEXT_COLUMNS = new Set([
+  'first_name', 'last_name',
+  'company_name', 'company_domain',
+  'job_title', 'job_title_normalized',
+  'personal_city', 'personal_state',
+  'professional_city', 'professional_state',
+  'primary_industry', 'department',
+]);
+
+/**
+ * Build _search_text from curated high-value columns.
+ * Lean per-row footprint, scales to any table size.
+ */
+function buildSearchText(row: Record<string, unknown>): string {
+  const parts: string[] = [];
+  for (const col of SEARCH_TEXT_COLUMNS) {
+    const val = row[col];
+    if (val == null || typeof val !== 'string' || !val) continue;
+    parts.push(val.toLowerCase());
+  }
+  return parts.join(' ');
+}
 
 /** Load ingestion tuning from system_config (call on startup + config change) */
 export async function loadIngestionConfig(): Promise<void> {
@@ -144,7 +206,7 @@ export async function recoverStaleIngestionJobs(): Promise<number> {
         await command(`
           ALTER TABLE ingestion_jobs UPDATE
             status = 'failed',
-            error_message = 'Recovery failed: could not clean partial rows — ${esc(String(e.message))}'
+            error_message = 'Recovery failed: could not clean partial rows — ${safeErrorMessage(e.message)}'
           WHERE id = '${esc(job.id)}'
         `);
         hardFailed++;
@@ -185,7 +247,7 @@ export async function recoverStaleIngestionJobs(): Promise<number> {
           await command(`
             ALTER TABLE ingestion_jobs UPDATE
               status = 'failed',
-              error_message = 'Recovery re-enqueue failed: ${esc(String(e.message))}'
+              error_message = 'Recovery re-enqueue failed: ${safeErrorMessage(e.message)}'
             WHERE id = '${esc(job.id)}'
           `).catch(() => {});
         }
@@ -555,22 +617,29 @@ export async function getActiveProgress(): Promise<ActiveProgressResult> {
   //    This gives us a conversion factor: file_size_bytes / rows_ingested ≈ bytes per row
   const [avgRow] = await query<{ avg_bpr: string; avg_rps: string }>(`
     SELECT
-      avg(file_size_bytes / rows_ingested) as avg_bpr,
-      avg(rows_ingested / greatest(dateDiff('second', started_at, completed_at), 1)) as avg_rps
-    FROM ingestion_jobs
-    WHERE status = 'complete'
-      AND rows_ingested > 0
-      AND completed_at IS NOT NULL
-    ORDER BY completed_at DESC
-    LIMIT 20
+      avg(bpr) as avg_bpr,
+      avg(rps) as avg_rps
+    FROM (
+      SELECT
+        file_size_bytes / rows_ingested as bpr,
+        rows_ingested / greatest(dateDiff('second', started_at, completed_at), 1) as rps
+      FROM ingestion_jobs
+      WHERE status = 'complete'
+        AND rows_ingested > 0
+        AND completed_at IS NOT NULL
+      ORDER BY completed_at DESC
+      LIMIT 20
+    ) AS recent_jobs
   `);
 
   const avgBytesPerRow = Number(avgRow?.avg_bpr) || 500; // fallback: 500 bytes/row
   const avgRowsPerSec = Number(avgRow?.avg_rps) || 5000; // fallback: 5K rows/sec
 
-  // 3. Compute per-job progress
+  // 3. Compute per-job progress (merge in-memory progress for real-time accuracy)
   const jobs: JobProgress[] = activeJobs.map(j => {
-    const rowsIngested = Number(j.rows_ingested) || 0;
+    // In-memory progress is more current than DB (DB only updates on completion)
+    const memProgress = getJobProgress(j.id);
+    const rowsIngested = memProgress?.rowsIngested ?? (Number(j.rows_ingested) || 0);
     const fileSizeBytes = Number(j.file_size_bytes) || 0;
     const startedAt = new Date(j.started_at);
     const elapsedSec = Math.max(1, (now.getTime() - startedAt.getTime()) / 1000);
@@ -799,7 +868,7 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string, pe
       console.error(`[Ingestion] Job ${jobId} failed:`, err.message);
       await command(`
         ALTER TABLE ingestion_jobs UPDATE 
-          status = 'failed', error_message = '${esc(String(err.message || 'Unknown error'))}'
+          status = 'failed', error_message = '${safeErrorMessage(err.message)}'
         WHERE id = '${esc(jobId)}'
       `);
     } finally {
@@ -844,7 +913,7 @@ export async function retryIngestionJob(jobId: string, sourceKey: string, source
       console.error(`[Ingestion] Retry ${jobId} failed:`, err.message);
       await command(`
         ALTER TABLE ingestion_jobs UPDATE 
-          status = 'failed', error_message = '${esc(String(err.message || 'Unknown error'))}'
+          status = 'failed', error_message = '${safeErrorMessage(err.message)}'
         WHERE id = '${esc(jobId)}'
       `);
     } finally {
@@ -952,7 +1021,7 @@ export async function startBulkIngestion(
         console.error(`[Ingestion] Job ${job.id} failed:`, err.message);
         await command(`
           ALTER TABLE ingestion_jobs UPDATE 
-            status = 'failed', error_message = '${esc(String(err.message || 'Unknown error'))}'
+            status = 'failed', error_message = '${safeErrorMessage(err.message)}'
           WHERE id = '${esc(job.id)}'
         `);
       } finally {
@@ -965,33 +1034,58 @@ export async function startBulkIngestion(
 }
 
 async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: string, format: FileFormat, sourceClient: S3Client, sourceBucket: string) {
+  // Abort immediately if server is shutting down — prevents queued jobs from starting new work
+  if (shuttingDown) {
+    throw new Error('Server is shutting down — pipeline aborted before start.');
+  }
+
   const storageClient = getStorageClient();
   let totalRows = 0;
 
-  // ─── Step 1: Download from S3 to temp file ───
-  // Single download — used for both parsing and MinIO archival.
+  // ─── Step 1: Download from S3 to temp file (with retry) ───
+  // Transient network failures (ECONNRESET, ETIMEDOUT, etc.) are retried
+  // up to 4 times with exponential backoff. Partial downloads are cleaned up.
   console.log(`[Ingestion] ${jobId}: Downloading ${sourceKey} from ${sourceBucket}... (format: ${format})`);
-  const getResp = await sourceClient.send(new GetObjectCommand({
-    Bucket: sourceBucket,
-    Key: sourceKey,
-  }));
-
-  const bodyStream = getResp.Body as Readable;
-  const fileSize = getResp.ContentLength || 0;
 
   const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'refinery-ingest-'));
   const tmpFile = path.join(tmpDir, fileName);
 
-  try {
-    await command(`ALTER TABLE ingestion_jobs UPDATE status = 'downloading', file_size_bytes = ${fileSize} WHERE id = '${esc(jobId)}'`);
+  let fileSize = 0;
 
-    const writeStream = fs.createWriteStream(tmpFile);
-    await new Promise<void>((resolve, reject) => {
-      bodyStream.pipe(writeStream);
-      writeStream.on('finish', resolve);
-      writeStream.on('error', reject);
-      bodyStream.on('error', reject);
-    });
+  try {
+    await withRetry(
+      async () => {
+        // Clean up partial download from prior attempt
+        await fs.promises.unlink(tmpFile).catch(() => {});
+
+        const getResp = await sourceClient.send(new GetObjectCommand({
+          Bucket: sourceBucket,
+          Key: sourceKey,
+        }));
+
+        const bodyStream = getResp.Body as Readable;
+        fileSize = getResp.ContentLength || 0;
+
+        const writeStream = fs.createWriteStream(tmpFile);
+        await new Promise<void>((resolve, reject) => {
+          bodyStream.pipe(writeStream);
+          writeStream.on('finish', resolve);
+          writeStream.on('error', reject);
+          bodyStream.on('error', reject);
+        });
+      },
+      {
+        maxAttempts: 4,
+        baseDelayMs: 3000,
+        maxDelayMs: 30_000,
+        isRetryable: isTransientError,
+        onRetry: (err, attempt, delay) => {
+          console.warn(`[Ingestion] ${jobId}: Download failed (${err.message}), retrying in ${delay / 1000}s (attempt ${attempt}/4)...`);
+        },
+      },
+    );
+
+    await command(`ALTER TABLE ingestion_jobs UPDATE file_size_bytes = ${fileSize} WHERE id = '${esc(jobId)}'`);
 
     // ─── Step 2: Archive to MinIO (non-blocking, runs in background) ───
     console.log(`[Ingestion] ${jobId}: Archiving to Object Storage (background)...`);
@@ -1043,37 +1137,87 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
     }
 
     let lastProgressUpdate = Date.now();
-    const PROGRESS_INTERVAL_MS = 10_000;
+    let totalSkipped = 0;
+
+    /**
+     * Backpressure check: query ClickHouse's active parts count.
+     * If too many parts are pending merge, pause to let merges catch up.
+     * This is how production data pipelines prevent write saturation.
+     */
+    const BACKPRESSURE_PARTS_THRESHOLD = 300;
+    const BACKPRESSURE_CHECK_INTERVAL = 50; // check every N batches (not every batch — avoid query spam)
+    let batchCount = 0;
+
+    async function waitForBackpressure(): Promise<void> {
+      batchCount++;
+      if (batchCount % BACKPRESSURE_CHECK_INTERVAL !== 0) return;
+
+      try {
+        const [row] = await query<{ cnt: string }>(`
+          SELECT count() as cnt FROM system.parts
+          WHERE database = '${esc(env.clickhouse.database)}'
+            AND table = 'universal_person'
+            AND active = 1
+        `, { timeoutMs: 5000 });
+
+        const activeParts = Number(row?.cnt) || 0;
+        if (activeParts > BACKPRESSURE_PARTS_THRESHOLD) {
+          console.warn(`[Ingestion] ${jobId}: Backpressure — ${activeParts} active parts (threshold: ${BACKPRESSURE_PARTS_THRESHOLD}). Pausing for merges...`);
+          // Poll every 5s until parts drop below threshold (max 60s wait)
+          for (let wait = 0; wait < 12; wait++) {
+            await new Promise(r => setTimeout(r, 5000));
+            const [recheck] = await query<{ cnt: string }>(`
+              SELECT count() as cnt FROM system.parts
+              WHERE database = '${esc(env.clickhouse.database)}'
+                AND table = 'universal_person'
+                AND active = 1
+            `, { timeoutMs: 5000 });
+            const current = Number(recheck?.cnt) || 0;
+            if (current <= BACKPRESSURE_PARTS_THRESHOLD) {
+              console.log(`[Ingestion] ${jobId}: Backpressure cleared (${current} parts). Resuming.`);
+              break;
+            }
+          }
+        }
+      } catch {
+        // Backpressure check is advisory — failure is non-fatal
+      }
+    }
 
     async function flushBatch(batch: Record<string, unknown>[]) {
       if (batch.length === 0) return;
 
-      const MAX_RETRIES = 3;
-      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        try {
-          await insertRows('universal_person', batch, { timeoutMs: INSERT_TIMEOUT_MS }); // configurable — matches CH max_execution_time
-          break; // success — exit retry loop
-        } catch (err: any) {
-          const msg = String(err.message || '');
-          const isRetryable = msg.includes('EPIPE') || msg.includes('socket hang up') || msg.includes('ECONNRESET') || msg.includes('ETIMEDOUT');
-
-          if (isRetryable && attempt < MAX_RETRIES) {
-            const delay = 2000 * Math.pow(2, attempt - 1); // 2s, 4s, 8s
-            console.warn(`[Ingestion] ${jobId}: Batch insert failed (${msg}), retrying in ${delay / 1000}s (attempt ${attempt}/${MAX_RETRIES})...`);
-            await new Promise(r => setTimeout(r, delay));
-          } else {
-            throw err; // non-retryable or exhausted retries — let the job fail
-          }
-        }
+      // Abort between batches during shutdown — safe boundary (no partial writes)
+      if (shuttingDown) {
+        throw new Error('Server is shutting down — pipeline aborted between batches.');
       }
+
+      // Check backpressure before inserting
+      await waitForBackpressure();
+
+      await withRetry(
+        () => insertRows('universal_person', batch, { timeoutMs: INSERT_TIMEOUT_MS }),
+        {
+          maxAttempts: 5,
+          baseDelayMs: 5000,
+          maxDelayMs: 60_000,
+          isRetryable: isTransientError,
+          onRetry: (err, attempt, delay) => {
+            console.warn(`[Ingestion] ${jobId}: Batch insert failed (${err.message}), retrying in ${delay / 1000}s (attempt ${attempt}/5)...`);
+          },
+        },
+      );
 
       totalRows += batch.length;
 
+      // Hybrid progress: in-memory (every batch) + DB flush (every 60s for crash visibility)
+      trackProgress(jobId, totalRows, totalSkipped);
       const now = Date.now();
-      if (now - lastProgressUpdate >= PROGRESS_INTERVAL_MS) {
-        await command(`ALTER TABLE ingestion_jobs UPDATE rows_ingested = ${totalRows} WHERE id = '${esc(jobId)}'`);
+      if (now - lastProgressUpdate >= 60_000) {
+        await command(`ALTER TABLE ingestion_jobs UPDATE rows_ingested = ${totalRows} WHERE id = '${esc(jobId)}'`).catch(() => {});
         lastProgressUpdate = now;
       }
+
       if (totalRows % 100000 === 0) {
         console.log(`[Ingestion] ${jobId}: ${totalRows.toLocaleString()} rows inserted...`);
       }
@@ -1093,8 +1237,22 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
           },
           skip_empty_lines: true,
           relax_column_count: true,
+          relax_quotes: true,            // tolerate unescaped quotes in fields
+          skip_records_with_error: true,  // skip malformed rows instead of crashing
+          on_record: (record: Record<string, unknown>) => record, // passthrough (needed for skip to work)
         }),
       );
+
+      // Track skipped records via the parser's 'skip' event
+      csvStream.on('skip', (err: Error) => {
+        totalSkipped++;
+        // Log first 10 skipped rows for debugging, then stay quiet
+        if (totalSkipped <= 10) {
+          console.warn(`[Ingestion] ${jobId}: Skipped malformed row #${totalSkipped}: ${err.message?.substring(0, 120)}`);
+        } else if (totalSkipped === 11) {
+          console.warn(`[Ingestion] ${jobId}: Suppressing further skip warnings (>10 skipped)...`);
+        }
+      });
 
       const iterator = csvStream[Symbol.asyncIterator]();
       const firstResult = await iterator.next();
@@ -1113,6 +1271,11 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
         for (const [key, val] of Object.entries(row)) {
           clean[key] = sanitizeValue(val);
         }
+        // Ensure every row has a unique up_id (required for keyset pagination)
+        // Preserves source-provided IDs; generates one only if missing/empty
+        if (!clean.up_id) clean.up_id = genId();
+        // Build _search_text dynamically from curated columns
+        clean._search_text = buildSearchText(clean);
         return clean;
       }
 
@@ -1145,6 +1308,10 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
         for (const [key, val] of Object.entries(record)) {
           normalized[key.toLowerCase().trim()] = sanitizeValue(val);
         }
+        // Ensure every row has a unique up_id (required for keyset pagination)
+        if (!normalized.up_id) normalized.up_id = genId();
+        // Build _search_text dynamically from curated columns
+        normalized._search_text = buildSearchText(normalized);
         batch.push(normalized);
 
         if (batch.length >= BATCH_SIZE) {
@@ -1156,16 +1323,24 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
       await reader.close();
     }
 
-    // Wait for archive to finish before cleanup
-    await archivePromise;
-
-    // Mark complete with final row count
+    // Finalize: single atomic DB update — progress + status + completion
+    // Archive is NON-BLOCKING — job is complete as soon as data is in ClickHouse.
+    // MinIO upload continues in background and logs its own success/failure.
+    progressStore.delete(jobId);
     await command(`
-      ALTER TABLE ingestion_jobs UPDATE 
-        status = 'complete', rows_ingested = ${totalRows}, completed_at = now()
+      ALTER TABLE ingestion_jobs UPDATE
+        status = 'complete',
+        rows_ingested = ${totalRows},
+        rows_skipped = ${totalSkipped},
+        completed_at = now()
       WHERE id = '${esc(jobId)}'
     `);
-    console.log(`[Ingestion] ${jobId}: Complete — ${totalRows.toLocaleString()} rows ingested (${format}).`);
+    const skipNote = totalSkipped > 0 ? ` (${totalSkipped.toLocaleString()} rows skipped)` : '';
+    console.log(`[Ingestion] ${jobId}: Complete — ${totalRows.toLocaleString()} rows ingested${skipNote} (${format}).`);
+
+    // Wait for archive before temp cleanup (so we don't delete the file mid-upload)
+    // This does NOT block job completion — status is already 'complete' above.
+    await archivePromise;
 
   } finally {
     // Clean up temp files

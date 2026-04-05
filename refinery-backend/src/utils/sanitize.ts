@@ -44,3 +44,22 @@ export function sanitizeValue(val: unknown): string | null {
 export function toClickHouseDateTime(d: Date): string {
   return d.toISOString().replace('T', ' ').slice(0, 19);
 }
+
+/**
+ * Sanitize an error message for safe embedding in ClickHouse SQL strings.
+ * - Strips control characters that could break protocol framing
+ * - Truncates to maxLen to prevent oversized ALTER TABLE payloads
+ * - Escapes via esc() AFTER sanitization to prevent nested-escape attacks
+ *
+ * Use this instead of raw esc(err.message) in ALTER TABLE UPDATE statements.
+ */
+export function safeErrorMessage(msg: unknown, maxLen = 500): string {
+  const raw = String(msg ?? 'Unknown error');
+  // Strip control chars (keep printable ASCII + common unicode)
+  const cleaned = raw.replace(/[\x00-\x1F\x7F]/g, ' ');
+  // Truncate
+  const truncated = cleaned.length > maxLen
+    ? cleaned.substring(0, maxLen) + '...'
+    : cleaned;
+  return esc(truncated);
+}

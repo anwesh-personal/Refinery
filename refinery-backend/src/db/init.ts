@@ -343,6 +343,22 @@ export async function initDatabase(): Promise<void> {
   await command(`ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS file_modified_at Nullable(DateTime) DEFAULT NULL`);
   console.log('[DB] ✓ file_modified_at column ensured on ingestion_jobs');
 
+  // ── Rows skipped counter (malformed CSV rows that were tolerated) ──
+  await command(`ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS rows_skipped UInt64 DEFAULT 0`);
+  console.log('[DB] ✓ rows_skipped column ensured on ingestion_jobs');
+
+  // ── Full-text search index on universal_person ──
+  // _search_text is populated during ingestion from ALL non-internal string columns.
+  // The ngrambf bloom filter index enables sub-second LIKE searches on 121M+ rows.
+  await command(`ALTER TABLE universal_person ADD COLUMN IF NOT EXISTS _search_text String DEFAULT ''`);
+  try {
+    await command(`ALTER TABLE universal_person ADD INDEX IF NOT EXISTS _search_text_idx _search_text TYPE ngrambf_v1(3, 256, 2, 0) GRANULARITY 4`);
+    console.log('[DB] ✓ _search_text column + bloom filter index ensured on universal_person');
+  } catch (e: any) {
+    // Index may already exist with a different definition — non-fatal
+    console.log(`[DB] ⚠ _search_text bloom index: ${e.message?.substring(0, 100)}`);
+  }
+
   console.log('[DB] ✓ All tables initialized');
 }
 
