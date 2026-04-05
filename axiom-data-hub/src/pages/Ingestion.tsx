@@ -1082,85 +1082,128 @@ export default function IngestionPage() {
                 )
               })}
 
-              {sorted.map((f) => {
-                const fileName = f.key.split('/').pop() || '';
-                const format = getFileFormat(fileName);
-                const isSelected = selectedFiles.has(f.key);
-                return (
-                  <div
-                    key={f.key}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '12px 18px', borderBottom: '1px solid var(--border)',
-                      transition: 'background 0.15s', cursor: 'pointer',
-                      background: isSelected ? 'var(--bg-hover)' : 'transparent'
-                    }}
-                    onMouseOver={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-                    onMouseOut={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
-                    onClick={() => toggleFile(f.key)}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <button onClick={(e) => { e.stopPropagation(); toggleFile(f.key); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: isSelected ? 'var(--accent)' : 'var(--text-tertiary)' }}>
-                        {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
-                      </button>
-                      <FileText size={16} color="var(--text-tertiary)" />
-                      <div>
+              {(() => {
+                // Group files by month
+                const groups: Record<string, typeof sorted> = {};
+                for (const f of sorted) {
+                  const d = new Date(f.modified);
+                  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                  if (!groups[key]) groups[key] = [];
+                  groups[key].push(f);
+                }
+                const groupKeys = Object.keys(groups).sort((a, b) => fileSortAsc ? a.localeCompare(b) : b.localeCompare(a));
+
+                return groupKeys.map(gk => {
+                  const gFiles = groups[gk];
+                  const [y, m] = gk.split('-');
+                  const monthLabel = new Date(Number(y), Number(m) - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                  const gTotalSize = gFiles.reduce((s, f) => s + f.size, 0);
+                  const gIngested = gFiles.filter(f => fileStatusMap[f.key]?.status === 'complete').length;
+
+                  return (
+                    <React.Fragment key={gk}>
+                      {/* Month Group Header */}
+                      <div style={{
+                        padding: '8px 18px', background: 'var(--bg-hover)',
+                        borderBottom: '1px solid var(--border)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{fileName}</span>
-                          <span style={{
-                            fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
-                            padding: '2px 6px', borderRadius: 4,
-                            color: FORMAT_COLORS[format], background: FORMAT_COLORS[format] + '18',
-                          }}>{format === 'gz' ? 'GZ' : format.toUpperCase()}</span>
-                          {fileStatusMap[f.key] && (() => {
-                            const st = fileStatusMap[f.key];
-                            const cfg = st.status === 'complete'
-                              ? { label: '✓ Ingested', color: '#22c55e', bg: 'rgba(34,197,94,0.12)' }
-                              : st.status === 'rolled_back'
-                              ? { label: '↩ Rolled Back', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' }
-                              : st.status === 'failed'
-                              ? { label: '✗ Failed', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' }
-                              : ['pending', 'downloading', 'uploading', 'ingesting'].includes(st.status)
-                              ? { label: '⟳ In Progress', color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' }
-                              : null;
-                            if (!cfg) return null;
-                            return (
-                              <span title={`${st.rowsIngested.toLocaleString()} rows`} style={{
-                                fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-                                color: cfg.color, background: cfg.bg, letterSpacing: '0.03em',
-                              }}>{cfg.label}</span>
-                            );
-                          })()}
+                          <Calendar size={13} color="var(--accent)" />
+                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.02em' }}>{monthLabel}</span>
+                          <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 500 }}>
+                            {gFiles.length} file{gFiles.length !== 1 ? 's' : ''} · {formatBytes(gTotalSize)}
+                          </span>
                         </div>
-                        <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                          {formatBytes(f.size)} · {new Date(f.modified).toLocaleDateString()} {new Date(f.modified).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
+                        {gIngested > 0 && (
+                          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--green)', background: 'rgba(34,197,94,0.1)', padding: '2px 8px', borderRadius: 4 }}>
+                            {gIngested}/{gFiles.length} ingested
+                          </span>
+                        )}
                       </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {getFileFormat(fileName) !== 'other' && (
-                        <Button
-                          variant="secondary"
-                          icon={previewLoading === f.key ? <Loader2 size={14} className="spin" /> : <Eye size={14} />}
-                          onClick={(e: any) => { e.stopPropagation(); handlePreview(f.key); }}
-                          disabled={previewLoading !== null}
-                          style={{ padding: '6px 10px', fontSize: 11 }}
-                        >
-                          {previewLoading === f.key ? '...' : 'Preview'}
-                        </Button>
-                      )}
-                      <Button
-                        variant="secondary"
-                        icon={ingesting === f.key ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
-                        onClick={(e: any) => { e.stopPropagation(); startIngestion(f.key); }}
-                        disabled={ingesting !== null || ingestingBulk}
-                      >
-                        {ingesting === f.key ? 'Starting...' : 'Ingest'}
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })}
+                      {gFiles.map((f) => {
+                        const fileName = f.key.split('/').pop() || '';
+                        const format = getFileFormat(fileName);
+                        const isSelected = selectedFiles.has(f.key);
+                        return (
+                          <div
+                            key={f.key}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                              padding: '12px 18px', borderBottom: '1px solid var(--border)',
+                              transition: 'background 0.15s', cursor: 'pointer',
+                              background: isSelected ? 'var(--bg-hover)' : 'transparent'
+                            }}
+                            onMouseOver={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                            onMouseOut={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                            onClick={() => toggleFile(f.key)}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <button onClick={(e) => { e.stopPropagation(); toggleFile(f.key); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: isSelected ? 'var(--accent)' : 'var(--text-tertiary)' }}>
+                                {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                              </button>
+                              <FileText size={16} color="var(--text-tertiary)" />
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{fileName}</span>
+                                  <span style={{
+                                    fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+                                    padding: '2px 6px', borderRadius: 4,
+                                    color: FORMAT_COLORS[format], background: FORMAT_COLORS[format] + '18',
+                                  }}>{format === 'gz' ? 'GZ' : format.toUpperCase()}</span>
+                                  {fileStatusMap[f.key] && (() => {
+                                    const st = fileStatusMap[f.key];
+                                    const cfg = st.status === 'complete'
+                                      ? { label: '✓ Ingested', color: '#22c55e', bg: 'rgba(34,197,94,0.12)' }
+                                      : st.status === 'rolled_back'
+                                      ? { label: '↩ Rolled Back', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' }
+                                      : st.status === 'failed'
+                                      ? { label: '✗ Failed', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' }
+                                      : ['pending', 'downloading', 'uploading', 'ingesting'].includes(st.status)
+                                      ? { label: '⟳ In Progress', color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' }
+                                      : null;
+                                    if (!cfg) return null;
+                                    return (
+                                      <span title={`${st.rowsIngested.toLocaleString()} rows`} style={{
+                                        fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                        color: cfg.color, background: cfg.bg, letterSpacing: '0.03em',
+                                      }}>{cfg.label}</span>
+                                    );
+                                  })()}
+                                </div>
+                                <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                                  {formatBytes(f.size)} · {new Date(f.modified).toLocaleDateString()} {new Date(f.modified).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              {getFileFormat(fileName) !== 'other' && (
+                                <Button
+                                  variant="secondary"
+                                  icon={previewLoading === f.key ? <Loader2 size={14} className="spin" /> : <Eye size={14} />}
+                                  onClick={(e: any) => { e.stopPropagation(); handlePreview(f.key); }}
+                                  disabled={previewLoading !== null}
+                                  style={{ padding: '6px 10px', fontSize: 11 }}
+                                >
+                                  {previewLoading === f.key ? '...' : 'Preview'}
+                                </Button>
+                              )}
+                              <Button
+                                variant="secondary"
+                                icon={ingesting === f.key ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
+                                onClick={(e: any) => { e.stopPropagation(); startIngestion(f.key); }}
+                                disabled={ingesting !== null || ingestingBulk}
+                              >
+                                {ingesting === f.key ? 'Starting...' : 'Ingest'}
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                });
+              })()}
             </div>
           );
         })() : (
