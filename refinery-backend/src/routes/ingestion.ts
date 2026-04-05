@@ -251,6 +251,56 @@ router.post('/cancel-running', async (req, res) => {
   }
 });
 
+// POST /api/ingestion/:id/pause — pause a running job at the next batch boundary
+router.post('/:id/pause', async (req, res) => {
+  try {
+    const jobId = req.params.id;
+    const user = getRequestUser(req);
+    ingestionService.pauseJob(jobId);
+    console.log(`[Ingestion] Pause ${jobId} requested by ${user.name}`);
+    res.json({ ok: true, jobId, paused: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/ingestion/:id/resume — resume a paused job
+router.post('/:id/resume', async (req, res) => {
+  try {
+    const jobId = req.params.id;
+    const user = getRequestUser(req);
+    ingestionService.resumeJob(jobId);
+    console.log(`[Ingestion] Resume ${jobId} requested by ${user.name}`);
+    res.json({ ok: true, jobId, resumed: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/ingestion/pause-all — pause all active ingestion jobs
+router.post('/pause-all', async (req, res) => {
+  try {
+    const user = getRequestUser(req);
+    const paused = ingestionService.pauseAllJobs();
+    console.log(`[Ingestion] Pause ALL by ${user.name}: ${paused.length} jobs`);
+    res.json({ ok: true, pausedCount: paused.length, pausedJobIds: paused });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/ingestion/resume-all — resume all paused jobs
+router.post('/resume-all', async (req, res) => {
+  try {
+    const user = getRequestUser(req);
+    const resumed = ingestionService.resumeAllJobs();
+    console.log(`[Ingestion] Resume ALL by ${user.name}: ${resumed.length} jobs`);
+    res.json({ ok: true, resumedCount: resumed.length, resumedJobIds: resumed });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // POST /api/ingestion/:id/rollback â€” instantly delete all leads from this job
 
 router.post('/:id/rollback', async (req, res) => {

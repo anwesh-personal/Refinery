@@ -39,6 +39,53 @@ let RECOVERY_DELAY_MS = 5_000;   // 5s default
 let activeCount = 0;
 const waitQueue: Array<{ resolve: () => void }> = [];
 
+// ── In-Memory Pause Control ──────────────────────────────────────────
+// Per-job pause/resume without DB polling. flushBatch checks this set
+// between every batch — if paused, it sleeps until resumed or shutdown.
+const pausedJobs = new Set<string>();
+const PAUSE_POLL_INTERVAL_MS = 2000; // check every 2s while paused
+
+/** Pause a specific job. Takes effect at the next batch boundary. */
+export function pauseJob(jobId: string): void {
+  pausedJobs.add(jobId);
+  console.log(`[Ingestion] ${jobId}: Pause requested — will pause at next batch boundary.`);
+}
+
+/** Resume a specific paused job. */
+export function resumeJob(jobId: string): void {
+  pausedJobs.delete(jobId);
+  console.log(`[Ingestion] ${jobId}: Resumed.`);
+}
+
+/** Pause ALL active jobs. */
+export function pauseAllJobs(): string[] {
+  const paused: string[] = [];
+  for (const [jobId] of progressStore) {
+    pausedJobs.add(jobId);
+    paused.push(jobId);
+  }
+  console.log(`[Ingestion] Pause ALL — ${paused.length} job(s) paused.`);
+  return paused;
+}
+
+/** Resume ALL paused jobs. */
+export function resumeAllJobs(): string[] {
+  const resumed = [...pausedJobs];
+  pausedJobs.clear();
+  console.log(`[Ingestion] Resume ALL — ${resumed.length} job(s) resumed.`);
+  return resumed;
+}
+
+/** Check if a job is paused. */
+export function isJobPaused(jobId: string): boolean {
+  return pausedJobs.has(jobId);
+}
+
+/** Get all paused job IDs. */
+export function getPausedJobs(): string[] {
+  return [...pausedJobs];
+}
+
 // ── In-Memory Progress Store ──────────────────────────────────────────
 // Tracks ingestion progress WITHOUT ALTER TABLE mutations.
 // Progress is read from memory by the /active-progress API,
@@ -133,8 +180,8 @@ function releasePipelineSlot(): void {
 }
 
 /** Get current queue status — useful for monitoring */
-export function getQueueStatus(): { active: number; queued: number; maxConcurrent: number; batchSize: number } {
-  return { active: activeCount, queued: waitQueue.length, maxConcurrent: MAX_CONCURRENT, batchSize: BATCH_SIZE };
+export function getQueueStatus(): { active: number; queued: number; paused: number; maxConcurrent: number; batchSize: number } {
+  return { active: activeCount, queued: waitQueue.length, paused: pausedJobs.size, maxConcurrent: MAX_CONCURRENT, batchSize: BATCH_SIZE };
 }
 
 /**
@@ -152,7 +199,7 @@ export function getQueueStatus(): { active: number; queued: number; maxConcurren
  * Returns the number of jobs recovered.
  */
 export async function recoverStaleIngestionJobs(): Promise<number> {
-  const staleStatuses = ['pending', 'downloading', 'uploading', 'ingesting'];
+  const staleStatuses = ['pending', 'downloading', 'uploading', 'ingesting', 'paused'];
 
   // Fetch all stale jobs (need details for per-job decisions)
   const staleJobs = await query<{
@@ -1190,6 +1237,22 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
       // Abort between batches during shutdown — safe boundary (no partial writes)
       if (shuttingDown) {
         throw new Error('Server is shutting down — pipeline aborted between batches.');
+      }
+
+      // ── Pause gate ─────────────────────────────────────────────────
+      // If this job is paused, sleep here until resumed or shutdown.
+      // The current batch stays in memory — resume continues from this exact point.
+      if (pausedJobs.has(jobId)) {
+        await command(`ALTER TABLE ingestion_jobs UPDATE status = 'paused' WHERE id = '${esc(jobId)}'`).catch(() => {});
+        console.log(`[Ingestion] ${jobId}: Paused at ${totalRows.toLocaleString()} rows. Waiting for resume...`);
+        while (pausedJobs.has(jobId) && !shuttingDown) {
+          await new Promise(r => setTimeout(r, PAUSE_POLL_INTERVAL_MS));
+        }
+        if (shuttingDown) {
+          throw new Error('Server is shutting down — pipeline aborted while paused.');
+        }
+        await command(`ALTER TABLE ingestion_jobs UPDATE status = 'ingesting' WHERE id = '${esc(jobId)}'`).catch(() => {});
+        console.log(`[Ingestion] ${jobId}: Resumed at ${totalRows.toLocaleString()} rows. Continuing...`);
       }
 
       // Check backpressure before inserting
