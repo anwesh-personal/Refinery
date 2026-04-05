@@ -246,6 +246,26 @@ export default function DatabasePage() {
   // Track what search value was last sent to the server
   const searchRef = useRef(search);
   const isTypingRef = useRef(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // / to focus search (only when not already in an input)
+      if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      // Esc to clear search when focused
+      if (e.key === 'Escape' && document.activeElement === searchInputRef.current) {
+        setSearch('');
+        setPage(1);
+        searchInputRef.current?.blur();
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Load browse data
   const runBrowse = useCallback(async (currentSearch: string = searchRef.current) => {
@@ -527,8 +547,9 @@ export default function DatabasePage() {
               <div style={{ flex: 1, position: 'relative', minWidth: 250 }}>
                 <Search size={16} style={{ position: 'absolute', left: 14, top: 12, color: search ? 'var(--accent)' : 'var(--text-tertiary)', transition: 'color 0.2s' }} />
                 <input
+                  ref={searchInputRef}
                   type="text"
-                  placeholder="Search anything — domains, emails, names, phone numbers, companies, cities..."
+                  placeholder="Search leads — type / from anywhere to focus"
                   value={search}
                   onChange={e => { setSearch(e.target.value); setPage(1); }}
                   style={{
@@ -926,15 +947,21 @@ export default function DatabasePage() {
                 toastSuccess(`Segment "${name}" created with ${summary.join(' + ')}!`);
               } catch (e: any) { toastError(e.message); }
             }}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--bg-card)), var(--bg-card))', color: 'var(--accent)', border: '1px solid color-mix(in srgb, var(--accent) 25%, var(--border))', transition: 'all 0.15s', letterSpacing: '0.02em' }}
+              onMouseOver={e => { e.currentTarget.style.background = 'color-mix(in srgb, var(--accent) 15%, var(--bg-card))'; e.currentTarget.style.borderColor = 'var(--accent)'; }}
+              onMouseOut={e => { e.currentTarget.style.background = 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--bg-card)), var(--bg-card))'; e.currentTarget.style.borderColor = 'color-mix(in srgb, var(--accent) 25%, var(--border))'; }}>
               <Tag size={12} /> Create Segment
             </button>
             <button onClick={() => setShowDuplicates(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-card)', color: 'var(--text-secondary)', border: '1px solid var(--border)', transition: 'all 0.15s' }}
+              onMouseOver={e => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+              onMouseOut={e => { e.currentTarget.style.background = 'var(--bg-card)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
               <ScanSearch size={12} /> Duplicates
             </button>
             <button onClick={() => setShowFindReplace(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-card-hover)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderRadius: 10, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: 'var(--bg-card)', color: 'var(--text-secondary)', border: '1px solid var(--border)', transition: 'all 0.15s' }}
+              onMouseOver={e => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text-primary)'; }}
+              onMouseOut={e => { e.currentTarget.style.background = 'var(--bg-card)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
               <ArrowRightLeft size={12} /> Find &amp; Replace
             </button>
           </div>
