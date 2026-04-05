@@ -130,12 +130,10 @@ export default function DatabasePage() {
   // Row detail drawer
   const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
 
-  // Available filters populated from backend limit 200
-  const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({});
 
   // Dynamic columns from backend
   const [allColumns, setAllColumns] = useState<string[]>([]);
-  const [availableFilters, setAvailableFilters] = useState<string[]>([]);
+
   const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({});
   const [columnsLoaded, setColumnsLoaded] = useState(false);
 
@@ -199,12 +197,9 @@ export default function DatabasePage() {
   // Fetch columns and filters dynamically from backend
   const fetchColumns = useCallback(async () => {
     try {
-      const [cols, filterCols] = await Promise.all([
-        apiCall<string[]>('/api/database/columns').catch(() => []),
-        apiCall<string[]>('/api/database/filterable-columns').catch(() => []),
-      ]);
+      const cols = await apiCall<string[]>('/api/database/columns').catch(() => []);
       setAllColumns(cols);
-      setAvailableFilters(filterCols.slice(0, 8)); // Show up to 8 filter dropdowns
+
       // Default visible: first 8 non-internal columns
       // Default visible: curated priority list with emails at the top
       const PRIORITY_COLS = [
@@ -221,16 +216,6 @@ export default function DatabasePage() {
     } catch { /* ignore */ }
   }, []);
 
-  const fetchFilterOptions = useCallback(async () => {
-    if (availableFilters.length === 0) return;
-    try {
-      const opts: Record<string, string[]> = {};
-      await Promise.all(availableFilters.map(async (f) => {
-        opts[f] = await apiCall<string[]>(`/api/database/filter-options/${f}`).catch(() => []);
-      }));
-      setFilterOptions(opts);
-    } catch { /* ignore */ }
-  }, [availableFilters]);
 
   useEffect(() => {
     fetchStats();
@@ -240,10 +225,6 @@ export default function DatabasePage() {
       if (sources) setDataSourceOptions(sources.map((s: any) => ({ id: s.id, label: s.label || s.id })));
     }).catch(() => { });
   }, [fetchStats, fetchColumns]);
-
-  useEffect(() => {
-    fetchFilterOptions();
-  }, [fetchFilterOptions]);
 
   // Click outside handler for column picker
   useEffect(() => {
