@@ -501,6 +501,139 @@ export async function getIngestionStats() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Active Progress & ETA
+// ═══════════════════════════════════════════════════════════════
+
+export interface JobProgress {
+  id: string;
+  fileName: string;
+  status: string;
+  rowsIngested: number;
+  fileSizeBytes: number;
+  startedAt: string;
+  elapsedSec: number;
+  rowsPerSec: number;       // real-time throughput
+  etaRemainingSec: number | null;  // estimated seconds remaining (null if unknown)
+}
+
+export interface ActiveProgressResult {
+  jobs: JobProgress[];
+  queueDepth: number;       // jobs waiting in memory queue
+  maxConcurrent: number;
+  avgRowsPerSec: number;    // avg throughput from recent completed jobs
+  overallEtaSec: number | null;  // estimated seconds until ALL jobs done
+}
+
+/**
+ * Compute real-time progress & ETA for ALL active ingestion jobs.
+ *
+ * Per-job ETA is computed from (file_size_bytes / throughput_bytes_per_sec).
+ * We estimate bytes_per_row from the current job's own data:
+ *   bytes_per_row = file_size_bytes / estimated_total_rows
+ * Since we don't have total_rows until done, we use
+ *   estimated_total_rows ≈ rows_ingested * (file_size_bytes / bytes_consumed_so_far)
+ * But bytes_consumed_so_far requires streaming state we don't have.
+ *
+ * Simpler approach: use avg bytes_per_row from recently completed jobs to estimate
+ * total_rows for current jobs. Then ETA = (estimated_total - rows_ingested) / rows_per_sec.
+ */
+export async function getActiveProgress(): Promise<ActiveProgressResult> {
+  const now = new Date();
+
+  // 1. Get all active jobs
+  const activeJobs = await query<{
+    id: string; file_name: string; status: string;
+    rows_ingested: string; file_size_bytes: string; started_at: string;
+  }>(`
+    SELECT id, file_name, status, rows_ingested, file_size_bytes, started_at
+    FROM ingestion_jobs
+    WHERE status IN ('pending', 'downloading', 'uploading', 'ingesting')
+    ORDER BY started_at ASC
+  `);
+
+  // 2. Get avg bytes_per_row from recent completed jobs (last 20)
+  //    This gives us a conversion factor: file_size_bytes / rows_ingested ≈ bytes per row
+  const [avgRow] = await query<{ avg_bpr: string; avg_rps: string }>(`
+    SELECT
+      avg(file_size_bytes / rows_ingested) as avg_bpr,
+      avg(rows_ingested / greatest(dateDiff('second', started_at, completed_at), 1)) as avg_rps
+    FROM ingestion_jobs
+    WHERE status = 'complete'
+      AND rows_ingested > 0
+      AND completed_at IS NOT NULL
+    ORDER BY completed_at DESC
+    LIMIT 20
+  `);
+
+  const avgBytesPerRow = Number(avgRow?.avg_bpr) || 500; // fallback: 500 bytes/row
+  const avgRowsPerSec = Number(avgRow?.avg_rps) || 5000; // fallback: 5K rows/sec
+
+  // 3. Compute per-job progress
+  const jobs: JobProgress[] = activeJobs.map(j => {
+    const rowsIngested = Number(j.rows_ingested) || 0;
+    const fileSizeBytes = Number(j.file_size_bytes) || 0;
+    const startedAt = new Date(j.started_at);
+    const elapsedSec = Math.max(1, (now.getTime() - startedAt.getTime()) / 1000);
+    const rowsPerSec = rowsIngested > 0 ? rowsIngested / elapsedSec : 0;
+
+    // Estimate total rows from file size and avg bytes per row
+    const estimatedTotalRows = fileSizeBytes > 0 ? Math.round(fileSizeBytes / avgBytesPerRow) : 0;
+    const remainingRows = Math.max(0, estimatedTotalRows - rowsIngested);
+
+    // ETA: only meaningful when actively ingesting with measurable throughput
+    let etaRemainingSec: number | null = null;
+    if (j.status === 'ingesting' && rowsPerSec > 0 && estimatedTotalRows > 0) {
+      etaRemainingSec = Math.round(remainingRows / rowsPerSec);
+    }
+
+    return {
+      id: j.id,
+      fileName: j.file_name,
+      status: j.status,
+      rowsIngested,
+      fileSizeBytes,
+      startedAt: j.started_at,
+      elapsedSec: Math.round(elapsedSec),
+      rowsPerSec: Math.round(rowsPerSec),
+      etaRemainingSec,
+    };
+  });
+
+  // 4. Overall queue ETA
+  // Sum ETAs of active ingesting jobs + estimate for pending/downloading/uploading jobs
+  const { queued } = getQueueStatus();
+  const activeIngestingEtaSum = jobs
+    .filter(j => j.etaRemainingSec !== null)
+    .reduce((sum, j) => sum + (j.etaRemainingSec || 0), 0);
+
+  // For pending/waiting jobs: estimate from avg file size and avg throughput
+  const pendingJobs = jobs.filter(j => j.status !== 'ingesting');
+  const avgFileSizeBytes = pendingJobs.length > 0
+    ? pendingJobs.reduce((s, j) => s + j.fileSizeBytes, 0) / pendingJobs.length
+    : 0;
+  const avgFileRows = avgFileSizeBytes > 0 ? avgFileSizeBytes / avgBytesPerRow : 0;
+  const pendingEtaPerJob = avgRowsPerSec > 0 ? avgFileRows / avgRowsPerSec : 0;
+
+  // Total waiting jobs = currently pending + in memory queue
+  const totalWaitingJobs = pendingJobs.length + queued;
+  // They process MAX_CONCURRENT at a time
+  const batchesRemaining = Math.ceil(totalWaitingJobs / MAX_CONCURRENT);
+  const pendingEtaTotal = batchesRemaining * pendingEtaPerJob;
+
+  const overallEtaSec = activeJobs.length > 0
+    ? Math.round(activeIngestingEtaSum + pendingEtaTotal)
+    : null;
+
+  return {
+    jobs,
+    queueDepth: queued,
+    maxConcurrent: MAX_CONCURRENT,
+    avgRowsPerSec: Math.round(avgRowsPerSec),
+    overallEtaSec,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // File Status Lookup (for browser badges)
 // ═══════════════════════════════════════════════════════════════
 

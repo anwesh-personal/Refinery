@@ -70,6 +70,26 @@ interface IngestionRule {
   files_ingested_last_run: number | null;
 }
 
+interface JobProgress {
+  id: string;
+  fileName: string;
+  status: string;
+  rowsIngested: number;
+  fileSizeBytes: number;
+  startedAt: string;
+  elapsedSec: number;
+  rowsPerSec: number;
+  etaRemainingSec: number | null;
+}
+
+interface ActiveProgressResult {
+  jobs: JobProgress[];
+  queueDepth: number;
+  maxConcurrent: number;
+  avgRowsPerSec: number;
+  overallEtaSec: number | null;
+}
+
 const SCHEDULE_PRESETS = [
   { label: 'Every 15 Minutes', value: '*/15 * * * *' },
   { label: 'Every 30 Minutes', value: '*/30 * * * *' },
@@ -101,6 +121,19 @@ function formatBytes(bytes: number): string {
 
 function formatNumber(n: string | number): string {
   return Number(n).toLocaleString();
+}
+
+function formatDuration(sec: number): string {
+  if (sec <= 0) return '—';
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  }
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
 
@@ -190,6 +223,9 @@ export default function IngestionPage() {
   const [dateRangeIngesting, setDateRangeIngesting] = useState(false);
 
   const [activeView, setActiveView] = useState<'data' | 'merge'>('data');
+
+  // Active progress & ETA state
+  const [activeProgress, setActiveProgress] = useState<ActiveProgressResult | null>(null);
 
   /* --- Fetch --- */
   const fetchData = useCallback(async () => {
@@ -340,12 +376,18 @@ export default function IngestionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSourceId]);
 
-  // Auto-refresh jobs
+  // Auto-refresh jobs + active progress
   useEffect(() => {
     const hasActive = jobs.some(j => ['pending', 'downloading', 'uploading', 'ingesting'].includes(j.status));
-    if (!hasActive) return;
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
+    if (!hasActive) { setActiveProgress(null); return; }
+    // Fetch progress immediately on first detect
+    apiCall<ActiveProgressResult>('/api/ingestion/active-progress').then(setActiveProgress).catch(() => {});
+    // Then poll both: full data every 5s, progress every 3s
+    const dataInterval = setInterval(fetchData, 5000);
+    const progressInterval = setInterval(() => {
+      apiCall<ActiveProgressResult>('/api/ingestion/active-progress').then(setActiveProgress).catch(() => {});
+    }, 3000);
+    return () => { clearInterval(dataInterval); clearInterval(progressInterval); };
   }, [jobs, fetchData]);
 
   /* --- S3 Sources Management --- */
@@ -658,8 +700,18 @@ export default function IngestionPage() {
 
               {/* Info */}
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
                   {activeJobs.length === 1 ? 'Ingestion in Progress' : `${activeJobs.length} Ingestions in Progress`}
+                  {activeProgress?.overallEtaSec != null && activeProgress.overallEtaSec > 0 && (
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)', background: 'var(--accent-muted)', padding: '2px 8px', borderRadius: 6 }}>
+                      ETA: {formatDuration(activeProgress.overallEtaSec)}
+                    </span>
+                  )}
+                  {activeProgress && (
+                    <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-tertiary)' }}>
+                      {activeProgress.avgRowsPerSec > 0 ? `~${formatNumber(activeProgress.avgRowsPerSec)} rows/sec` : ''}
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {activeJobs.map(j => {
@@ -715,23 +767,32 @@ export default function IngestionPage() {
                         </div>
 
                         {/* Progress bar during ingesting phase */}
-                        {j.status === 'ingesting' && rowsIngested > 0 && (
-                          <div style={{ marginTop: 4 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 3 }}>
-                              <span>{formatNumber(rowsIngested)} rows</span>
-                              <span style={{ fontFamily: 'monospace' }}>inserting...</span>
+                        {j.status === 'ingesting' && rowsIngested > 0 && (() => {
+                          const prog = activeProgress?.jobs.find(p => p.id === j.id);
+                          const rps = prog?.rowsPerSec || 0;
+                          const eta = prog?.etaRemainingSec;
+                          return (
+                            <div style={{ marginTop: 4 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 3 }}>
+                                <span>{formatNumber(rowsIngested)} rows</span>
+                                <span style={{ fontFamily: 'monospace', display: 'flex', gap: 8 }}>
+                                  {rps > 0 && <span style={{ color: 'var(--green)' }}>{formatNumber(rps)}/s</span>}
+                                  {eta != null && eta > 0 && <span style={{ color: 'var(--accent)' }}>~{formatDuration(eta)}</span>}
+                                  {(!eta || eta <= 0) && <span>inserting...</span>}
+                                </span>
+                              </div>
+                              <div style={{ width: '100%', height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+                                <div style={{
+                                  height: '100%', borderRadius: 2,
+                                  background: 'linear-gradient(90deg, var(--blue), var(--accent))',
+                                  backgroundSize: '200% 100%',
+                                  animation: 'ingestionShimmer 1.5s ease infinite',
+                                  width: '100%',
+                                }} />
+                              </div>
                             </div>
-                            <div style={{ width: '100%', height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
-                              <div style={{
-                                height: '100%', borderRadius: 2,
-                                background: 'linear-gradient(90deg, var(--blue), var(--accent))',
-                                backgroundSize: '200% 100%',
-                                animation: 'ingestionShimmer 1.5s ease infinite',
-                                width: '100%',
-                              }} />
-                            </div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {/* Row count for non-ingesting statuses */}
                         {j.status !== 'ingesting' && rowsIngested > 0 && (
@@ -755,7 +816,11 @@ export default function IngestionPage() {
               {/* Message */}
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 2 }}>Processing in background</div>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Feel free to navigate away — we'll keep crunching.</div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                  {activeProgress && activeProgress.queueDepth > 0
+                    ? `${activeProgress.queueDepth} queued · ${activeProgress.maxConcurrent} concurrent`
+                    : "Feel free to navigate away — we'll keep crunching."}
+                </div>
               </div>
             </div>
 

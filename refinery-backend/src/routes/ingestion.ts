@@ -20,6 +20,16 @@ router.get('/stats', async (_req, res) => {
   }
 });
 
+// GET /api/ingestion/active-progress — real-time progress + ETA for active jobs
+router.get('/active-progress', async (_req, res) => {
+  try {
+    const progress = await ingestionService.getActiveProgress();
+    res.json(progress);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/ingestion/jobs
 router.get('/jobs', async (req, res) => {
   try {
