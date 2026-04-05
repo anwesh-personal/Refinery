@@ -158,29 +158,31 @@ function buildWhereConditions(params: BrowseParams, allowedSet: Set<string>, sel
     const LOCATION_COLS= ['personal_city', 'personal_state', 'personal_country', 'personal_zip', 'company_city', 'company_state', 'company_country'].filter(c => allowedSet.has(c));
     const LINKEDIN_COLS= ['linkedin_url', 'company_linkedin_url'].filter(c => allowedSet.has(c));
 
-    let targetCols: string[];
-
     if (isDomain) {
-      targetCols = DOMAIN_COLS;
-    } else if (isEmail) {
-      targetCols = EMAIL_COLS;
-    } else if (isPhone) {
-      targetCols = PHONE_COLS;
-    } else if (isLinkedIn) {
-      targetCols = LINKEDIN_COLS;
-    } else {
-      targetCols = [...new Set([
-        ...NAME_COLS, ...EMAIL_COLS, ...COMPANY_COLS, ...JOB_COLS,
-        ...LOCATION_COLS, ...PHONE_COLS, ...LINKEDIN_COLS,
-        ...DOMAIN_COLS,
-      ])];
-    }
-
-    if (targetCols.length > 0) {
-      const searchClauses = targetCols
+      // Domain search — targeted columns for precision
+      const searchClauses = DOMAIN_COLS
         .map(col => `lower(coalesce(toString(\`${col}\`), '')) LIKE lower('%${escaped}%')`)
         .join(' OR ');
-      conditions.push(`(${searchClauses})`);
+      if (searchClauses) conditions.push(`(${searchClauses})`);
+    } else if (isEmail) {
+      const searchClauses = EMAIL_COLS
+        .map(col => `lower(coalesce(toString(\`${col}\`), '')) LIKE lower('%${escaped}%')`)
+        .join(' OR ');
+      if (searchClauses) conditions.push(`(${searchClauses})`);
+    } else if (isPhone) {
+      const searchClauses = PHONE_COLS
+        .map(col => `lower(coalesce(toString(\`${col}\`), '')) LIKE lower('%${escaped}%')`)
+        .join(' OR ');
+      if (searchClauses) conditions.push(`(${searchClauses})`);
+    } else if (isLinkedIn) {
+      const searchClauses = LINKEDIN_COLS
+        .map(col => `lower(coalesce(toString(\`${col}\`), '')) LIKE lower('%${escaped}%')`)
+        .join(' OR ');
+      if (searchClauses) conditions.push(`(${searchClauses})`);
+    } else {
+      // General text search — uses indexed _search_text column (ngrambf bloom filter)
+      // 1 LIKE scan on 1 indexed column instead of 25 unindexed LIKE scans
+      conditions.push(`_search_text LIKE '%${escaped.toLowerCase()}%'`);
     }
   }
 
