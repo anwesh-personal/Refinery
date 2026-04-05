@@ -786,7 +786,7 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string, pe
     status: 'downloading',
     ...(performedBy ? { performed_by: performedBy } : {}),
     ...(performedByName ? { performed_by_name: performedByName } : {}),
-    ...(fileModifiedAt ? { file_modified_at: fileModifiedAt } : {}),
+    ...(fileModifiedAt ? { file_modified_at: toClickHouseDateTime(new Date(fileModifiedAt)) } : {}),
   }]);
 
   // Run the actual pipeline in the background with concurrency control
@@ -922,7 +922,7 @@ export async function startBulkIngestion(
       status: 'pending',
       ...(performedBy ? { performed_by: performedBy } : {}),
       ...(performedByName ? { performed_by_name: performedByName } : {}),
-      ...(fileModifiedDates?.[key] ? { file_modified_at: fileModifiedDates[key] } : {}),
+      ...(fileModifiedDates?.[key] ? { file_modified_at: toClickHouseDateTime(new Date(fileModifiedDates[key])) } : {}),
     });
   }
 
