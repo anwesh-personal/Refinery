@@ -10,16 +10,29 @@ const DEFAULT_QUERY_TIMEOUT_MS = 30_000;   // 30s for SELECT
 const DEFAULT_COMMAND_TIMEOUT_MS = 60_000; // 60s for INSERT/ALTER
 const DEFAULT_STREAM_TIMEOUT_MS = 120_000; // 120s for CSV exports
 
+/**
+ * Client-level request_timeout MUST be >= the longest possible per-query timeout.
+ * Individual queries enforce their own deadlines via AbortController.
+ * If this is too low (e.g. 30s), the client kills the socket before
+ * insertRows' 5-minute timeout can take effect → write EPIPE.
+ */
+const CLIENT_REQUEST_TIMEOUT_MS = 600_000; // 10 minutes — ceiling for any operation
+
 export const clickhouse = createClient({
   url: env.clickhouse.host,
   username: env.clickhouse.user,
   password: env.clickhouse.password,
   database: env.clickhouse.database,
-  request_timeout: DEFAULT_QUERY_TIMEOUT_MS,
+  request_timeout: CLIENT_REQUEST_TIMEOUT_MS,
   clickhouse_settings: {
-    async_insert: 1,
-    wait_for_async_insert: 1,
-    max_execution_time: 30,  // Server-side kill after 30s (prevents OOM on bad queries)
+    // async_insert DISABLED — our own batch logic handles batching.
+    // async_insert causes ClickHouse to buffer inserts internally and
+    // acknowledge before data is actually written, which conflicts with
+    // our retry logic (we think it succeeded, but it may still fail).
+    async_insert: 0,
+    wait_for_async_insert: 0,
+    // Default server-side kill — overridden per-query where needed
+    max_execution_time: 30,
   },
 });
 
