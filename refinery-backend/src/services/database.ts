@@ -121,6 +121,10 @@ export interface BrowseParams {
   columns?: string[];
   completenessFilter?: 'all' | 'high' | 'medium' | 'low';
   dataSourceIds?: string[];  // Multi-source filter: array of _ingestion_job_id values
+  // Keyset pagination cursor — sent by frontend for next/prev navigation
+  cursorValue?: string;     // Value of the sort column at the boundary row
+  cursorId?: string;        // up_id of the boundary row (tiebreaker)
+  cursorDirection?: 'next' | 'prev'; // Which direction to page from the cursor
 }
 
 // ─── Shared WHERE clause builder ────────────────────────────────────────
@@ -249,6 +253,9 @@ export async function browseData(params: BrowseParams) {
     sortBy,
     sortDir = 'asc',
     completenessFilter,
+    cursorValue,
+    cursorId,
+    cursorDirection,
   } = params;
 
   const allColumns = await getTableColumns();
@@ -273,40 +280,108 @@ export async function browseData(params: BrowseParams) {
     throw new Error('No valid columns to select');
   }
 
+  // Ensure up_id is ALWAYS in the select list (needed for cursor tracking)
+  // Store it separately so we can add it to the query without polluting user's column list
+  const needsUpId = !selectCols.includes('up_id');
+  const queryCols = needsUpId ? [...selectCols, 'up_id'] : selectCols;
+
   // Build WHERE using shared function
   const conditions = buildWhereConditions(params, allowedSet, selectCols);
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  // Validate sort column
-  const safeSortBy = (sortBy && allowedSet.has(sortBy)) ? `\`${sortBy}\`` : `\`${selectCols[0]}\``;
+  // ─── KEYSET PAGINATION ─────────────────────────────────────────────
+  // Determine sort column for cursor-based comparison
+  const sortColName = (sortBy && allowedSet.has(sortBy)) ? sortBy : selectCols[0];
+  const safeSortBy = `\`${sortColName}\``;
   const safeSortDir = sortDir === 'desc' ? 'DESC' : 'ASC';
+
+  const useCursor = !!(cursorValue !== undefined && cursorId && cursorDirection);
+
+  if (useCursor) {
+    // Keyset cursor: compare (sort_col, up_id) tuple
+    // For 'next': we want rows AFTER the cursor (> for ASC, < for DESC)
+    // For 'prev': we want rows BEFORE the cursor (< for ASC, > for DESC)
+    const escapedVal = (cursorValue ?? '').replace(/'/g, "\\'");
+    const escapedId = cursorId!.replace(/'/g, "\\'");
+
+    const isForward = cursorDirection === 'next';
+    const compareOp = (isForward && sortDir !== 'desc') || (!isForward && sortDir === 'desc') ? '>' : '<';
+
+    // Tuple comparison: (sort_col, up_id) > (last_val, last_id)
+    // This handles ties in sort_col correctly via up_id tiebreaker
+    conditions.push(`(${safeSortBy}, \`up_id\`) ${compareOp} ('${escapedVal}', '${escapedId}')`);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
   // Clamp page size
   const safePageSize = Math.min(Math.max(pageSize, 10), 5000);
-  const offset = (Math.max(page, 1) - 1) * safePageSize;
 
   const start = Date.now();
 
   // Get total count (60s timeout — wide searches on 121M rows can exceed default 30s)
+  // We use the ORIGINAL conditions (without cursor) for total count
+  const countConditions = buildWhereConditions(params, allowedSet, selectCols);
+  const countWhere = countConditions.length > 0 ? `WHERE ${countConditions.join(' AND ')}` : '';
   const browseOpts = { timeoutMs: 60_000, settings: { max_execution_time: 60 } };
   const [countResult] = await query<{ cnt: string }>(
-    `SELECT count() as cnt FROM universal_person ${whereClause}`,
+    `SELECT count() as cnt FROM universal_person ${countWhere}`,
     browseOpts
   );
   const total = Number(countResult?.cnt || 0);
 
-  // Get rows — backtick-escape all column names for safety
-  const escapedCols = selectCols.map(c => `\`${c}\``).join(', ');
-  const rows = await query(
-    `SELECT ${escapedCols} FROM universal_person ${whereClause}
-     ORDER BY ${safeSortBy} ${safeSortDir}
-     LIMIT ${safePageSize} OFFSET ${offset}`,
-    browseOpts
-  );
+  // ─── Build data query ──────────────────────────────────────────────
+  const escapedCols = queryCols.map(c => `\`${c}\``).join(', ');
+
+  let actualSortDir = safeSortDir;
+  let needsReverse = false;
+
+  if (useCursor && cursorDirection === 'prev') {
+    // For previous page: flip sort direction, then reverse in app
+    actualSortDir = safeSortDir === 'ASC' ? 'DESC' : 'ASC';
+    needsReverse = true;
+  }
+
+  let dataQuery: string;
+  if (useCursor) {
+    // Cursor-based: no OFFSET needed — O(1) seek
+    dataQuery = `SELECT ${escapedCols} FROM universal_person ${whereClause}
+      ORDER BY ${safeSortBy} ${actualSortDir}, \`up_id\` ${actualSortDir}
+      LIMIT ${safePageSize}`;
+  } else {
+    // Offset-based fallback: for page jumps and first page load
+    const offset = (Math.max(page, 1) - 1) * safePageSize;
+    dataQuery = `SELECT ${escapedCols} FROM universal_person ${whereClause}
+      ORDER BY ${safeSortBy} ${safeSortDir}, \`up_id\` ${safeSortDir}
+      LIMIT ${safePageSize} OFFSET ${offset}`;
+  }
+
+  let rows = await query(dataQuery, browseOpts) as Record<string, unknown>[];
+
+  // Reverse rows for prev direction (we sorted in opposite order to fetch)
+  if (needsReverse) {
+    rows = rows.reverse();
+  }
 
   const elapsed = Date.now() - start;
 
-  return { rows, total, page, pageSize: safePageSize, elapsed };
+  // ─── Build cursors for next/prev ──────────────────────────────────
+  let nextCursor: { value: string; id: string } | null = null;
+  let prevCursor: { value: string; id: string } | null = null;
+
+  if (rows.length > 0) {
+    const lastRow = rows[rows.length - 1];
+    const firstRow = rows[0];
+    nextCursor = {
+      value: String(lastRow[sortColName] ?? ''),
+      id: String(lastRow.up_id ?? ''),
+    };
+    prevCursor = {
+      value: String(firstRow[sortColName] ?? ''),
+      id: String(firstRow.up_id ?? ''),
+    };
+  }
+
+  return { rows, total, page, pageSize: safePageSize, elapsed, nextCursor, prevCursor };
 }
 
 // ─── Faceted Filter Counts ──────────────────────────────────────────────

@@ -15,7 +15,7 @@ import AgentCard from '../components/AgentCard';
 // --- Interfaces ---
 interface DbStats { totalRows: string; totalBytes: string; tableCount: string; segmentCount: string; }
 interface TableInfo { table: string; rows: string; bytes_on_disk: string; last_modified: string; }
-interface QueryResult { rows: Record<string, unknown>[]; elapsed: number; total?: number; page?: number; pageSize?: number; }
+interface QueryResult { rows: Record<string, unknown>[]; elapsed: number; total?: number; page?: number; pageSize?: number; nextCursor?: { value: string; id: string } | null; prevCursor?: { value: string; id: string } | null; }
 interface SavedQuery { name: string; sql: string; savedAt: number; }
 interface ColumnStat { value: string; count: string; }
 
@@ -142,6 +142,12 @@ export default function DatabasePage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  // Keyset pagination cursors — enables O(1) next/prev for deep pages
+  const [cursorNext, setCursorNext] = useState<{ value: string; id: string } | null>(null);
+  const [cursorPrev, setCursorPrev] = useState<{ value: string; id: string } | null>(null);
+  // Track whether the current page change is a sequential nav (next/prev) vs jump
+  const pendingCursorRef = useRef<{ value: string; id: string; direction: 'next' | 'prev' } | null>(null);
 
   // --- SQL Editor State ---
   const [query, setQuery] = useState('SELECT * FROM universal_person LIMIT 100');
@@ -338,6 +344,10 @@ export default function DatabasePage() {
         }
       }
 
+      // Check if this navigation has a keyset cursor (set by next/prev buttons)
+      const cursor = pendingCursorRef.current;
+      pendingCursorRef.current = null; // consume the cursor
+
       const res = await apiCall<QueryResult>('/api/database/browse', {
         method: 'POST',
         body: {
@@ -351,9 +361,14 @@ export default function DatabasePage() {
           sortDir,
           columns: activeCols.length > 0 ? activeCols : undefined,
           completenessFilter: completenessFilter !== 'all' ? completenessFilter : undefined,
+          // Keyset cursor — enables O(1) deep pagination
+          ...(cursor ? { cursorValue: cursor.value, cursorId: cursor.id, cursorDirection: cursor.direction } : {}),
         }
       });
       setResult(res);
+      // Store cursors for next/prev navigation
+      setCursorNext(res.nextCursor ?? null);
+      setCursorPrev(res.prevCursor ?? null);
       searchRef.current = currentSearch; // update ref AFTER successful fetch
 
       // ─── Facet drill-down: fetch top values for key columns (non-blocking) ───
@@ -1452,7 +1467,10 @@ export default function DatabasePage() {
 
                 {/* Page nav */}
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <Button variant="ghost" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))} style={{ padding: '6px 10px' }}><ChevronLeft size={16} /></Button>
+                  <Button variant="ghost" disabled={page === 1} onClick={() => {
+                    if (cursorPrev) pendingCursorRef.current = { ...cursorPrev, direction: 'prev' };
+                    setPage(p => Math.max(1, p - 1));
+                  }} style={{ padding: '6px 10px' }}><ChevronLeft size={16} /></Button>
                   <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
                     Page
                     <input
@@ -1475,7 +1493,10 @@ export default function DatabasePage() {
                     />
                     of {totalPages.toLocaleString()}
                   </span>
-                  <Button variant="ghost" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} style={{ padding: '6px 10px' }}><ChevronRight size={16} /></Button>
+                  <Button variant="ghost" disabled={page >= totalPages} onClick={() => {
+                    if (cursorNext) pendingCursorRef.current = { ...cursorNext, direction: 'next' };
+                    setPage(p => p + 1);
+                  }} style={{ padding: '6px 10px' }}><ChevronRight size={16} /></Button>
                 </div>
               </>
             );
