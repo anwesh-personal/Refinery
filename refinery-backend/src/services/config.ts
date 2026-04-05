@@ -8,6 +8,9 @@ const CONFIG_DEFAULTS: Record<string, number> = {
   'clickhouse.max_query_size': 512, // 512 MB
   'ingestion.max_concurrent': 5,
   'ingestion.batch_size': 10_000,
+  'ingestion.max_auto_retries': 3,
+  'ingestion.insert_timeout_sec': 300,
+  'ingestion.recovery_delay_sec': 5,
   'node.heap_size_mb': 12_288, // 12 GB
 };
 
@@ -94,6 +97,9 @@ export const CONFIG_KEYS = {
   // Ingestion tuning
   INGESTION_MAX_CONCURRENT: 'ingestion.max_concurrent',
   INGESTION_BATCH_SIZE: 'ingestion.batch_size',
+  INGESTION_MAX_AUTO_RETRIES: 'ingestion.max_auto_retries',
+  INGESTION_INSERT_TIMEOUT_SEC: 'ingestion.insert_timeout_sec',
+  INGESTION_RECOVERY_DELAY_SEC: 'ingestion.recovery_delay_sec',
   // Node.js tuning
   NODE_HEAP_SIZE_MB: 'node.heap_size_mb',
 } as const;

@@ -32,6 +32,9 @@ import { esc, sanitizeValue, toClickHouseDateTime } from '../utils/sanitize.js';
 // ═══════════════════════════════════════════════════════════════
 let MAX_CONCURRENT = 3; // default — reduced from 5 to prevent OOM with large parquet files
 let BATCH_SIZE = 10_000;
+let MAX_AUTO_RETRIES = 3;
+let INSERT_TIMEOUT_MS = 300_000; // 5 min default
+let RECOVERY_DELAY_MS = 5_000;   // 5s default
 let activeCount = 0;
 const waitQueue: Array<{ resolve: () => void }> = [];
 
@@ -40,7 +43,10 @@ export async function loadIngestionConfig(): Promise<void> {
   const { getConfigInt } = await import('./config.js');
   MAX_CONCURRENT = await getConfigInt('ingestion.max_concurrent', 3);
   BATCH_SIZE = await getConfigInt('ingestion.batch_size', 10_000);
-  console.log(`[Ingestion] Config loaded: max_concurrent=${MAX_CONCURRENT}, batch_size=${BATCH_SIZE}`);
+  MAX_AUTO_RETRIES = await getConfigInt('ingestion.max_auto_retries', 3);
+  INSERT_TIMEOUT_MS = (await getConfigInt('ingestion.insert_timeout_sec', 300)) * 1000;
+  RECOVERY_DELAY_MS = (await getConfigInt('ingestion.recovery_delay_sec', 5)) * 1000;
+  console.log(`[Ingestion] Config loaded: max_concurrent=${MAX_CONCURRENT}, batch_size=${BATCH_SIZE}, max_retries=${MAX_AUTO_RETRIES}, insert_timeout=${INSERT_TIMEOUT_MS / 1000}s, recovery_delay=${RECOVERY_DELAY_MS / 1000}s`);
 }
 
 async function acquirePipelineSlot(): Promise<void> {
@@ -83,8 +89,6 @@ export function getQueueStatus(): { active: number; queued: number; maxConcurren
  *
  * Returns the number of jobs recovered.
  */
-const MAX_AUTO_RETRIES = 3;
-
 export async function recoverStaleIngestionJobs(): Promise<number> {
   const staleStatuses = ['pending', 'downloading', 'uploading', 'ingesting'];
 
@@ -186,7 +190,7 @@ export async function recoverStaleIngestionJobs(): Promise<number> {
           `).catch(() => {});
         }
       }
-    }, 5000); // 5s delay — let server fully boot before firing pipelines
+    }, RECOVERY_DELAY_MS); // configurable delay — let server fully boot before firing pipelines
   }
 
   // ─── Phase 3: Clean up orphaned temp directories ───
@@ -911,7 +915,7 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
       const MAX_RETRIES = 3;
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-          await insertRows('universal_person', batch, { timeoutMs: 300_000 }); // 5 min — matches CH max_execution_time
+          await insertRows('universal_person', batch, { timeoutMs: INSERT_TIMEOUT_MS }); // configurable — matches CH max_execution_time
           break; // success — exit retry loop
         } catch (err: any) {
           const msg = String(err.message || '');

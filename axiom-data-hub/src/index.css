@@ -639,3 +639,15 @@ a {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   CONFIG TOOLTIPS — hover to reveal
+   ═══════════════════════════════════════════════════════════════ */
+.config-tooltip-trigger:hover .config-tooltip {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+.config-tooltip-trigger:hover > svg {
+  opacity: 1 !important;
+  color: var(--accent) !important;
+}

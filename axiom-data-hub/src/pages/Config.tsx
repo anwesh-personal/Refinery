@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { PageHeader, SectionHeader, Button } from '../components/UI';
 import { apiCall } from '../lib/api';
 import { useServers } from '../components/ServerSelector';
-import { Server, Plus, Trash2, Edit2, Play, CheckCircle, XCircle, Database, Cloud, Settings, Save } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, Play, CheckCircle, XCircle, Database, Cloud, Settings, Save, Info } from 'lucide-react';
 import { Can } from '../auth/ProtectedRoute';
 import AgentCard from '../components/AgentCard';
 
@@ -67,19 +67,44 @@ export default function ConfigPage() {
   const [newConfigKey, setNewConfigKey] = useState('');
   const [newConfigValue, setNewConfigValue] = useState('');
 
-  // Known config keys with human-readable labels and descriptions
-  const KNOWN_CONFIGS: { key: string; label: string; description: string; type: 'number' | 'string' | 'secret'; unit?: string; requiresRestart?: boolean }[] = [
+  // Known config keys with human-readable labels and descriptions (shown as tooltip on hover)
+  const KNOWN_CONFIGS: { key: string; label: string; description: string; tooltip: string; type: 'number' | 'string' | 'secret'; unit?: string; requiresRestart?: boolean }[] = [
     // ── Ingestion Tuning ──
-    { key: 'ingestion.max_concurrent', label: 'Ingestion Concurrency', description: 'Max parallel ingestion pipelines (higher = faster, but uses more memory)', type: 'number' },
-    { key: 'ingestion.batch_size', label: 'Ingestion Batch Size', description: 'Rows per ClickHouse insert batch (lower = less memory, slower ingestion)', type: 'number' },
-    { key: 'node.heap_size_mb', label: 'Node.js Heap Size', description: 'V8 max heap size — requires PM2 restart to take effect', type: 'number', unit: 'MB', requiresRestart: true },
+    { key: 'ingestion.max_concurrent', label: 'Ingestion Concurrency', description: 'Max parallel ingestion pipelines',
+      tooltip: 'How many files can be ingested simultaneously. Higher values = faster bulk ingestion but more RAM and ClickHouse write pressure. For 500-file bulk ingests, 3–5 is optimal. Increase to 8–10 only if ClickHouse has 64GB+ RAM.',
+      type: 'number' },
+    { key: 'ingestion.batch_size', label: 'Ingestion Batch Size', description: 'Rows per ClickHouse insert batch',
+      tooltip: 'Number of rows sent to ClickHouse in a single INSERT. Lower = less memory per batch but more round-trips (slower). 10,000 is optimal for most files. Reduce to 5,000 for very wide tables (100+ columns) to prevent OOM.',
+      type: 'number' },
+    { key: 'ingestion.max_auto_retries', label: 'Auto-Retry Limit', description: 'Max automatic recovery attempts per job',
+      tooltip: 'When the server restarts during ingestion (PM2 restart, crash, deploy), interrupted jobs auto-retry. This caps how many times a single job can be automatically re-enqueued. After this limit, the job is marked as permanently failed (retryable manually). Set to 0 to disable auto-recovery.',
+      type: 'number' },
+    { key: 'ingestion.insert_timeout_sec', label: 'Insert Timeout', description: 'Per-batch ClickHouse insert timeout',
+      tooltip: 'Maximum seconds a single batch insert can take before timing out. Under heavy concurrent ingestion, ClickHouse may take longer to merge data. 300s (5 min) handles worst-case merge contention. Reduce only if you want faster failure detection.',
+      type: 'number', unit: 'sec' },
+    { key: 'ingestion.recovery_delay_sec', label: 'Recovery Delay', description: 'Delay before re-enqueuing recovered jobs',
+      tooltip: 'Seconds to wait after server boot before auto-retrying interrupted jobs. Allows the event loop, config, and database connections to stabilize. 5s is safe for most setups. Increase if you observe recovery failures due to DB not being ready.',
+      type: 'number', unit: 'sec' },
+    { key: 'node.heap_size_mb', label: 'Node.js Heap Size', description: 'V8 max heap — requires PM2 restart',
+      tooltip: 'Maximum memory (MB) the Node.js V8 engine can allocate. 12,288 (12GB) is recommended for ingesting large Parquet files. If you see "JavaScript heap out of memory" errors during ingestion, increase this. Change requires PM2 restart to take effect.',
+      type: 'number', unit: 'MB', requiresRestart: true },
     // ── Pipeline Settings ──
-    { key: 'pipeline.max_emails_per_job', label: 'Pipeline Max Emails', description: 'Maximum emails per Pipeline Studio job', type: 'number' },
-    { key: 'pipeline.smtp_concurrency', label: 'Pipeline SMTP Concurrency', description: 'Concurrent SMTP connections during verification', type: 'number' },
-    { key: 'segment.export_limit', label: 'Segment Export Limit', description: 'Max leads returned when exporting a segment', type: 'number' },
-    { key: 'clickhouse.max_query_size', label: 'ClickHouse Max Query Size', description: 'Max size for a single ClickHouse query string', type: 'number', unit: 'MB' },
+    { key: 'pipeline.max_emails_per_job', label: 'Pipeline Max Emails', description: 'Max emails per Pipeline Studio job',
+      tooltip: 'Hard limit on how many emails can be submitted in a single Pipeline Studio (email verification) job. Prevents accidental mega-jobs that overwhelm the SMTP probing infrastructure. Default 200K handles most use cases.',
+      type: 'number' },
+    { key: 'pipeline.smtp_concurrency', label: 'Pipeline SMTP Concurrency', description: 'Concurrent SMTP connections',
+      tooltip: 'Number of simultaneous SMTP connections during email verification. Higher = faster verification but more aggressive on receiving servers. 10 is safe. Above 20 risks getting IP-blocked by major providers (Gmail, Microsoft).',
+      type: 'number' },
+    { key: 'segment.export_limit', label: 'Segment Export Limit', description: 'Max leads when exporting a segment',
+      tooltip: 'Maximum number of leads returned when exporting a segment to CSV. The Data Explorer export (streaming) has no limit — this only affects segment exports which are JSON-based and buffered in memory.',
+      type: 'number' },
+    { key: 'clickhouse.max_query_size', label: 'ClickHouse Max Query Size', description: 'Max size for a single query string',
+      tooltip: 'Maximum size (MB) for a single ClickHouse query string. Increase if you see "Max query size exceeded" errors when working with very large segment filters or bulk operations. 512MB is generous for most workloads.',
+      type: 'number', unit: 'MB' },
     // ── Third-Party Integrations ──
-    { key: 'semrush_api_key', label: 'SEMRush API Key', description: 'API key for SEMRush — powers Oracle\'s keyword research, domain analytics, and competitor analysis', type: 'secret' },
+    { key: 'semrush_api_key', label: 'SEMRush API Key', description: 'Powers Oracle\u2019s keyword/domain analytics',
+      tooltip: 'API key for SEMRush integration. Powers the Oracle agent\u2019s keyword research, domain analytics, and competitor analysis features. Get your key from semrush.com/api. Leave empty to disable SEMRush-powered insights.',
+      type: 'secret' },
   ];
 
   const fetchSysConfig = async () => {
@@ -88,16 +113,22 @@ export default function ConfigPage() {
       const data = await apiCall<Record<string, string>>('/api/config');
       setSysConfig(data);
       // Merge known keys with defaults if not present
+      const CONFIG_DEFAULTS: Record<string, string> = {
+        'ingestion.max_concurrent': '5',
+        'ingestion.batch_size': '10000',
+        'ingestion.max_auto_retries': '3',
+        'ingestion.insert_timeout_sec': '300',
+        'ingestion.recovery_delay_sec': '5',
+        'node.heap_size_mb': '12288',
+        'pipeline.max_emails_per_job': '200000',
+        'pipeline.smtp_concurrency': '10',
+        'segment.export_limit': '200000',
+        'clickhouse.max_query_size': '512',
+      };
       const draft: Record<string, string> = { ...data };
       for (const kc of KNOWN_CONFIGS) {
         if (!(kc.key in draft)) {
-          draft[kc.key] = kc.key === 'pipeline.max_emails_per_job' ? '200000'
-            : kc.key === 'pipeline.smtp_concurrency' ? '10'
-            : kc.key === 'segment.export_limit' ? '200000'
-            : kc.key === 'clickhouse.max_query_size' ? '512'
-            : kc.key === 'ingestion.max_concurrent' ? '5'
-            : kc.key === 'ingestion.batch_size' ? '10000'
-            : kc.key === 'node.heap_size_mb' ? '12288' : '';
+          draft[kc.key] = CONFIG_DEFAULTS[kc.key] ?? '';
         }
       }
       setSysConfigDraft(draft);
@@ -522,14 +553,27 @@ export default function ConfigPage() {
           <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)' }}>Loading settings...</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {/* Known config keys with labels */}
+            {/* Known config keys with labels + tooltips */}
             {KNOWN_CONFIGS.map(kc => (
               <div key={kc.key} style={{
                 display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px',
                 background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)',
               }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{kc.label}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {kc.label}
+                    <span style={{ position: 'relative', display: 'inline-flex' }} className="config-tooltip-trigger">
+                      <Info size={13} style={{ color: 'var(--text-tertiary)', cursor: 'help', opacity: 0.6, flexShrink: 0 }} />
+                      <span className="config-tooltip" style={{
+                        position: 'absolute', left: '50%', bottom: 'calc(100% + 8px)', transform: 'translateX(-50%)',
+                        background: 'var(--bg-app)', color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.5,
+                        padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.25)', width: 320, maxWidth: '80vw',
+                        pointerEvents: 'none', opacity: 0, transition: 'opacity 0.15s ease',
+                        zIndex: 100, whiteSpace: 'normal',
+                      }}>{kc.tooltip}</span>
+                    </span>
+                  </div>
                   <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{kc.description}</div>
                   <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: "'JetBrains Mono', monospace", marginTop: 4, opacity: 0.7 }}>{kc.key}</div>
                 </div>
