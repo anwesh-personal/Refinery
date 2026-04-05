@@ -28,6 +28,7 @@ interface IngestionJob {
   completed_at: string | null;
   performed_by: string | null;
   performed_by_name: string | null;
+  file_modified_at: string | null;
 }
 
 interface SourceFile {
@@ -181,6 +182,8 @@ export default function IngestionPage() {
   const [jobSortKey, setJobSortKey] = useState<JobSortKey>('date');
   const [jobSortAsc, setJobSortAsc] = useState(false);
   const [ingestionStatusFilter, setIngestionStatusFilter] = useState<IngestionStatusFilter>('all');
+  const [collapsedMonths, setCollapsedMonths] = useState<Set<string>>(new Set());
+  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
 
   // Auto-ingest rules
   const [rules, setRules] = useState<IngestionRule[]>([]);
@@ -507,9 +510,12 @@ export default function IngestionPage() {
     setIngesting(sourceKey);
     setError(null);
     try {
-      const body: { sourceKey: string; sourceId?: string; force?: boolean } = { sourceKey };
+      const body: { sourceKey: string; sourceId?: string; force?: boolean; fileModifiedAt?: string } = { sourceKey };
       if (selectedSourceId) body.sourceId = selectedSourceId;
       if (force) body.force = true;
+      // Send the original S3 file modified date
+      const fileInfo = sourceFiles.find(f => f.key === sourceKey);
+      if (fileInfo?.modified) body.fileModifiedAt = fileInfo.modified;
 
       const res = await apiCall<{ jobId: string }>('/api/ingestion/start', {
         method: 'POST',
@@ -539,12 +545,19 @@ export default function IngestionPage() {
     setIngestingBulk(true);
     setError(null);
     try {
+      // Build map of sourceKey → S3 modified date
+      const fileModifiedDates: Record<string, string> = {};
+      for (const key of selectedFiles) {
+        const info = sourceFiles.find(f => f.key === key);
+        if (info?.modified) fileModifiedDates[key] = info.modified;
+      }
       const res = await apiCall<{ jobIds: string[]; count: number; skipped?: Array<{ fileName: string; rowsIngested: number }> }>('/api/ingestion/start-bulk', {
         method: 'POST',
         body: {
           sourceKeys: Array.from(selectedFiles),
           sourceId: selectedSourceId,
           force,
+          fileModifiedDates,
         },
       });
 
@@ -1473,50 +1486,91 @@ export default function IngestionPage() {
                 </thead>
                 <tbody>
                   {(() => {
-                    // Group jobs by month
-                    const monthGroups: Record<string, typeof sortedJobs> = {};
+                    // Group by month → day using file_modified_at (fallback to started_at)
+                    const getDateKey = (j: IngestionJob) => {
+                      const raw = j.file_modified_at || j.started_at;
+                      return new Date(raw);
+                    };
+                    const monthGroups: Record<string, Record<string, typeof sortedJobs>> = {};
                     for (const j of sortedJobs) {
-                      const d = new Date(j.started_at);
+                      const d = getDateKey(j);
                       const mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                      if (!monthGroups[mk]) monthGroups[mk] = [];
-                      monthGroups[mk].push(j);
+                      const dk = `${mk}-${String(d.getDate()).padStart(2, '0')}`;
+                      if (!monthGroups[mk]) monthGroups[mk] = {};
+                      if (!monthGroups[mk][dk]) monthGroups[mk][dk] = [];
+                      monthGroups[mk][dk].push(j);
                     }
-                    const monthKeys = Object.keys(monthGroups).sort((a, b) => jobSortAsc ? a.localeCompare(b) : b.localeCompare(a));
+                    const monthKeys = Object.keys(monthGroups).sort((a, b) => b.localeCompare(a));
+                    const toggleMonth = (mk: string) => { const n = new Set(collapsedMonths); n.has(mk) ? n.delete(mk) : n.add(mk); setCollapsedMonths(n); };
+                    const toggleDay = (dk: string) => { const n = new Set(collapsedDays); n.has(dk) ? n.delete(dk) : n.add(dk); setCollapsedDays(n); };
 
                     return monthKeys.flatMap(mk => {
-                      const mJobs = monthGroups[mk];
+                      const dayMap = monthGroups[mk];
+                      const allJobsInMonth = Object.values(dayMap).flat();
                       const [y, m] = mk.split('-');
-                      const label = new Date(Number(y), Number(m) - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-                      const totalRows = mJobs.reduce((s, j) => s + Number(j.rows_ingested || 0), 0);
-                      const totalSize = mJobs.reduce((s, j) => s + Number(j.file_size_bytes || 0), 0);
-                      const completeCount = mJobs.filter(j => j.status === 'complete').length;
+                      const monthLabel = new Date(Number(y), Number(m) - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                      const totalRows = allJobsInMonth.reduce((s, j) => s + Number(j.rows_ingested || 0), 0);
+                      const totalSize = allJobsInMonth.reduce((s, j) => s + Number(j.file_size_bytes || 0), 0);
+                      const completeCount = allJobsInMonth.filter(j => j.status === 'complete').length;
+                      const isMonthCollapsed = collapsedMonths.has(mk);
+                      const dayKeys = Object.keys(dayMap).sort((a, b) => b.localeCompare(a));
 
                       return [
-                        <tr key={`month-${mk}`}>
+                        <tr key={`month-${mk}`} onClick={() => toggleMonth(mk)} style={{ cursor: 'pointer' }}>
                           <td colSpan={8} style={{
-                            padding: '10px 16px', background: 'var(--bg-hover)',
-                            borderBottom: '1px solid var(--border)', borderTop: '1px solid var(--border)',
+                            padding: '12px 16px', background: 'linear-gradient(90deg, var(--bg-hover), transparent)',
+                            borderBottom: '1px solid var(--border)', borderTop: '2px solid var(--accent)',
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <Calendar size={13} color="var(--accent)" />
-                                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{label}</span>
-                                <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
-                                  {mJobs.length} job{mJobs.length !== 1 ? 's' : ''} · {formatNumber(totalRows)} rows · {formatBytes(totalSize)}
+                                {isMonthCollapsed ? <ChevronRight size={14} color="var(--accent)" /> : <ChevronDown size={14} color="var(--accent)" />}
+                                <Calendar size={14} color="var(--accent)" />
+                                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{monthLabel}</span>
+                                <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>
+                                  {allJobsInMonth.length} job{allJobsInMonth.length !== 1 ? 's' : ''} · {formatNumber(totalRows)} rows · {formatBytes(totalSize)}
                                 </span>
                               </div>
                               <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--green)', background: 'rgba(34,197,94,0.1)', padding: '2px 8px', borderRadius: 4 }}>
-                                {completeCount}/{mJobs.length} complete
+                                {completeCount}/{allJobsInMonth.length} complete
                               </span>
                             </div>
                           </td>
                         </tr>,
-                        ...mJobs.map((job) => (
+                        ...(!isMonthCollapsed ? dayKeys.flatMap(dk => {
+                          const dayJobs = dayMap[dk];
+                          const dayDate = new Date(Number(dk.split('-')[0]), Number(dk.split('-')[1]) - 1, Number(dk.split('-')[2]));
+                          const dayLabel = dayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                          const dayRows = dayJobs.reduce((s, j) => s + Number(j.rows_ingested || 0), 0);
+                          const isDayCollapsed = collapsedDays.has(dk);
+
+                          return [
+                            <tr key={`day-${dk}`} onClick={() => toggleDay(dk)} style={{ cursor: 'pointer' }}>
+                              <td colSpan={8} style={{
+                                padding: '8px 16px 8px 40px', background: 'var(--bg-card)',
+                                borderBottom: '1px solid var(--border)',
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  {isDayCollapsed ? <ChevronRight size={12} color="var(--text-tertiary)" /> : <ChevronDown size={12} color="var(--text-tertiary)" />}
+                                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>{dayLabel}</span>
+                                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
+                                    {dayJobs.length} file{dayJobs.length !== 1 ? 's' : ''} · {formatNumber(dayRows)} rows
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>,
+                            ...(!isDayCollapsed ? dayJobs.map((job) => (
                     <tr key={job.id} style={{ transition: 'background 0.1s' }}
                       onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
                       onMouseOut={e => (e.currentTarget.style.background = '')}>
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontFamily: 'monospace', fontSize: 12 }}>{job.id.slice(0, 8)}...</td>
-                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, maxWidth: 250, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{job.file_name}</td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {job.file_name}
+                        {job.file_modified_at && (() => {
+                          const d = new Date(job.file_modified_at);
+                          const suffix = `_${String(d.getDate()).padStart(2,'0')}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getFullYear()).slice(2)}`;
+                          return <span style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 400 }}>{suffix}</span>;
+                        })()}
+                      </td>
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>{formatNumber(job.rows_ingested)}</td>
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
                         <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', padding: '4px 10px', borderRadius: 6, color: statusColors[job.status] || 'var(--text-secondary)', background: (statusColors[job.status] || 'var(--text-secondary)') + '18' }}>{job.status.replace('_', ' ')}</span>
@@ -1524,7 +1578,20 @@ export default function IngestionPage() {
                           <span style={{ fontSize: 10, color: 'var(--text-tertiary)', marginLeft: 6 }}>expires {timeAgo((job as any).delete_after)}</span>
                         )}
                       </td>
-                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{timeAgo(job.started_at)}</td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>
+                        <div style={{ fontSize: 11 }}>
+                          {job.file_modified_at && (
+                            <div style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
+                              <span style={{ fontSize: 9, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>uploaded </span>
+                              {new Date(job.file_modified_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </div>
+                          )}
+                          <div>
+                            <span style={{ fontSize: 9, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>ingested </span>
+                            {timeAgo(job.started_at)}
+                          </div>
+                        </div>
+                      </td>
                       <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)', fontSize: 12 }}>
                         {job.performed_by_name || <span style={{ opacity: 0.4 }}>—</span>}
                       </td>
@@ -1593,7 +1660,9 @@ export default function IngestionPage() {
                         </div>
                       </td>
                     </tr>
-                        ))
+                        )) : []),
+                          ];
+                        }) : []),
                       ];
                     });
                   })()}

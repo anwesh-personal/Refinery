@@ -736,7 +736,7 @@ export async function checkDuplicates(sourceKeys: string[]): Promise<DuplicateIn
  *
  * @param force — if true, skip duplicate check and ingest anyway
  */
-export async function startIngestionJob(sourceKey: string, sourceId?: string, performedBy?: string, performedByName?: string, force = false): Promise<string> {
+export async function startIngestionJob(sourceKey: string, sourceId?: string, performedBy?: string, performedByName?: string, force = false, fileModifiedAt?: string): Promise<string> {
   if (shuttingDown) throw new Error('Server is shutting down — cannot start new ingestion jobs.');
 
   const jobId = genId();
@@ -786,6 +786,7 @@ export async function startIngestionJob(sourceKey: string, sourceId?: string, pe
     status: 'downloading',
     ...(performedBy ? { performed_by: performedBy } : {}),
     ...(performedByName ? { performed_by_name: performedByName } : {}),
+    ...(fileModifiedAt ? { file_modified_at: fileModifiedAt } : {}),
   }]);
 
   // Run the actual pipeline in the background with concurrency control
@@ -868,6 +869,7 @@ export async function startBulkIngestion(
   performedBy?: string,
   performedByName?: string,
   force = false,
+  fileModifiedDates?: Record<string, string>,
 ): Promise<BulkIngestionResult> {
   if (shuttingDown) throw new Error('Server is shutting down — cannot start new ingestion jobs.');
 
@@ -920,6 +922,7 @@ export async function startBulkIngestion(
       status: 'pending',
       ...(performedBy ? { performed_by: performedBy } : {}),
       ...(performedByName ? { performed_by_name: performedByName } : {}),
+      ...(fileModifiedDates?.[key] ? { file_modified_at: fileModifiedDates[key] } : {}),
     });
   }
 

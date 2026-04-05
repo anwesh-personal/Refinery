@@ -339,6 +339,10 @@ export async function initDatabase(): Promise<void> {
   await command(`ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS retry_count UInt8 DEFAULT 0`);
   console.log('[DB] ✓ retry_count column ensured on ingestion_jobs');
 
+  // ── Original file upload date from S3 source ──
+  await command(`ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS file_modified_at Nullable(DateTime) DEFAULT NULL`);
+  console.log('[DB] ✓ file_modified_at column ensured on ingestion_jobs');
+
   console.log('[DB] ✓ All tables initialized');
 }
 

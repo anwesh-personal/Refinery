@@ -101,10 +101,10 @@ router.post('/file-statuses', async (req, res) => {
 // POST /api/ingestion/start  { sourceKey, sourceId?, force? }
 router.post('/start', async (req, res) => {
   try {
-    const { sourceKey, sourceId, force } = req.body;
+    const { sourceKey, sourceId, force, fileModifiedAt } = req.body;
     if (!sourceKey) return res.status(400).json({ error: 'sourceKey is required' });
     const user = getRequestUser(req);
-    const jobId = await ingestionService.startIngestionJob(sourceKey, sourceId, user.id, user.name, !!force);
+    const jobId = await ingestionService.startIngestionJob(sourceKey, sourceId, user.id, user.name, !!force, fileModifiedAt);
     res.json({ jobId });
   } catch (e: any) {
     if (e.code === 'DUPLICATE_INGESTION') {
@@ -117,12 +117,12 @@ router.post('/start', async (req, res) => {
 // POST /api/ingestion/start-bulk  { sourceKeys, sourceId?, force? }
 router.post('/start-bulk', async (req, res) => {
   try {
-    const { sourceKeys, sourceId, force } = req.body;
+    const { sourceKeys, sourceId, force, fileModifiedDates } = req.body;
     if (!sourceKeys || !Array.isArray(sourceKeys) || sourceKeys.length === 0) {
       return res.status(400).json({ error: 'sourceKeys array is required' });
     }
     const user = getRequestUser(req);
-    const result = await ingestionService.startBulkIngestion(sourceKeys, sourceId, user.id, user.name, !!force);
+    const result = await ingestionService.startBulkIngestion(sourceKeys, sourceId, user.id, user.name, !!force, fileModifiedDates);
     res.json({ jobIds: result.jobIds, count: result.jobIds.length, skipped: result.skipped });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
