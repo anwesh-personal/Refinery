@@ -157,6 +157,20 @@ router.post('/:id/sync-mailwizz', async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /api/segments/:id/push-multi  { providerIds: string[] }
+// Push segment to multiple MTA providers (users' MailWizz instances)
+router.post('/:id/push-multi', async (req, res) => {
+  try {
+    const { providerIds } = req.body;
+    if (!providerIds || !Array.isArray(providerIds) || providerIds.length === 0) {
+      return res.status(400).json({ error: 'providerIds[] is required (array of MTA provider IDs)' });
+    }
+    const { pushSegmentToProviders } = await import('../services/multi-push.js');
+    const result = await pushSegmentToProviders(req.params.id, providerIds);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 // GET /api/segments/:id/sync-status
 router.get('/:id/sync-status', async (req, res) => {
   try {

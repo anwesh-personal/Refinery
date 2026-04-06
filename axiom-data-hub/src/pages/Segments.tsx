@@ -7,6 +7,7 @@ import FilterBuilder, { filterGroupToSQL, sqlToFilterGroup } from '../components
 import type { FilterGroup } from '../components/FilterBuilder';
 import SegmentCard from '../components/SegmentCard';
 import AgentCard from '../components/AgentCard';
+import MultiPushPanel from '../components/MultiPushPanel';
 import type { Segment } from '../components/SegmentCard';
 
 interface PreviewResult {
@@ -460,6 +461,11 @@ export default function SegmentsPage() {
           ))}
         </div>
       )}
+
+      {/* Multi-Push to Users' MailWizz */}
+      <div style={{ marginTop: 36 }}>
+        <MultiPushPanel segments={segments} />
+      </div>
 
       {/* Inline Edit Modal */}
       {editingSegment && (
