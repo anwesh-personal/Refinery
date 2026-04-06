@@ -11,6 +11,27 @@ function exec(cmd: string): string {
   catch { return ''; }
 }
 
+/* ─── Helper: network stats from vnstat ─── */
+function getNetworkStats(): { totalGB: number } {
+  try {
+    const raw = exec("vnstat --json m 1 2>/dev/null");
+    if (!raw) return { totalGB: 0 };
+    const data = JSON.parse(raw);
+    let rx = 0; let tx = 0;
+    for (const iface of data.interfaces || []) {
+      if (iface.name.startsWith('lo') || iface.name.startsWith('docker')) continue;
+      const traffic = iface.traffic?.month?.[0];
+      if (traffic) {
+        rx += traffic.rx;
+        tx += traffic.tx;
+      }
+    }
+    return { totalGB: Math.round((rx + tx) / 1024 / 1024 / 1024) };
+  } catch {
+    return { totalGB: 0 };
+  }
+}
+
 /* ─── In-memory cache (avoids hammering shell + CH every 10s) ─── */
 interface CachedMetrics { data: any; ts: number; }
 let metricsCache: CachedMetrics | null = null;
@@ -245,6 +266,7 @@ router.get('/metrics', async (_req: Request, res: Response) => {
         dockerContainers: parseInt(dockerCount) || 0,
       },
       disks,
+      network: getNetworkStats(),
       pm2: pm2Processes,
       clickhouse,
       s3: s3Sources,
