@@ -44,3 +44,4 @@ npm-debug.log*
 agent/creds*
 .agents/
 *.png
+.agent/hpending_creds.md

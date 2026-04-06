@@ -1,0 +1,31 @@
+Script started on Mon Apr  6 00:42:38 2026
+[1m[7m%[27m[1m[0m                                                                         [0m[27m[24m[Janweshrath@Anweshs-MacBook-Pro-2 Refinery Nexus % [K[?2004h[?2004l
+[1m[7m%[27m[1m[0m                                                                         [0m[27m[24m[Janweshrath@Anweshs-MacBook-Pro-2 Refinery Nexus % [K[?2004hsssh -o StrictHostKeyChe [Kccking=no root@107.172.56.66 'bash -s' << 'EOF'[?2004l
+[0m[27m[24m[Jheredoc> [K[?2004hDDBPASS=$(grep DBPASS /opt/mailcow/mailcow.conf | cut -d= -f2)[?2004l
+[0m[27m[24m[Jheredoc> [K[?2004hPPASS_HASH=$(docker exec mailcowdockerized-dovecot-mailcow-1 dove [Kaadm pw -s BLF-CRYPT -p 'Hpend1ng@2026')[?2004l
+[0m[27m[24m[Jheredoc> [K[?2004heecho "Hash: $PASS_HASH"[?2004l
+[0m[27m[24m[Jheredoc> [K[?2004hffor USER in info hello support contact team brendan lisa monty d [Kaave isabella; do[?2004l
+[0m[27m[24m[Jheredoc> [K[?2004h   docker exec mailcowdockerized-mysql-mailcow-1 mysql -u mailcow [K  -p"$DBPASS" mailcow -e "INSERT INTO mailbox (username, password, name, q [Kuuota, domain, active, local_part, kind) VALUES ('${USER}@hpending.com', ' [K$${PASS_HASH}', '${USER}', 1073741824, 'hpending.com', 1, '${USER}', '');" [K[K[?2004l
+[0m[27m[24m[Jheredoc> [K[?2004h   echo "${USER}@hpending.com -> done"[?2004l
+[0m[27m[24m[Jheredoc> [K[?2004hddone[?2004l
+[0m[27m[24m[Jheredoc> [K[?2004heecho "Testing auth..."[?2004l
+[0m[27m[24m[Jheredoc> [K[?2004hddocker exec mailcowdockerized-dovecot-mailcow-1 doveadm auth tes [Ktt info@hpending.com 'Hpend1ng@2026'[?2004l
+[0m[27m[24m[Jheredoc> [K[?2004hEEOF[?2004l
+root@107.172.56.66's password: 
+Hash: {BLF-CRYPT}$2y$05$IPJ6I54lGKxnR9FVoh7M7uJNfwXZuxzE.PGwBS/ufN6PiJKUeSn6m
+info@hpending.com -> done
+hello@hpending.com -> done
+support@hpending.com -> done
+contact@hpending.com -> done
+team@hpending.com -> done
+brendan@hpending.com -> done
+lisa@hpending.com -> done
+monty@hpending.com -> done
+dave@hpending.com -> done
+isabella@hpending.com -> done
+Testing auth...
+passdb: info@hpending.com auth failed
+extra fields:
+  user=info@hpending.com
+[1m[7m%[27m[1m[0m                                                                         [0m[27m[24m[Janweshrath@Anweshs-MacBook-Pro-2 Refinery Nexus % [K[?2004h[?2004l
+[1m[7m%[27m[1m[0m                                                                         [0m[27m[24m[Janweshrath@Anweshs-MacBook-Pro-2 Refinery Nexus % [K[?2004h
