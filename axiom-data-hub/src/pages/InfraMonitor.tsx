@@ -117,6 +117,10 @@ function RingGauge({ pct, color, size = 80, strokeWidth = 7, label, sublabel }: 
   const circ = 2 * Math.PI * r;
   const dash = (clamp(pct, 0, 100) / 100) * circ;
   const cx = size / 2, cy = size / 2;
+  
+  // Cleanly format percentage to max 2 decimal places
+  const displayPct = parseFloat(pct.toFixed(2));
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
@@ -130,7 +134,7 @@ function RingGauge({ pct, color, size = 80, strokeWidth = 7, label, sublabel }: 
         />
       </svg>
       <div style={{ marginTop: -size * 0.55, marginBottom: size * 0.25, textAlign: 'center', lineHeight: 1.2 }}>
-        <div style={{ fontSize: size * 0.22, fontWeight: 800, fontFamily: 'monospace', color }}>{pct}%</div>
+        <div style={{ fontSize: size * 0.22, fontWeight: 800, fontFamily: 'monospace', color }}>{displayPct}%</div>
         {sublabel && <div style={{ fontSize: size * 0.12, color: 'var(--text-tertiary)', fontWeight: 500 }}>{sublabel}</div>}
       </div>
       <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-tertiary)' }}>{label}</div>
