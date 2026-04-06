@@ -180,11 +180,11 @@ function DetectiveSleuth({ height = 120 }: { height?: number }) {
   return (
     <div style={{
       height,
-      aspectRatio: '3/4', // Tall aspect ratio to fit the character, dog, and screens
-      borderRadius: '12px',
+      aspectRatio: '3/4',
+      borderRadius: '24px',
       overflow: 'hidden',
-      border: '2px solid rgba(124, 58, 237, 0.4)',
-      boxShadow: '0 8px 16px rgba(0,0,0,0.3)',
+      border: '1px solid var(--border)',
+      boxShadow: '0 12px 32px rgba(0,0,0,0.4)',
       flexShrink: 0,
       background: 'var(--bg-card)',
       position: 'relative'
@@ -192,7 +192,7 @@ function DetectiveSleuth({ height = 120 }: { height?: number }) {
       <img 
         src="/server-sleuth.webp" 
         alt="Server Sleuth" 
-        style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#252129' }} 
+        style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
         onError={(e) => {
           e.currentTarget.style.display = 'none';
         }}
@@ -285,42 +285,58 @@ export default function InfraMonitor() {
       
       {/* ─── Hero / Header ─── */}
       <div style={{ 
-        background: 'linear-gradient(135deg, var(--bg-card) 0%, rgba(124, 58, 237, 0.05) 100%)',
-        border: '1px solid var(--border)', borderRadius: 16, padding: '24px 32px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24
+        position: 'relative', overflow: 'hidden',
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border)', borderRadius: 16, padding: '40px 48px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32,
+        boxShadow: '0 12px 40px rgba(0,0,0,0.15)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-          <DetectiveSleuth height={120} />
+        {/* Background Image Layer */}
+        <div style={{
+          position: 'absolute', inset: 0, opacity: 0.5,
+          backgroundImage: 'url(/server-sleuth.webp)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center 25%',
+          backgroundRepeat: 'no-repeat',
+          mixBlendMode: 'luminosity',
+          maskImage: 'linear-gradient(to right, transparent, black 40%, black)',
+          WebkitMaskImage: 'linear-gradient(to right, transparent, black 40%, black)'
+        }} />
+        
+        {/* Left Side Content (Relative so it sits above the background) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 24, position: 'relative', zIndex: 10 }}>
           <div>
-            <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              Server Sleuth <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 12, background: 'var(--accent)', color: '#fff', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Live</span>
+            <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: '-0.02em', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 12, textShadow: '0 2px 10px rgba(0,0,0,0.8)' }}>
+              Server Sleuth <span style={{ fontSize: 11, padding: '3px 10px', borderRadius: 12, background: 'var(--text-primary)', color: 'var(--bg-primary)', textTransform: 'uppercase', letterSpacing: '0.06em', textShadow: 'none' }}>Live</span>
             </div>
-            <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Server size={14} /> {s.hostname} · {s.platform}
+            <div style={{ fontSize: 15, color: '#fff', opacity: 0.9, marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, textShadow: '0 2px 8px rgba(0,0,0,0.8)' }}>
+              <Server size={16} /> {s.hostname} · {s.platform}
             </div>
-            <div style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ fontSize: 14, color: '#fff', opacity: 0.8, marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500, textShadow: '0 2px 8px rgba(0,0,0,0.8)' }}>
               <Wifi size={14} /> {s.ips.join(', ')}
             </div>
           </div>
         </div>
         
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 13, color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+        {/* Right Side Content */}
+        <div style={{ textAlign: 'right', position: 'relative', zIndex: 10 }}>
+          <div style={{ fontSize: 14, color: '#fff', opacity: 0.9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, textShadow: '0 2px 8px rgba(0,0,0,0.8)' }}>
             Uptime
           </div>
-          <div style={{ fontSize: 28, fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-primary)', lineHeight: 1 }}>
+          <div style={{ fontSize: 36, fontWeight: 900, fontFamily: 'monospace', color: '#fff', lineHeight: 1, textShadow: '0 2px 14px rgba(0,0,0,0.9)' }}>
             {fmtUptime(s.uptimeSec)}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'flex-end', marginTop: 12 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-tertiary)', cursor: 'pointer', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              <input type="checkbox" checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, justifyContent: 'flex-end', marginTop: 16 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#fff', cursor: 'pointer', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', textShadow: '0 2px 8px rgba(0,0,0,0.8)' }}>
+              <input type="checkbox" checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} style={{ accentColor: 'var(--accent)', width: 16, height: 16 }} />
               Auto-poll
             </label>
             <button onClick={fetchMetrics} style={{ 
-              background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 10px', 
-              color: 'var(--text-primary)', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
-            }}>
-              <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Refresh
+              background: 'var(--text-primary)', border: 'none', borderRadius: 8, padding: '8px 14px', 
+              color: 'var(--bg-primary)', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)', transition: 'transform 0.1s'
+            }} onMouseDown={e => e.currentTarget.style.transform = 'scale(0.95)'} onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'} onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}>
+              <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh
             </button>
           </div>
         </div>
@@ -354,11 +370,12 @@ export default function InfraMonitor() {
           { id: 's3', icon: <Layers size={14}/>, label: 'S3 Sources' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id as any)} style={{
-            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 20, 
+            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 8, 
             fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s',
-            background: tab === t.id ? 'var(--text-primary)' : 'transparent',
-            color: tab === t.id ? 'var(--bg-primary)' : 'var(--text-secondary)',
-            border: 'none'
+            background: tab === t.id ? 'var(--accent)' : 'transparent',
+            color: tab === t.id ? 'var(--accent-contrast)' : 'var(--text-secondary)',
+            border: 'none',
+            outline: 'none'
           }}>
             {t.icon} {t.label}
           </button>
