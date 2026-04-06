@@ -624,6 +624,8 @@ export interface JobProgress {
   elapsedSec: number;
   rowsPerSec: number;       // real-time throughput
   etaRemainingSec: number | null;  // estimated seconds remaining (null if unknown)
+  estimatedTotalRows: number;  // estimated total rows in file
+  progressPct: number;         // 0-100 completion percentage
 }
 
 export interface ActiveProgressResult {
@@ -693,14 +695,17 @@ export async function getActiveProgress(): Promise<ActiveProgressResult> {
     const elapsedSec = Math.max(1, (now.getTime() - startedAt.getTime()) / 1000);
     const rowsPerSec = rowsIngested > 0 ? rowsIngested / elapsedSec : 0;
 
-    // Estimate total rows from file size and avg bytes per row
+    // Estimate total rows from file size and avg bytes per row (from recent completed jobs)
     const estimatedTotalRows = fileSizeBytes > 0 ? Math.round(fileSizeBytes / avgBytesPerRow) : 0;
     const remainingRows = Math.max(0, estimatedTotalRows - rowsIngested);
 
-    // ETA: only meaningful when actively ingesting with measurable throughput
+    // ETA: elapsed-time extrapolation based on current throughput
     let etaRemainingSec: number | null = null;
-    if (j.status === 'ingesting' && rowsPerSec > 0 && estimatedTotalRows > 0) {
+    if (j.status === 'ingesting' && rowsPerSec > 0 && rowsIngested > 0) {
+      // Simple and accurate: remaining rows / current throughput
       etaRemainingSec = Math.round(remainingRows / rowsPerSec);
+      // Sanity cap: never show more than 24h ETA
+      if (etaRemainingSec > 86400) etaRemainingSec = null;
     }
 
     return {
@@ -713,6 +718,8 @@ export async function getActiveProgress(): Promise<ActiveProgressResult> {
       elapsedSec: Math.round(elapsedSec),
       rowsPerSec: Math.round(rowsPerSec),
       etaRemainingSec,
+      estimatedTotalRows,
+      progressPct: estimatedTotalRows > 0 ? Math.min(99, Math.round((rowsIngested / estimatedTotalRows) * 100)) : 0,
     };
   });
 
@@ -1128,7 +1135,7 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
         baseDelayMs: 3000,
         maxDelayMs: 30_000,
         isRetryable: isTransientError,
-        onRetry: (err, attempt, delay) => {
+        onRetry: (err: Error, attempt: number, delay: number) => {
           console.warn(`[Ingestion] ${jobId}: Download failed (${err.message}), retrying in ${delay / 1000}s (attempt ${attempt}/4)...`);
         },
       },
@@ -1267,7 +1274,7 @@ async function runIngestionPipeline(jobId: string, sourceKey: string, fileName: 
           baseDelayMs: 5000,
           maxDelayMs: 60_000,
           isRetryable: isTransientError,
-          onRetry: (err, attempt, delay) => {
+          onRetry: (err: Error, attempt: number, delay: number) => {
             console.warn(`[Ingestion] ${jobId}: Batch insert failed (${err.message}), retrying in ${delay / 1000}s (attempt ${attempt}/5)...`);
           },
         },

@@ -41,6 +41,7 @@ import aiUsageRoutes from './routes/ai-usage.js';
 import aiAgentsRoutes from './routes/ai-agents.js';
 import exportsRoutes from './routes/exports.js';
 import smtpServerRoutes from './routes/smtp-servers.js';
+import serverMetricsRoutes from './routes/server-metrics.js';
 import { setupScheduler } from './services/ingestion-rules.js';
 import { ensureEnvServersRegistered } from './services/servers.js';
 
@@ -119,6 +120,7 @@ app.use('/api/ai/usage', aiUsageRoutes);
 app.use('/api/ai/agents', aiAgentsRoutes);
 app.use('/api/export', exportsRoutes);
 app.use('/api/smtp-servers', smtpServerRoutes);
+app.use('/api/server-metrics', serverMetricsRoutes);
 
 // ── v1 API (machine-to-machine, API key authenticated) ──
 app.use('/api/v1/keys', v1KeysRoutes);

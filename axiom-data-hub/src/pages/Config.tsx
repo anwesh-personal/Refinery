@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { PageHeader, SectionHeader, Button } from '../components/UI';
 import { apiCall } from '../lib/api';
 import { useServers } from '../components/ServerSelector';
-import { Server, Plus, Trash2, Edit2, Play, CheckCircle, XCircle, Database, Cloud, Settings, Save, Info, RotateCcw } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, Play, CheckCircle, XCircle, Database, Cloud, Settings, Save, Info, RotateCcw, Activity } from 'lucide-react';
 import { Can } from '../auth/ProtectedRoute';
 import AgentCard from '../components/AgentCard';
 import { useAuth } from '../auth/AuthContext';
+import InfraMonitor from './InfraMonitor';
 
 interface ServerData {
   id: string;
@@ -275,14 +276,32 @@ export default function ConfigPage() {
     return <Server size={16} />;
   };
 
+  const [configTab, setConfigTab] = useState<'servers'|'infra'>('servers');
+
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <PageHeader title="Server Config" sub="Manage Data Storage and Analytics Servers" />
-        <Can do="canEditConfig">
-          <Button onClick={openNewModal} icon={<Plus size={16} />}>Add Server</Button>
-        </Can>
+        <PageHeader title="Server Config" sub="Manage Data Storage, Analytics Servers & Infrastructure" />
+        {configTab === 'servers' && (
+          <Can do="canEditConfig">
+            <Button onClick={openNewModal} icon={<Plus size={16} />}>Add Server</Button>
+          </Can>
+        )}
       </div>
+
+      {/* Tab switcher */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'var(--bg-card)', borderRadius: 10, padding: 4, border: '1px solid var(--border)', width: 'fit-content' }}>
+        {([['servers', 'Servers & Config', <Server size={13} />], ['infra', 'Infrastructure Monitor', <Activity size={13} />]] as const).map(([key, label, icon]) => (
+          <button key={key} onClick={() => setConfigTab(key as any)} style={{
+            padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, border: 'none', transition: 'all 0.15s',
+            background: configTab === key ? 'var(--accent)' : 'transparent',
+            color: configTab === key ? 'var(--accent-contrast)' : 'var(--text-secondary)',
+          }}>{icon}{label}</button>
+        ))}
+      </div>
+
+      {configTab === 'infra' ? <InfraMonitor /> : (
+      <>
 
       {errorMSG && <div style={{ color: 'var(--red)', background: 'var(--red-muted)', padding: 12, borderRadius: 8, marginBottom: 24 }}>{errorMSG}</div>}
 
@@ -711,6 +730,8 @@ export default function ConfigPage() {
           }}
         />
       </div>
+      </>
+      )}
     </>
   );
 }

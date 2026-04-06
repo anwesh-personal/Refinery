@@ -2,10 +2,11 @@ import { CloudDownload, FolderSync, HardDrive, Clock, Loader2, Play, CheckCircle
 import { PageHeader, StatCard, SectionHeader, Button, Input } from '../components/UI';
 import MergePlayground from './MergePlayground';
 import { ServerSelector } from '../components/ServerSelector';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { apiCall } from '../lib/api';
 import { timeAgo } from '../lib/timeAgo';
 import AgentCard from '../components/AgentCard';
+import { useToast } from '../components/Toast';
 
 /* ---------------- Interfaces ---------------- */
 interface IngestionStats {
@@ -81,6 +82,8 @@ interface JobProgress {
   elapsedSec: number;
   rowsPerSec: number;
   etaRemainingSec: number | null;
+  estimatedTotalRows: number;
+  progressPct: number;
 }
 
 interface ActiveProgressResult {
@@ -158,7 +161,7 @@ function getFileFormat(name: string): FileFormat {
 }
 
 type FileSortKey = 'name' | 'size' | 'date';
-type JobSortKey = 'date' | 'rows' | 'status' | 'file';
+type JobSortKey = 'date' | 'rows' | 'status' | 'file' | 'size' | 'by';
 type IngestionStatusFilter = 'all' | 'ingested' | 'uningested' | 'in_progress';
 
 /* ---------------- Component ---------------- */
@@ -231,6 +234,8 @@ export default function IngestionPage() {
 
   // Active progress & ETA state
   const [activeProgress, setActiveProgress] = useState<ActiveProgressResult | null>(null);
+  const prevActiveIdsRef = useRef<Set<string>>(new Set());
+  const { success: toastSuccess, error: toastError } = useToast();
 
   /* --- Fetch --- */
   const fetchData = useCallback(async () => {
@@ -381,9 +386,28 @@ export default function IngestionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSourceId]);
 
-  // Auto-refresh jobs + active progress
+  // Auto-refresh jobs + active progress + detect completions
   useEffect(() => {
-    const hasActive = jobs.some(j => ['pending', 'downloading', 'uploading', 'ingesting'].includes(j.status));
+    // Detect job completions by comparing active IDs across polls
+    const currentActiveIds = new Set(jobs.filter(j => ['pending', 'downloading', 'uploading', 'ingesting'].includes(j.status)).map(j => j.id));
+    const prevIds = prevActiveIdsRef.current;
+    if (prevIds.size > 0) {
+      for (const id of prevIds) {
+        if (!currentActiveIds.has(id)) {
+          const job = jobs.find(j => j.id === id);
+          if (job) {
+            if (job.status === 'complete') {
+              toastSuccess('Ingestion Complete', `${job.file_name} — ${Number(job.rows_ingested).toLocaleString()} rows`);
+            } else if (job.status === 'failed') {
+              toastError('Ingestion Failed', `${job.file_name}${job.error_message ? ': ' + job.error_message.slice(0, 80) : ''}`);
+            }
+          }
+        }
+      }
+    }
+    prevActiveIdsRef.current = currentActiveIds;
+
+    const hasActive = currentActiveIds.size > 0;
     if (!hasActive) { setActiveProgress(null); return; }
     // Fetch progress immediately on first detect
     apiCall<ActiveProgressResult>('/api/ingestion/active-progress').then(setActiveProgress).catch(() => {});
@@ -393,7 +417,7 @@ export default function IngestionPage() {
       apiCall<ActiveProgressResult>('/api/ingestion/active-progress').then(setActiveProgress).catch(() => {});
     }, 3000);
     return () => { clearInterval(dataInterval); clearInterval(progressInterval); };
-  }, [jobs, fetchData]);
+  }, [jobs, fetchData, toastSuccess, toastError]);
 
   /* --- S3 Sources Management --- */
   const handleSaveSource = async () => {
@@ -789,8 +813,14 @@ export default function IngestionPage() {
                       </div>
                       {/* Progress bar */}
                       {j.status === 'ingesting' && rowsIngested > 0 && (
-                        <div style={{ marginTop: 6, width: '100%', height: 3, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
-                          <div style={{ height: '100%', borderRadius: 2, background: 'linear-gradient(90deg, var(--blue), var(--accent))', backgroundSize: '200% 100%', animation: 'ingestionShimmer 1.5s ease infinite', width: '100%' }} />
+                        <div style={{ marginTop: 6, width: '100%' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent)', fontFamily: 'monospace' }}>{prog?.progressPct ?? 0}%</span>
+                            {prog?.estimatedTotalRows ? <span style={{ fontSize: 9, color: 'var(--text-tertiary)', fontFamily: 'monospace' }}>{formatNumber(rowsIngested)} / {formatNumber(prog.estimatedTotalRows)} rows</span> : null}
+                          </div>
+                          <div style={{ width: '100%', height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', borderRadius: 2, background: 'linear-gradient(90deg, var(--blue), var(--accent))', width: `${prog?.progressPct ?? 0}%`, transition: 'width 1s ease' }} />
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1454,6 +1484,8 @@ export default function IngestionPage() {
             else if (jobSortKey === 'file') cmp = a.file_name.localeCompare(b.file_name);
             else if (jobSortKey === 'rows') cmp = Number(a.rows_ingested || 0) - Number(b.rows_ingested || 0);
             else if (jobSortKey === 'status') cmp = a.status.localeCompare(b.status);
+            else if (jobSortKey === 'size') cmp = Number(a.file_size_bytes || 0) - Number(b.file_size_bytes || 0);
+            else if (jobSortKey === 'by') cmp = (a.performed_by_name || '').localeCompare(b.performed_by_name || '');
             return jobSortAsc ? cmp : -cmp;
           });
 
@@ -1462,6 +1494,8 @@ export default function IngestionPage() {
             { label: 'Rows', key: 'rows' },
             { label: 'Status', key: 'status' },
             { label: 'Started', key: 'date' },
+            { label: 'By', key: 'by' },
+            { label: 'Size', key: 'size' },
           ];
 
           return (
@@ -1479,18 +1513,63 @@ export default function IngestionPage() {
                         </span>
                       </th>
                     ))}
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>By</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>Size</th>
                     <th style={{ padding: '12px 16px', textAlign: 'left', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border)' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(() => {
+                    // When sorting by non-date key, render flat list (no grouping)
+                    const renderFlat = jobSortKey !== 'date';
+
                     // Group by month → day using file_modified_at (fallback to started_at)
                     const getDateKey = (j: IngestionJob) => {
                       const raw = j.file_modified_at || j.started_at;
                       return new Date(raw);
                     };
+
+                    // --- FLAT MODE: no grouping, just sorted rows ---
+                    if (renderFlat) {
+                      return sortedJobs.map((job) => (
+                    <tr key={job.id} style={{ transition: 'background 0.1s' }}
+                      onMouseOver={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseOut={e => (e.currentTarget.style.background = '')}>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontFamily: 'monospace', fontSize: 12 }}>{job.id.slice(0, 8)}...</td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontWeight: 600, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {job.file_name}
+                      </td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>{formatNumber(job.rows_ingested)}</td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', padding: '4px 10px', borderRadius: 6, color: statusColors[job.status] || 'var(--text-secondary)', background: (statusColors[job.status] || 'var(--text-secondary)') + '18' }}>{job.status.replace('_', ' ')}</span>
+                      </td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)', fontSize: 11 }}>
+                        {timeAgo(job.started_at)}
+                      </td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)', fontSize: 12 }}>
+                        {job.performed_by_name || <span style={{ opacity: 0.4 }}>—</span>}
+                      </td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-tertiary)' }}>{formatBytes(Number(job.file_size_bytes))}</td>
+                      <td style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          {(job.status === 'complete' || job.status === 'archived') && (
+                            <button onClick={() => openJobDataViewer(job.id)}
+                              style={{ padding: '3px 8px', fontSize: 10, fontWeight: 700, borderRadius: 5, cursor: 'pointer', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent)', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 3 }}
+                              onMouseOver={e => { e.currentTarget.style.background = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent-contrast)'; }}
+                              onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--accent)'; }}
+                            ><Eye size={10} /> View Data</button>
+                          )}
+                          {job.status === 'failed' && (
+                            <button onClick={async () => {
+                              try { await apiCall(`/api/ingestion/${job.id}/retry`, { method: 'POST' }); setSuccess('Retrying...'); fetchData(); setTimeout(() => setSuccess(null), 3000); } catch (e: any) { setError(e.message); }
+                            }} style={{ padding: '3px 8px', fontSize: 10, fontWeight: 700, borderRadius: 5, cursor: 'pointer', border: '1px solid var(--yellow)', background: 'transparent', color: 'var(--yellow)', transition: 'all 0.15s' }}
+                            >Retry</button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                      ));
+                    }
+
+                    // --- GROUPED MODE: month → day grouping ---
                     const monthGroups: Record<string, Record<string, typeof sortedJobs>> = {};
                     for (const j of sortedJobs) {
                       const d = getDateKey(j);
