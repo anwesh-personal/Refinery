@@ -4,6 +4,7 @@ import {
   Cpu, HardDrive, Database, Activity, AlertTriangle, CheckCircle2,
   Server, RefreshCw, Layers, Zap, Wifi, Circle,
 } from 'lucide-react';
+import { AreaChart, Area, Tooltip, ResponsiveContainer } from 'recharts';
 
 // ─── Types ──────────────────────────────────────────────────────
 interface SystemInfo {
@@ -62,51 +63,48 @@ const THRESHOLDS = {
   diskWarn: 75, diskCrit: 90, partsWarn: 200, partsCrit: 400,
 };
 
-// ─── Sparkline SVG ───────────────────────────────────────────────
+// ─── Interactive Recharts Sparkline ───────────────────────────────
 function Sparkline({ data, color, height = 40, width = 120 }: {
-  data: number[]; color: string; height?: number; width?: number;
+  data: number[]; color: string; height?: number; width?: number | string;
 }) {
   if (data.length < 2) return <div style={{ width, height }} />;
-  const max = Math.max(...data, 1);
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - clamp((v / max) * height, 2, height - 2);
-    return `${x},${y}`;
-  }).join(' ');
-  const areaBase = `${width},${height} 0,${height}`;
+  const chartData = data.map((v, i) => ({ time: i, value: v }));
   return (
-    <svg width={width} height={height} style={{ display: 'block', overflow: 'visible' }}>
-      <defs>
-        <linearGradient id={`sg-${color.replace(/[^a-z]/gi,'')}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.35" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-        </linearGradient>
-      </defs>
-      <polygon
-        points={`0,${height} ${pts} ${areaBase}`}
-        fill={`url(#sg-${color.replace(/[^a-z]/gi,'')})`}
-      />
-      <polyline
-        points={pts}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {/* Live dot */}
-      {data.length > 0 && (() => {
-        const last = data[data.length - 1];
-        const lx = width;
-        const ly = height - clamp((last / max) * height, 2, height - 2);
-        return (
-          <circle cx={lx} cy={ly} r="3" fill={color}>
-            <animate attributeName="r" values="3;5;3" dur="2s" repeatCount="indefinite" />
-            <animate attributeName="opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite" />
-          </circle>
-        );
-      })()}
-    </svg>
+    <div style={{ width, height, position: 'relative' }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={chartData} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id={`color-${color.replace(/[^a-zA-Z0-9]/g, '')}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+              <stop offset="95%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <Tooltip 
+            cursor={{ stroke: 'var(--border)', strokeWidth: 1, strokeDasharray: '4 4' }}
+            content={({ active, payload }) => {
+              if (active && payload && payload.length) {
+                return (
+                  <div style={{ background: 'var(--bg-popover)', border: '1px solid var(--border)', padding: '6px 12px', borderRadius: '8px', fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' }}>
+                    {payload[0].value}
+                  </div>
+                );
+              }
+              return null;
+            }}
+          />
+          <Area 
+            type="monotone" 
+            dataKey="value" 
+            stroke={color} 
+            strokeWidth={2}
+            fillOpacity={1} 
+            fill={`url(#color-${color.replace(/[^a-zA-Z0-9]/g, '')})`}
+            isAnimationActive={false}
+            activeDot={{ r: 4, fill: color, stroke: 'var(--bg-card)', strokeWidth: 2 }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
   );
 }
 
@@ -327,11 +325,15 @@ export default function InfraMonitor() {
             <div style={{ fontSize: 14, color: 'var(--text-tertiary)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500 }}>
               <Wifi size={14} /> {s.ips.join(', ')}
             </div>
-            {data.network && (
-              <div style={{ marginTop: 16, display: 'inline-flex', padding: '8px 16px', background: 'var(--bg-primary)', borderRadius: '12px', border: '1px solid var(--border)', flexDirection: 'column' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>M-t-D Bandwidth Usage (30TB Limit)</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'monospace', marginTop: 4 }}>
-                  {data.network.totalGB} GB <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>({((data.network.totalGB / 30720) * 100).toFixed(2)}%)</span>
+            {data.network && data.network.totalGB !== undefined && (
+              <div style={{ marginTop: 20, display: 'inline-flex', alignItems: 'center', gap: 16, padding: '16px 20px', background: 'var(--bg-primary)', borderRadius: '16px', border: '1px solid var(--border)', boxShadow: '0 8px 16px rgba(0,0,0,0.1)' }}>
+                <RingGauge pct={(data.network.totalGB / 30720) * 100} color="var(--accent)" size={60} strokeWidth={6} label="" />
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>M-t-D Bandwidth</div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: 'var(--text-primary)', fontFamily: 'monospace', marginTop: 2, lineHeight: 1 }}>
+                    {data.network.totalGB} <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>GB / 30TB</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, fontWeight: 600 }}>Real-time hardware pipeline metric.</div>
                 </div>
               </div>
             )}
@@ -416,17 +418,21 @@ export default function InfraMonitor() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{s.cpuModel.slice(0, 24)}...</div>
                 <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 12 }}>{s.cpuCores} Cores · Load Avg: {s.loadAvg.join(' / ')}</div>
-                <Sparkline data={history.cpu} color={s.cpuUsagePct > THRESHOLDS.cpuCrit ? 'var(--red)' : s.cpuUsagePct > THRESHOLDS.cpuWarn ? 'var(--yellow)' : 'var(--accent)'} width={180} height={40} />
+                <div style={{ height: 60, width: '100%' }}>
+                  <Sparkline data={history.cpu} color={s.cpuUsagePct > THRESHOLDS.cpuCrit ? 'var(--red)' : s.cpuUsagePct > THRESHOLDS.cpuWarn ? 'var(--yellow)' : 'var(--accent)'} width="100%" height={60} />
+                </div>
               </div>
             </div>
 
             {/* RAM Card */}
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, display: 'flex', alignItems: 'center', gap: 24 }}>
               <RingGauge pct={s.ram.usePct} color={s.ram.usePct > THRESHOLDS.ramCrit ? 'var(--red)' : s.ram.usePct > THRESHOLDS.ramWarn ? 'var(--yellow)' : 'var(--accent)'} label="RAM Used" />
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>System Memory</div>
                 <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 12 }}>{fmtBytes(s.ram.usedMB * 1024 * 1024)} used of {fmtBytes(s.ram.totalMB * 1024 * 1024)}</div>
-                <Sparkline data={history.ram} color={s.ram.usePct > THRESHOLDS.ramCrit ? 'var(--red)' : s.ram.usePct > THRESHOLDS.ramWarn ? 'var(--yellow)' : 'var(--accent)'} width={180} height={40} />
+                <div style={{ height: 60, width: '100%' }}>
+                  <Sparkline data={history.ram} color={s.ram.usePct > THRESHOLDS.ramCrit ? 'var(--red)' : s.ram.usePct > THRESHOLDS.ramWarn ? 'var(--yellow)' : 'var(--accent)'} width="100%" height={60} />
+                </div>
               </div>
             </div>
 
@@ -454,7 +460,9 @@ export default function InfraMonitor() {
                   <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'monospace', color: 'var(--text-primary)' }}><AnimCounter value={data.clickhouse.activeQueries} /></div>
                   <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', marginTop: 4 }}>Active Queries</div>
                 </div>
-                <div style={{ marginTop: 16 }}><Sparkline data={history.chQueries} color="var(--accent)" width={80} height={30} /></div>
+                <div style={{ marginTop: 8, height: 40, width: 90 }}>
+                  <Sparkline data={history.chQueries} color="var(--accent)" width="100%" height={40} />
+                </div>
               </div>
             </div>
           </div>
