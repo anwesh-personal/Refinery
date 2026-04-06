@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiCall } from '../lib/api';
 import {
   Cpu, HardDrive, Database, Activity, AlertTriangle, CheckCircle2,
-  Server, RefreshCw, Layers, Zap, Wifi, GitBranch, MemoryStick,
-  TrendingUp, TrendingDown, Minus, Circle,
+  Server, RefreshCw, Layers, Zap, Wifi, Circle,
 } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────────────
@@ -163,33 +162,6 @@ function AnimCounter({ value, suffix = '' }: { value: number; suffix?: string })
   return <span>{fmtNum(displayed)}{suffix}</span>;
 }
 
-// ─── Pulse Dot ───────────────────────────────────────────────────
-function PulseDot({ color }: { color: string }) {
-  return (
-    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 10, height: 10 }}>
-      <span style={{
-        position: 'absolute', inset: 0, borderRadius: '50%', background: color, opacity: 0.3,
-        animation: 'ping 1.5s cubic-bezier(0,0,0.2,1) infinite',
-      }} />
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color }} />
-    </span>
-  );
-}
-
-// ─── Trend Arrow ─────────────────────────────────────────────────
-function Trend({ history }: { history: number[] }) {
-  if (history.length < 3) return <Minus size={10} color="var(--text-tertiary)" />;
-  const recent = history.slice(-5);
-  const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
-  const older = history.slice(-10, -5);
-  const avgOld = older.length ? older.reduce((a, b) => a + b, 0) / older.length : avg;
-  const diff = avg - avgOld;
-  if (Math.abs(diff) < 2) return <Minus size={10} color="var(--text-tertiary)" />;
-  return diff > 0
-    ? <TrendingUp size={10} color="var(--red)" />
-    : <TrendingDown size={10} color="var(--green)" />;
-}
-
 // ─── Section Header ──────────────────────────────────────────────
 function SectionHead({ icon, title, badge }: { icon: React.ReactNode; title: string; badge?: string }) {
   return (
@@ -242,7 +214,6 @@ export default function InfraMonitor() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [history, setHistory] = useState<History>({ cpu: [], ram: [], chMem: [], chQueries: [] });
   const [alerts, setAlerts] = useState<{ level: 'warn' | 'error'; msg: string }[]>([]);
   const [tab, setTab] = useState<'overview' | 'processes' | 'database' | 'storage' | 's3'>('overview');
@@ -254,7 +225,7 @@ export default function InfraMonitor() {
   const fetchMetrics = useCallback(async () => {
     try {
       const d = await apiCall<MetricsData>('/api/server-metrics/metrics');
-      setData(d); setLastUpdated(new Date()); setError(null);
+      setData(d); setError(null);
       pushHistory('cpu', d.system.cpuUsagePct);
       pushHistory('ram', d.system.ram.usePct);
       pushHistory('chMem', Math.round((d.clickhouse.memoryTrackingBytes || 0) / 1024 / 1024));
