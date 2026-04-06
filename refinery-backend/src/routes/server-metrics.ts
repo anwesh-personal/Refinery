@@ -11,20 +11,22 @@ function exec(cmd: string): string {
   catch { return ''; }
 }
 
-/* ─── Helper: network stats from vnstat ─── */
+/* ─── Helper: network stats from /proc/net/dev ─── */
 function getNetworkStats(): { totalGB: number } {
   try {
-    const raw = exec("vnstat --json m 1 2>/dev/null");
+    const raw = exec("cat /proc/net/dev 2>/dev/null");
     if (!raw) return { totalGB: 0 };
-    const data = JSON.parse(raw);
+    const lines = raw.split('\n').slice(2); // Skip headers
     let rx = 0; let tx = 0;
-    for (const iface of data.interfaces || []) {
-      if (iface.name.startsWith('lo') || iface.name.startsWith('docker')) continue;
-      const traffic = iface.traffic?.month?.[0];
-      if (traffic) {
-        rx += traffic.rx;
-        tx += traffic.tx;
-      }
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const [iface, dataStr] = line.split(':');
+      if (!dataStr) continue;
+      const name = iface.trim();
+      if (name.startsWith('lo') || name.startsWith('docker') || name.startsWith('veth') || name.startsWith('br-')) continue;
+      const cols = dataStr.trim().split(/\s+/);
+      rx += parseInt(cols[0]) || 0;
+      tx += parseInt(cols[8]) || 0;
     }
     return { totalGB: Math.round((rx + tx) / 1024 / 1024 / 1024) };
   } catch {
