@@ -4,11 +4,42 @@
 // Server: RackNerd Dedicated — 32GB RAM
 //   ClickHouse: 24GB, OS/MinIO: ~4GB, Node.js: ~4GB
 //
+// Memory is configurable from:
+//   Server Config → System Settings → node.heap_size_mb
+//
+// When the UI saves a new heap size, the backend writes
+// pm2-runtime.json and triggers a clean PM2 restart.
+// This file reads that JSON so PM2 picks up the new limits.
+//
 // Usage:
 //   pm2 start ecosystem.config.cjs
 //   pm2 reload ecosystem.config.cjs   (zero-downtime restart)
 //   pm2 delete refinery-api && pm2 start ecosystem.config.cjs
 // ═══════════════════════════════════════════════════════════════
+
+const fs = require('fs');
+const path = require('path');
+
+// ── Read runtime config from sidecar (written by backend on config save) ──
+const DEFAULTS = { heapSizeMb: 12288 };
+let runtime = { ...DEFAULTS };
+
+try {
+  const sidecar = path.join(__dirname, 'pm2-runtime.json');
+  if (fs.existsSync(sidecar)) {
+    const raw = JSON.parse(fs.readFileSync(sidecar, 'utf-8'));
+    if (raw.heapSizeMb && Number(raw.heapSizeMb) > 0) {
+      runtime.heapSizeMb = Number(raw.heapSizeMb);
+    }
+  }
+} catch {
+  // Sidecar missing or corrupt — use defaults
+}
+
+// PM2's max_memory_restart must be ABOVE the Node heap to avoid
+// PM2 killing the process before V8's GC can reclaim memory.
+// Headroom: heap + 1GB for native buffers, S3 streams, etc.
+const pm2MemoryLimitMb = runtime.heapSizeMb + 1024;
 
 module.exports = {
   apps: [
@@ -17,9 +48,12 @@ module.exports = {
       script: './dist/index.js',
 
       // ── Memory ──
-      // 32GB server: 16GB ClickHouse, ~4GB OS/MinIO, 12GB for Node.js
-      // Configurable from Server Config → System Settings → node.heap_size_mb
-      node_args: '--max-old-space-size=12288',
+      // Node V8 heap ceiling (configurable via Server Config UI)
+      node_args: `--max-old-space-size=${runtime.heapSizeMb}`,
+
+      // PM2 external kill switch — set above the heap so PM2 only
+      // intervenes as a last resort, not during normal GC pressure.
+      max_memory_restart: `${pm2MemoryLimitMb}M`,
 
       // ── Restart Policy ──
       // Auto-restart on crash, but with exponential backoff to prevent
