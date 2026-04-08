@@ -139,6 +139,13 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', uptime: process.uptime(), env: env.nodeEnv });
 });
 
+// ── Static Files ──
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+app.use(express.static(join(__dirname, '..', 'public')));
+
 // ── 404 ──
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
