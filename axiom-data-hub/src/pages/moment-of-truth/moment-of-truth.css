@@ -1,0 +1,238 @@
+/* ═══════════════════════════════════════════════════════════
+   MOMENT OF TRUTH — Premium Forensic Audit Dashboard
+   ═══════════════════════════════════════════════════════════ */
+
+.mot-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0a12 0%, #0d1117 40%, #101824 100%);
+  color: #e0e6ed;
+  padding: 2rem;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* ── Hero ── */
+.mot-hero {
+  text-align: center;
+  padding: 3rem 1rem 2rem;
+  margin-bottom: 2rem;
+}
+.mot-title {
+  font-size: 3rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #00ff88, #00bfff, #a855f7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0 0 0.5rem;
+  letter-spacing: -1px;
+}
+.mot-subtitle {
+  font-size: 1.1rem;
+  color: rgba(255,255,255,0.5);
+  margin: 0 0 0.25rem;
+}
+.mot-date {
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.3);
+  margin: 0 0 2rem;
+}
+
+/* ── Score Ring ── */
+.mot-score-ring-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+.mot-score-ring {
+  width: 140px;
+  height: 140px;
+  filter: drop-shadow(0 0 20px rgba(0,255,136,0.3));
+}
+
+/* ── Stats Row ── */
+.mot-stats-row {
+  display: flex;
+  justify-content: center;
+  gap: 3rem;
+  flex-wrap: wrap;
+}
+.mot-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+.mot-stat-num {
+  font-size: 2rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.mot-stat-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: rgba(255,255,255,0.4);
+}
+
+/* ── Tabs ── */
+.mot-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  padding-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+.mot-tab {
+  padding: 0.6rem 1.2rem;
+  border: none;
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.5);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+.mot-tab:hover { background: rgba(255,255,255,0.08); color: white; }
+.mot-tab-active {
+  background: rgba(0,255,136,0.12) !important;
+  color: #00ff88 !important;
+  box-shadow: 0 0 12px rgba(0,255,136,0.15);
+}
+
+/* ── Phase Cards ── */
+.mot-phase-card {
+  background: rgba(255,255,255,0.03);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  backdrop-filter: blur(8px);
+}
+.mot-phase-card:hover { background: rgba(255,255,255,0.06); }
+.mot-phase-header { display: flex; flex-direction: column; gap: 0.75rem; }
+.mot-phase-title-row { display: flex; align-items: center; gap: 0.75rem; }
+.mot-phase-number {
+  font-size: 0.75rem;
+  font-weight: 800;
+  background: rgba(255,255,255,0.08);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  color: rgba(255,255,255,0.6);
+}
+.mot-phase-title { font-size: 1.1rem; font-weight: 700; margin: 0; flex: 1; }
+.mot-owner-badge {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 99px;
+  background: rgba(168,85,247,0.15);
+  color: #a855f7;
+  font-weight: 600;
+}
+.mot-phase-score-row { display: flex; align-items: center; gap: 1rem; }
+.mot-progress-bar {
+  flex: 1;
+  height: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.mot-progress-fill { height: 100%; border-radius: 99px; }
+.mot-score { font-size: 0.85rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* ── Requirements ── */
+.mot-requirements { overflow: hidden; padding-top: 0.75rem; }
+.mot-req {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+.mot-req-icon { font-size: 0.9rem; margin-top: 2px; }
+.mot-req-content { flex: 1; display: flex; flex-direction: column; gap: 0.15rem; }
+.mot-req-label { font-size: 0.9rem; font-weight: 500; }
+.mot-req-evidence { font-size: 0.75rem; color: rgba(0,255,136,0.6); font-family: 'JetBrains Mono', monospace; }
+.mot-req-note { font-size: 0.75rem; color: rgba(255,200,0,0.7); font-style: italic; }
+.mot-req-status-badge {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.mot-req-done .mot-req-status-badge { background: rgba(0,255,136,0.12); color: #00ff88; }
+.mot-req-partial .mot-req-status-badge { background: rgba(255,215,0,0.12); color: #ffd700; }
+.mot-req-missing .mot-req-status-badge { background: rgba(255,59,59,0.12); color: #ff3b3b; }
+.mot-req-blocked .mot-req-status-badge { background: rgba(255,59,59,0.2); color: #ff3b3b; }
+
+/* ── Blockers ── */
+.mot-blockers-header { margin-bottom: 1.5rem; }
+.mot-blockers-header h2 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+.mot-blockers-header p { color: rgba(255,255,255,0.4); margin: 0; font-size: 0.9rem; }
+.mot-blocker-card {
+  background: rgba(255,59,59,0.04);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 0.75rem;
+  backdrop-filter: blur(8px);
+}
+.mot-blocker-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+.mot-blocker-header h4 { margin: 0; font-size: 1.1rem; flex: 1; }
+.mot-blocker-severity { font-size: 0.65rem; font-weight: 800; letter-spacing: 1px; }
+.mot-blocker-eta {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  color: rgba(255,255,255,0.6);
+}
+.mot-blocker-desc { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin: 0 0 0.5rem; line-height: 1.5; }
+.mot-blocker-owner { font-size: 0.75rem; color: rgba(255,255,255,0.3); }
+
+/* ── Milestones ── */
+.mot-section-title { font-size: 1.5rem; margin: 0 0 1rem; }
+.mot-section-desc { color: rgba(255,255,255,0.5); margin: 0 0 1.5rem; font-size: 0.9rem; }
+.mot-milestones { display: flex; flex-direction: column; gap: 0.5rem; }
+.mot-milestone {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+}
+.mot-milestone-done { opacity: 1; }
+.mot-milestone-pending { opacity: 0.6; }
+.mot-ms-icon { font-size: 1rem; }
+.mot-ms-label { flex: 1; font-size: 0.9rem; }
+.mot-ms-date { font-size: 0.75rem; color: rgba(255,255,255,0.3); font-variant-numeric: tabular-nums; }
+
+/* ── Revenue ── */
+.mot-revenue-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+.mot-revenue-card {
+  background: rgba(0,255,136,0.04);
+  border: 1px solid rgba(0,255,136,0.12);
+  border-radius: 12px;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.mot-revenue-card:hover { background: rgba(0,255,136,0.08); border-color: rgba(0,255,136,0.25); }
+.mot-revenue-card h3 { margin: 0 0 0.5rem; font-size: 1.1rem; }
+.mot-revenue-card p { margin: 0; font-size: 0.85rem; color: rgba(255,255,255,0.5); line-height: 1.5; }
+.mot-rev-badge {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  background: rgba(0,255,136,0.15);
+  color: #00ff88;
+  margin-bottom: 0.75rem;
+}

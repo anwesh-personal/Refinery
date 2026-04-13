@@ -21,6 +21,7 @@ import MTAConfigPage from './pages/MTAConfig';
 import AINexusPage from './pages/AINexus';
 import SEOIntelligencePage from './pages/SEOIntelligence';
 import BoardroomPage from './pages/Boardroom';
+import MomentOfTruthPage from './pages/moment-of-truth/MomentOfTruth';
 import ImpersonationBanner from './components/ImpersonationBanner';
 import { CommandPalette } from './components/CommandPalette';
 import { ServerProvider } from './components/ServerSelector';
@@ -60,6 +61,7 @@ export default function App() {
                     <Route path="/ai-nexus" element={<ProtectedRoute requires="canViewConfig"><AINexusPage /></ProtectedRoute>} />
                     <Route path="/seo-intelligence" element={<ProtectedRoute requires="canViewConfig"><SEOIntelligencePage /></ProtectedRoute>} />
                     <Route path="/boardroom" element={<ProtectedRoute requires="canViewConfig"><BoardroomPage /></ProtectedRoute>} />
+                    <Route path="/moment-of-truth" element={<MomentOfTruthPage />} />
                     {/* Catch-all 404 for protected routes */}
                     <Route path="*" element={<NotFoundPage />} />
                   </Routes>
